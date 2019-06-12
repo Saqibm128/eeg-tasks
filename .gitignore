@@ -1,0 +1,7 @@
+.ipynb_checkpoints/
+*.pyc
+config.json
+configWindow.json
+configWindows.json
+configLinux.json
+*.pt
