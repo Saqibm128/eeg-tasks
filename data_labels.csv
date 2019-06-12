@@ -1,0 +1,28 @@
+﻿class_code,class_no,description
+NULL,0,No Event
+SPSW,1,Spike/Sharp and Wave
+GPED,2,Generalized Periodic Epileptiform Discharges
+PLED,3,Periodic Lateralized Epileptiform Discharges
+EYBL,4,Eye blink
+ARTF,5,Artifacts (All)
+BCKG,6,Background
+SEIZ,7,Seizure
+FNSZ,8,Focal Non-Specific Seizure
+GNSZ,9,Generalized Non-Specific Seizure
+SPSZ,10,Simple Partial Seizure
+CPSZ,11,Complex Partial Seizure
+ABSZ,12,Absence Seizure
+TNSZ,13,Tonic Seizure
+CNSZ,14,Clonic Seizure
+TCSZ,15,Tonic Clonic Seizure
+ATSZ,16,Atonic Seizure
+MYSZ,17,Myoclonic Seizure
+NESZ,18,Non-Epileptic Seizure
+INTR,19,Interesting Patterns
+SLOW,20,Slowing
+EYEM,21,Eye Movement Artifact
+CHEW,22,Chewing Artifact
+SHIV,23,Shivering Artifact
+MUSC,24,Muscle Artifact
+ELPP,25,Electrode Pop Artifact
+ELST,26,Electrostatic Artifact
