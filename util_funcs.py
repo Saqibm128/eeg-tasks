@@ -9,6 +9,34 @@ import pymongo
 import itertools
 import pyedflib
 
+def read_tse_file(path):
+    tse_data_lines = []
+    with open(path, 'r') as f:
+        for line in f:
+            if "#" in line:
+                continue #this is a comment
+            elif "version" in line:
+                assert "tse_v1.0.0" in line #assert file is correct version
+            elif len(line.strip()) == 0:
+                continue #Just blank space, continue
+            else:
+                line = line.strip()
+                subparts = line.split()
+                tse_data_line = pd.Series(index=['start', 'end', 'label', 'p'])
+                tse_data_line['start'] = float(subparts[0])
+                tse_data_line['end'] = float(subparts[1])
+                tse_data_line['label'] = str(subparts[2])
+                tse_data_line['p'] = float(subparts[3])
+                tse_data_lines.append(tse_data_line)
+    tse_data = pd.concat(tse_data_lines, axis=1).T
+    return tse_data
+
+def read_tse_file_and_return_ts(path):
+    pass #Not sure if I need this yet
+    tse_data = read_tse_file(path)
+    ann_types = get_annotation_types()
+
+
 def edf_eeg_2_df(path):
     """ Transforms from EDF to pd.df, with channel labels as columns.
         This does not attempt to concatenate multiple time series but only takes
@@ -66,6 +94,18 @@ def get_abs_files(root_dir_path):
     return subdirs
 
 
+cached_annotation_csv = None
+
+def get_annotation_csv():
+    global cached_annotation_csv
+    if cached_annotation_csv is None:
+        cached_annotation_csv = pd.read_csv(
+            "data_labels.csv",
+             header=0,
+             dtype=str,
+             keep_default_na=False,
+             )
+    return cached_annotation_csv
 
 def get_annotation_types():
     """Used to get the specific annotation types. These are specified in
@@ -83,12 +123,7 @@ def get_annotation_types():
 
     """
     #https://www.isip.piconepress.com/projects/tuh_eeg/downloads/tuh_eeg_seizure/v1.5.0/_DOCS/
-    return pd.read_csv(
-        "data_labels.csv",
-         header=0,
-         dtype=str,
-         keep_default_na=False,
-         )["class_code"].str.lower().tolist()
+    return get_annotation_csv()["class_code"].str.lower().tolist()
 
 def get_data_split():
     return ["train", "dev_test"]
@@ -169,7 +204,17 @@ def get_session_dir_names(data_split, ref, full_path=True, patient_dirs=None):
     else:
         return [path.basename(session_dir) for session_dir in session_dirs]
 
-def get_time_series_file_names(session_dir_path, full_path=True):
+def get_all_token_file_names(data_split, ref, full_path=True):
+    p = Pool()
+    session_dirs = get_session_dir_names(data_split, ref)
+    token_fns = list(itertools.chain.from_iterable(p.map(get_token_file_names, session_dirs)))
+    if full_path:
+        return token_fns
+    else:
+        return [path.basename(token_fn) for token_fn in token_fns]
+
+
+def get_token_file_names(session_dir_path, full_path=True):
     sess_file_names = get_abs_files(session_dir_path)
     time_series_fns = [fn for fn in sess_file_names if fn[-4:] == '.edf']
     if full_path:
@@ -178,7 +223,7 @@ def get_time_series_file_names(session_dir_path, full_path=True):
         return [path.basename(fn) for fn in time_series_fns]
 
 def get_session_data(session_dir_path):
-    time_series_fns = get_time_series_file_names(session_dir_path)
+    time_series_fns = get_token_file_names(session_dir_path)
     signal_dfs = []
     for fn in time_series_fns:
         signal_dfs.append(edf_eeg_2_df(fn))
@@ -202,5 +247,4 @@ def read_config(path="config.json"):
 if __name__ == "__main__":
     print(read_config())
     print(get_annotation_types())
-    print(get_time_series('/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/dev_test/01_tcp_ar/002/00000258/s002_2003_07_21/'))
     print('spsw' in get_annotation_types())
