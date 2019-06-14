@@ -7,6 +7,43 @@ import pandas as pd
 import numpy as np
 import pymongo
 import itertools
+import pyedflib
+
+def edf_eeg_2_df(path):
+    """ Transforms from EDF to pd.df, with channel labels as columns.
+        This does not attempt to concatenate multiple time series but only takes
+        a single edf filepath
+
+    Parameters
+    ----------
+    path : str
+        path of the edf file
+
+    Returns
+    -------
+    pd.DataFrame
+        index is time, columns is waveform channel label
+
+    """
+    reader = pyedflib.EdfReader(path)
+    channel_names = [headerDict['label'] for headerDict in reader.getSignalHeaders()]
+    sample_rates = [headerDict['sample_rate'] for headerDict in reader.getSignalHeaders()]
+    start_time = reader.getStartdatetime()
+    all_channels = []
+    for i, channel_name in enumerate(channel_names):
+        signal_data = reader.readSignal(i)
+        signal_data = pd.Series(
+            signal_data,
+            index=pd.date_range(
+                start=start_time,
+                freq=pd.Timedelta(seconds=1/sample_rates[i]),
+                periods=len(signal_data)
+                ),
+            name=channel_name
+            )
+        all_channels.append(signal_data)
+    return pd.concat(all_channels, axis=1)
+
 
 def get_abs_files(root_dir_path):
     """helper func to return full path names. helps with nested structure of
@@ -132,6 +169,21 @@ def get_session_dir_names(data_split, ref, full_path=True, patient_dirs=None):
     else:
         return [path.basename(session_dir) for session_dir in session_dirs]
 
+def get_time_series_file_names(session_dir_path, full_path=True):
+    sess_file_names = get_abs_files(session_dir_path)
+    time_series_fns = [fn for fn in sess_file_names if fn[-4:] == '.edf']
+    if full_path:
+        return time_series_fns
+    else:
+        return [path.basename(fn) for fn in time_series_fns]
+
+def get_session_data(session_dir_path):
+    time_series_fns = get_time_series_file_names(session_dir_path)
+    signal_dfs = []
+    for fn in time_series_fns:
+        signal_dfs.append(edf_eeg_2_df(fn))
+    return pd.concat(signal_dfs)
+
 def get_mongo_client(path = "config.json"):
     '''
     Used for Sacred to record results
@@ -150,4 +202,5 @@ def read_config(path="config.json"):
 if __name__ == "__main__":
     print(read_config())
     print(get_annotation_types())
+    print(get_time_series('/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/dev_test/01_tcp_ar/002/00000258/s002_2003_07_21/'))
     print('spsw' in get_annotation_types())
