@@ -5,3 +5,4 @@ configWindow.json
 configWindows.json
 configLinux.json
 *.pt
+*.pkl

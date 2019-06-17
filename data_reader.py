@@ -38,6 +38,7 @@ class EdfFFTDatasetTransformer():
         self.precache = False
         self.freq_bins = freq_bins
         if precache:
+            print("starting precache job with: {} processes".format(self.n_process))
             self.data = self[:]
         self.precache = precache
 
@@ -299,6 +300,7 @@ if __name__ == "__main__":
     parser.add_argument("data_split", type=str)
     parser.add_argument("ref", type=str)
     parser.add_argument("--path", type=str, default="")
+    parser.add_argument("--num_files", type=int, default=None)
     args = parser.parse_args()
-    edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=5, expand_tse=False), precache=True)
+    edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), precache=True)
     pkl.dump(edf_dataset.data, open("{}_{}_fft.pkl".format(args.data_split, args.ref), 'wb'))
