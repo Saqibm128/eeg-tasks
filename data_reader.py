@@ -31,8 +31,9 @@ class EdfFFTDatasetTransformer():
     def __init__(self, edf_dataset, n_process=None):
         self.edf_dataset = edf_dataset
         if n_process is None:
-            n_process =
-        self.n_process = cpu_count
+            n_process = mp.cpu_count()
+        self.n_process = n_process
+        self.manager = mp.Manager()
     def __len__(self):
         return len(self.edf_dataset)
     def helper_process(self, in_q, out_q):
@@ -45,7 +46,10 @@ class EdfFFTDatasetTransformer():
             for j in range(*i.indices(100000000)):
                 #Hack to try to marshal indices of slice into array
                 toReturn.append(j)
-
+            inQ = self.manager.Queue()
+            outQ = self.manager.Queue()
+            [inQ.put(j) for j in range(*i.indices(100000000))]
+            p = [Process(target=helper_process) for j in range(self.n_process)]
             return Pool().map(self.__getitem__, toReturn)
         original_data = self.edf_dataset[i]
         fft_data = np.abs(np.fft.fft(original_data[0].values))
