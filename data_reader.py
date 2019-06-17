@@ -4,7 +4,7 @@ import itertools
 import pyedflib
 from os import path
 from util_funcs import read_config, get_abs_files, get_annotation_types, get_data_split, get_reference_node_types, COMMON_FREQ
-from multiprocessing import Manager, Process
+import multiprocessing as mp
 from pathos.multiprocessing import Pool
 
 # dataset = Dataset(num_files=10)
@@ -28,16 +28,24 @@ class EdfFFTDatasetTransformer():
     edf_dataset
 
     """
-    def __init__(self, edf_dataset):
+    def __init__(self, edf_dataset, n_process=None):
         self.edf_dataset = edf_dataset
+        if n_process is None:
+            n_process =
+        self.n_process = cpu_count
     def __len__(self):
         return len(self.edf_dataset)
+    def helper_process(self, in_q, out_q):
+        for i in iter(in_q.get, None):
+            out_q.put(i, self[i])
+
     def __getitem__(self, i):
         if type(i) == slice:
             toReturn = []
             for j in range(*i.indices(100000000)):
+                #Hack to try to marshal indices of slice into array
                 toReturn.append(j)
-                # toReturn.append(self[j])
+
             return Pool().map(self.__getitem__, toReturn)
         original_data = self.edf_dataset[i]
         fft_data = np.abs(np.fft.fft(original_data[0].values))
