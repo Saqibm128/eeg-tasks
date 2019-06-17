@@ -8,6 +8,8 @@ import pymongo
 import itertools
 import pyedflib
 
+COMMON_FREQ = 1.0/256 #used for common resampling
+
 def get_abs_files(root_dir_path):
     """helper func to return full path names. helps with nested structure of
         extracted files
