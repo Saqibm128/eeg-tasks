@@ -4,6 +4,12 @@ Uses the TUH dataset:  https://www.isip.piconepress.com/projects/tuh_eeg/
 This dataset is segmented into a train set and test set and includes annotations.
 In addition, there are subsets of the data based on the exact reference node of the EEG.
 
+# Data Format
+data should be accessible using the EdfDataset and EdfFFTDatasetTransformer
+EdfDataset and EdfFFTDatasetTransformer is array-like, and will return tuples.
+The first elem is the actual data, second is a timeseries by annotation array
+showing the assigned probabilities for various annotations
+
 # Setup
 Reads the directory of the data using config.json file
 

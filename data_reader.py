@@ -6,13 +6,15 @@ from os import path
 from util_funcs import read_config, get_abs_files, get_annotation_types, get_data_split, get_reference_node_types, COMMON_FREQ
 import multiprocessing as mp
 from pathos.multiprocessing import Pool
+import argparse
+import pickle as pkl
 
 # dataset = Dataset(num_files=10)
 # eeg_df_256_hz, labels_by_256_hz = Dataset().get(i)
 # model
 
 
-#TODO: no way we can load all the data at once
+#TODO: trying to allow us to load data in without dealing with resource issues
 # https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 class EdfFFTDatasetTransformer():
     """Implements an indexable dataset applying fft to entire timeseries,
@@ -28,27 +30,35 @@ class EdfFFTDatasetTransformer():
     edf_dataset
 
     """
-    def __init__(self, edf_dataset, n_process=None):
+    def __init__(self, edf_dataset, freq_bins = [i for i in range(100)], n_process=None, precache=False):
         self.edf_dataset = edf_dataset
         if n_process is None:
             n_process = mp.cpu_count()
         self.n_process = n_process
-        self.manager = mp.Manager()
+        self.precache = False
+        self.freq_bins = freq_bins
+        if precache:
+            self.data = self[:]
+        self.precache = precache
+
     def __len__(self):
         return len(self.edf_dataset)
     def helper_process(self, in_q, out_q):
         for i in iter(in_q.get, None):
+            if i%10 == 0:
+                print("retrieving: {}".format(i))
             out_q.put((i, self[i]))
 
     def __getitem__(self, i):
+        if self.precache:
+            return self.data[i]
         if type(i) == slice:
             toReturn = []
-            for j in range(*i.indices(100000000)):
-                #Hack to try to marshal indices of slice into array, and to help reassign back into array
-                toReturn.append(j)
-            inQ = self.manager.Queue()
-            outQ = self.manager.Queue()
-            [inQ.put(j) for j in range(*i.indices(100000000))]
+            toReturn = list(range(*i.indices(len(self))))
+            manager = mp.Manager()
+            inQ = manager.Queue()
+            outQ = manager.Queue()
+            [inQ.put(j) for j in range(*i.indices(len(self)))]
             [inQ.put(None) for j in range(self.n_process)]
             processes = [mp.Process(target=self.helper_process, args=(inQ, outQ)) for j in range(self.n_process)]
             [p.start() for p in processes]
@@ -61,7 +71,7 @@ class EdfFFTDatasetTransformer():
         original_data = self.edf_dataset[i]
         fft_data = np.nan_to_num(np.abs(np.fft.fft(original_data[0].values, axis=0)))
         fft_freq = np.fft.fftfreq(fft_data.shape[0], d=COMMON_FREQ)
-        fft_freq_bins = list(range(50))
+        fft_freq_bins = self.freq_bins
         new_fft_hist = pd.DataFrame(index=fft_freq_bins[:-1], columns=original_data[0].columns)
         for i, name in enumerate(original_data[0].columns):
             new_fft_hist[name] = np.histogram(fft_freq, bins=fft_freq_bins, weights=fft_data[:,i])[0]
@@ -91,16 +101,19 @@ class EdfDataset():
     resample : pd.Timedelta
 
     """
-    def __init__(self, data_split, ref, resample=pd.Timedelta(seconds=COMMON_FREQ)):
+    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_FREQ), expand_tse=True):
         self.data_split = data_split
         self.ref = ref
         self.resample = resample
         self.manager = mp.Manager()
         self.edf_tokens = get_all_token_file_names(data_split, ref)
+        self.expand_tse = expand_tse
+        if num_files is not None:
+            self.edf_tokens = self.edf_tokens[0:num_files]
     def __len__(self):
         return len(self.edf_tokens)
     def __getitem__(self, i):
-        return get_edf_data_and_label_ts_format(self.edf_tokens[i], self.resample)
+        return get_edf_data_and_label_ts_format(self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
     #
     # def get_data_runner(to_get_queue, to_return_queue):
     #     for edf_path in iter(to_get_queue.get, None):
@@ -108,10 +121,13 @@ class EdfDataset():
     # def get_data_multiprocess():
 
 
-def get_edf_data_and_label_ts_format(edf_path, resample=pd.Timedelta(seconds=COMMON_FREQ)):
+def get_edf_data_and_label_ts_format(edf_path, expand_tse=True, resample=pd.Timedelta(seconds=COMMON_FREQ)):
     edf_data = edf_eeg_2_df(edf_path, resample)
     tse_data_path = convert_edf_path_to_tse(edf_path)
-    tse_data_ts = read_tse_file_and_return_ts(tse_data_path, edf_data.index)
+    if expand_tse:
+        tse_data_ts = read_tse_file_and_return_ts(tse_data_path, edf_data.index)
+    else:
+        tse_data_ts = read_tse_file(tse_data_path)
     return edf_data, tse_data_ts
 
 def read_tse_file(tse_path):
@@ -141,6 +157,11 @@ def convert_edf_path_to_tse(edf_path):
 
 def read_tse_file_and_return_ts(tse_path, ts_index):
     ann_y = read_tse_file(tse_path)
+
+    return expand_tse_file(ann_y, ts_index)
+
+
+def expand_tse_file(ann_y, ts_index):
     ann_y_t = pd.DataFrame(columns=get_annotation_types(), index=ts_index)
     ann_y.apply(lambda row: ann_y_t[row['label']].loc[pd.Timedelta(seconds=row['start']):pd.Timedelta(seconds=row['end'])].fillna(row['p'], inplace=True), axis=1)
     ann_y_t.fillna(0, inplace=True)
@@ -271,3 +292,13 @@ def get_session_data(session_dir_path):
     for fn in time_series_fns:
         signal_dfs.append(edf_eeg_2_df(fn))
     return pd.concat(signal_dfs)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Holds utility functions for reading data. As a script, stores a copy of the dataset as pkl format')
+    parser.add_argument("data_split", type=str)
+    parser.add_argument("ref", type=str)
+    parser.add_argument("--path", type=str, default="")
+    args = parser.parse_args()
+    edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=5, expand_tse=False), precache=True)
+    pkl.dump(edf_dataset.data, open("{}_{}_fft.pkl".format(args.data_split, args.ref), 'wb'))
