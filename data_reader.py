@@ -38,21 +38,28 @@ class EdfFFTDatasetTransformer():
         return len(self.edf_dataset)
     def helper_process(self, in_q, out_q):
         for i in iter(in_q.get, None):
-            out_q.put(i, self[i])
+            out_q.put((i, self[i]))
 
     def __getitem__(self, i):
         if type(i) == slice:
             toReturn = []
             for j in range(*i.indices(100000000)):
-                #Hack to try to marshal indices of slice into array
+                #Hack to try to marshal indices of slice into array, and to help reassign back into array
                 toReturn.append(j)
             inQ = self.manager.Queue()
             outQ = self.manager.Queue()
             [inQ.put(j) for j in range(*i.indices(100000000))]
-            p = [Process(target=helper_process) for j in range(self.n_process)]
-            return Pool().map(self.__getitem__, toReturn)
+            [inQ.put(None) for j in range(self.n_process)]
+            processes = [mp.Process(target=self.helper_process, args=(inQ, outQ)) for j in range(self.n_process)]
+            [p.start() for p in processes]
+            [p.join() for p in processes]
+            while not outQ.empty():
+                index, res = outQ.get()
+                toReturn[index] = res
+            return toReturn
+            # return Pool().map(self.__getitem__, toReturn)
         original_data = self.edf_dataset[i]
-        fft_data = np.abs(np.fft.fft(original_data[0].values))
+        fft_data = np.nan_to_num(np.abs(np.fft.fft(original_data[0].values, axis=0)))
         fft_freq = np.fft.fftfreq(fft_data.shape[0], d=COMMON_FREQ)
         fft_freq_bins = list(range(50))
         new_fft_hist = pd.DataFrame(index=fft_freq_bins[:-1], columns=original_data[0].columns)
@@ -88,12 +95,11 @@ class EdfDataset():
         self.data_split = data_split
         self.ref = ref
         self.resample = resample
-        self.manager = Manager()
+        self.manager = mp.Manager()
         self.edf_tokens = get_all_token_file_names(data_split, ref)
     def __len__(self):
         return len(self.edf_tokens)
     def __getitem__(self, i):
-        print(type(i))
         return get_edf_data_and_label_ts_format(self.edf_tokens[i], self.resample)
     #
     # def get_data_runner(to_get_queue, to_return_queue):
