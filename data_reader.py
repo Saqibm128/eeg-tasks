@@ -303,4 +303,4 @@ if __name__ == "__main__":
     parser.add_argument("--num_files", type=int, default=None)
     args = parser.parse_args()
     edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), precache=True)
-    pkl.dump(edf_dataset.data, open("{}_{}_fft.pkl".format(args.data_split, args.ref), 'wb'))
+    pkl.dump(edf_dataset.data, open(args.path +  "{}_{}_fft.pkl".format(args.data_split, args.ref), 'wb'))
