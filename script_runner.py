@@ -2,6 +2,7 @@ from multiprocessing import Process, Manager
 import multiprocessing as mp
 from initial_clustering import ex
 import sys
+import time, random
 
 q = Manager().Queue()
 
@@ -18,6 +19,7 @@ def runExperiment(argsQueue):
     """
     for experArg in iter(argsQueue.get, None):
         try:
+            time.sleep(random.random * 5) #adds wiggle room for mongodb observer
             ex.run(config_updates=experArg[1], named_configs=experArg[0])
         except Exception as e:
             print(e)
