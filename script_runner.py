@@ -28,7 +28,8 @@ def runExperiment(argsQueue):
 
 m = Manager()
 argsQueue = m.Queue()
-num_processes = mp.cpu_count()
+# num_processes = mp.cpu_count()
+num_processes = 1
 
 parser = argparse.ArgumentParser()
 parser.add_argument("path", type=str)
