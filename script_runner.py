@@ -28,8 +28,8 @@ def runExperiment(argsQueue):
 
 m = Manager()
 argsQueue = m.Queue()
-# num_processes = mp.cpu_count()
-num_processes = 1
+num_processes = mp.cpu_count()
+# num_processes = 1
 
 parser = argparse.ArgumentParser()
 parser.add_argument("path", type=str)
@@ -42,6 +42,7 @@ for num_k_means in range(1, 40, 2):
 
 if args.num_process is not None:
     num_processes = args.num_process
+print("Num Processes: {}".format(num_processes))
 processes = [Process(target=runExperiment, args=(argsQueue,)) for i in range(num_processes)]
 [argsQueue.put(None) for i in range(num_processes)]
 [process.start() for process in processes]
