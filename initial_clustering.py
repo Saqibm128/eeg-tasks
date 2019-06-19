@@ -11,13 +11,13 @@ from sklearn.cluster import MiniBatchKMeans
 import util_funcs
 import pickle as pkl
 
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+
+
 @ex.named_config
 def debug_config():
     num_eegs = 20
 
-@ex.named_config
-def attach_mongo():
-    ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 @ex.config
 def config():

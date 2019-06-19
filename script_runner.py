@@ -20,7 +20,7 @@ def runExperiment(argsQueue):
     """
     for experArg in iter(argsQueue.get, None):
         try:
-            time.sleep(random.random() * 10) #adds wiggle room for mongodb observer
+            time.sleep(random.random() * 5) #adds wiggle room for mongodb observer
             ex.run(config_updates=experArg[1], named_configs=experArg[0])
         except Exception as e:
             print(e)
@@ -38,9 +38,8 @@ args = parser.parse_args()
 
 for num_k_means in range(1, 40, 2):
     for num_pca_comp in range(1, 40, 2):
-        argsQueue.put((["attach_mongo"], {'num_pca_comps':num_pca_comp, 'num_k_means':num_k_means, 'precached_pkl': args.path}))
+        argsQueue.put(([], {'num_pca_comps':num_pca_comp, 'num_k_means':num_k_means, 'precached_pkl': args.path}))
 
-print(args.path)
 if args.num_process is not None:
     num_processes = args.num_process
 processes = [Process(target=runExperiment, args=(argsQueue,)) for i in range(num_processes)]
