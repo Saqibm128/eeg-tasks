@@ -32,6 +32,7 @@ num_processes = mp.cpu_count()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("path", type=str)
+parser.add_argument("--num_processes", type=int, default=None)
 args = parser.parse_args()
 
 for num_k_means in range(1, 40, 2):
@@ -39,6 +40,8 @@ for num_k_means in range(1, 40, 2):
         argsQueue.put((["attach_mongo"], {'num_pca_comps':num_pca_comp, 'num_k_means':num_k_means, 'precached_pkl': args.path}))
 
 print(args.path)
+if args.num_processses is not None:
+    num_processes = args.num_processes
 processes = [Process(target=runExperiment, args=(argsQueue,)) for i in range(num_processes)]
 [argsQueue.put(None) for i in range(num_processes)]
 [process.start() for process in processes]
