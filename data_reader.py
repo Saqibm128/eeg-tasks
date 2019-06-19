@@ -55,7 +55,6 @@ class EdfFFTDatasetTransformer():
             return self.data[i]
         if type(i) == slice:
             toReturn = []
-            toReturn = list(range(*i.indices(len(self))))
             manager = mp.Manager()
             inQ = manager.Queue()
             outQ = manager.Queue()
@@ -66,7 +65,8 @@ class EdfFFTDatasetTransformer():
             [p.join() for p in processes]
             while not outQ.empty():
                 index, res = outQ.get()
-                toReturn[index] = res
+                toReturn.append((res)) #no guarantee of order unfortunately...
+            # toReturn.sort(key=lambda x: return x[0])
             return toReturn
             # return Pool().map(self.__getitem__, toReturn)
         original_data = self.edf_dataset[i]

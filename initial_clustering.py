@@ -91,3 +91,6 @@ def main(num_pca_comps, num_k_means):
     percent_y_per_cluster = (percent_y_per_cluster.T / percent_y_per_cluster.sum(axis=1)).fillna(0)
     print(percent_y_per_cluster)
     return {'pca': pca, 'kmeans': kmeans, 'cluster_pct': cluster_pct, 'percent_y_per_cluster': percent_y_per_cluster}
+
+if __name__ == '__main__':
+    ex.run_commandline()
