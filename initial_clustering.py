@@ -1,5 +1,5 @@
 import sacred
-ex = sacred.Experiment("EEG_K-Means_Clustering")
+ex = sacred.Experiment("EEG_K-Means_pca_Clustering")
 from sacred.observers import MongoObserver
 
 from sklearn.decomposition import PCA
