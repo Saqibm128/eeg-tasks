@@ -12,6 +12,7 @@ from sklearn.cluster import MiniBatchKMeans
 import util_funcs
 import pickle as pkl
 
+
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
@@ -29,6 +30,8 @@ def config():
     data_split = "dev_test"
     ref = "01_tcp_ar"
     precached_pkl = None
+    num_jobs=1
+    test_pkl = None
 
 
 
@@ -62,7 +65,7 @@ def get_data(num_eegs, data_split, ref, precached_pkl):
         data = fft_reader[0:num_eegs]
         annotations = np.array([datum[1].mean().values for datum in data])
     else:
-        data = pkl.load(open(precached_pkl, 'rb'))
+        data = pkl.load(open(precached_pkl, 'rb'))[0:num_eegs]
         annotations = []
         for i in range(len(data)):
             annotations.append(
@@ -80,7 +83,7 @@ def get_data(num_eegs, data_split, ref, precached_pkl):
 
 
 @ex.main
-def main(num_pca_comps, num_k_means):
+def main(num_pca_comps, num_k_means, num_jobs):
     data, annotations = get_data()
     pca = PCA(num_pca_comps)
     pca.fit(data)
