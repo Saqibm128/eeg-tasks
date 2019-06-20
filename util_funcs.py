@@ -11,10 +11,10 @@ from sacred.serializer import restore #to return a stored sacred result back
 
 COMMON_FREQ = 1.0/256 #used for common resampling
 
-def get_scared_runs():
-    runs = get_mongo_client().sacred.runs
+def get_sacred_runs():
+    return get_mongo_client().sacred.runs
 
-def get_sacred_reuslts(params):
+def get_sacred_results(params):
     return restore(get_sacred_runs().find_one(params)['result'])
 
 def get_abs_files(root_dir_path):

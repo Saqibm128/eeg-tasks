@@ -86,10 +86,10 @@ def get_data(num_eegs, data_split, ref, precached_pkl):
 def main(num_comps, num_clusters, num_jobs, dim_red):
     data, annotations = get_data()
     if dim_red == 'pca':
-        dim_red = PCA(num_comps)
+        dim_red_alg = PCA(num_comps)
     elif dim_red == 'ica':
-        dim_red = FastICA(num_comps)
-    dim_red.fit(data)
+        dim_red_alg = FastICA(num_comps)
+    dim_red_alg.fit(data)
     dim_red_vects = dim_red.transform(data)
     kmeans = MiniBatchKMeans(num_clusters)
     cluster_pct = kmeans.fit_transform(cluster.vq.whiten(dim_red_vects))
@@ -104,7 +104,7 @@ def main(num_comps, num_clusters, num_jobs, dim_red):
     percent_y_per_cluster = (percent_y_per_cluster.T / percent_y_per_cluster.sum(axis=1)).fillna(0)
     print(percent_y_per_cluster)
     return {
-        'dim_red': dim_red,
+        'dim_red': dim_red_alg,
         'kmeans': kmeans,
         'cluster_pct': cluster_pct,
         'percent_y_per_cluster': percent_y_per_cluster,
