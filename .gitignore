@@ -6,3 +6,4 @@ configWindows.json
 configLinux.json
 *.pt
 *.pkl
+*.out
