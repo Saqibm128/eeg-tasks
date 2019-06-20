@@ -90,11 +90,24 @@ def main(num_pca_comps, num_k_means):
     cluster_pct = np.apply_along_axis(lambda x: x/x.sum(), axis=1, arr=cluster_pct)
     nmi_score =  metrics.normalized_mutual_info_score(np.argmax(annotations, axis=1), np.argmax(cluster_pct, axis=1))
     rand_score = metrics.adjusted_rand_score(np.argmax(annotations, axis=1), np.argmax(cluster_pct, axis=1))
+    h_score = metrics.homogeneity_score(np.argmax(annotations, axis=1), np.argmax(cluster_pct, axis=1))
+    c_score = metrics.completeness_score(np.argmax(annotations, axis=1), np.argmax(cluster_pct, axis=1))
+    v_score = metrics.v_measure_score(np.argmax(annotations, axis=1), np.argmax(cluster_pct, axis=1))
 
     percent_y_per_cluster = pd.DataFrame(annotations.T @ cluster_pct, index=util_funcs.get_annotation_types())
     percent_y_per_cluster = (percent_y_per_cluster.T / percent_y_per_cluster.sum(axis=1)).fillna(0)
     print(percent_y_per_cluster)
-    return {'pca': pca, 'kmeans': kmeans, 'cluster_pct': cluster_pct, 'percent_y_per_cluster': percent_y_per_cluster, 'nmi_score': nmi_score, 'rand_score': rand_score}
+    return {
+        'pca': pca,
+        'kmeans': kmeans,
+        'cluster_pct': cluster_pct,
+        'percent_y_per_cluster': percent_y_per_cluster,
+        'nmi_score': nmi_score,
+        'rand_score': rand_score,
+        'h_score': h_score,
+        'v_score': v_score,
+        'c_score': c_score
+        }
 
 if __name__ == '__main__':
     ex.run_commandline()
