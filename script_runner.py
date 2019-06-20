@@ -34,11 +34,12 @@ num_processes = mp.cpu_count()
 parser = argparse.ArgumentParser()
 parser.add_argument("path", type=str)
 parser.add_argument("--num_process", type=int, default=None)
+parser.add_argument("--dim_red", type=str, default='pca')
 args = parser.parse_args()
 
 for num_k_means in range(1, 40, 2):
     for num_pca_comp in range(1, 40, 2):
-        argsQueue.put(([], {'num_pca_comps':num_pca_comp, 'num_k_means':num_k_means, 'precached_pkl': args.path}))
+        argsQueue.put(([], {'num_pca_comps':num_pca_comp, 'num_k_means':num_k_means, 'precached_pkl': args.path, 'dim_red': args.dim_red}))
 
 if args.num_process is not None:
     num_processes = args.num_process

@@ -1,9 +1,9 @@
 import sacred
-ex = sacred.Experiment("EEG_K-Means_pca_Clustering")
+ex = sacred.Experiment("EEG_K-Means_dim_red_Clustering")
 from sacred.observers import MongoObserver
 from sklearn import metrics
 
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA, FastICA
 import data_reader as read
 import pandas as pd
 import numpy as np
@@ -23,8 +23,8 @@ def debug_config():
 
 @ex.config
 def config():
-    num_pca_comps = 6
-    num_k_means = 5
+    num_comps = 6
+    num_clusters = 5
     num_eegs = None
     num_cores = None
     data_split = "dev_test"
@@ -32,7 +32,7 @@ def config():
     precached_pkl = None
     num_jobs=1
     test_pkl = None
-
+    dim_red = "pca"
 
 
 
@@ -83,13 +83,16 @@ def get_data(num_eegs, data_split, ref, precached_pkl):
 
 
 @ex.main
-def main(num_pca_comps, num_k_means, num_jobs):
+def main(num_comps, num_clusters, num_jobs, dim_red):
     data, annotations = get_data()
-    pca = PCA(num_pca_comps)
-    pca.fit(data)
-    pca_vects = pca.transform(data)
-    kmeans = MiniBatchKMeans(num_k_means)
-    cluster_pct = kmeans.fit_transform(cluster.vq.whiten(pca_vects))
+    if dim_red == 'pca':
+        dim_red = PCA(num_comps)
+    elif dim_red == 'ica':
+        dim_red = FastICA(num_comps)
+    dim_red.fit(data)
+    dim_red_vects = dim_red.transform(data)
+    kmeans = MiniBatchKMeans(num_clusters)
+    cluster_pct = kmeans.fit_transform(cluster.vq.whiten(dim_red_vects))
     cluster_pct = np.apply_along_axis(lambda x: x/x.sum(), axis=1, arr=cluster_pct)
     nmi_score =  metrics.normalized_mutual_info_score(np.argmax(annotations, axis=1), np.argmax(cluster_pct, axis=1))
     rand_score = metrics.adjusted_rand_score(np.argmax(annotations, axis=1), np.argmax(cluster_pct, axis=1))
@@ -101,7 +104,7 @@ def main(num_pca_comps, num_k_means, num_jobs):
     percent_y_per_cluster = (percent_y_per_cluster.T / percent_y_per_cluster.sum(axis=1)).fillna(0)
     print(percent_y_per_cluster)
     return {
-        'pca': pca,
+        'dim_red': dim_red,
         'kmeans': kmeans,
         'cluster_pct': cluster_pct,
         'percent_y_per_cluster': percent_y_per_cluster,
