@@ -7,3 +7,4 @@ configLinux.json
 *.pt
 *.pkl
 *.out
+*.png
