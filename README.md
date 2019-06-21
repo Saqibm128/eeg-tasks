@@ -11,6 +11,8 @@ https://sacred.readthedocs.io/en/latest/
 ## Project Setup
 Notebooks are messy and are currently used for scratch code.
 
+[environmentSetup.sh](environmentSetup.sh) can be used to create a conda environment that can run this code
+
 [data_reader.py](data_reader.py) is used to read data from edf files.
 The EdfDataset returns raw data in the form of Pd.DataFrame
 The EdfFFTDatasetTransformer returns the same data transformed.
