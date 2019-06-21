@@ -3,7 +3,7 @@ import numpy as np
 import itertools
 import pyedflib
 from os import path
-from util_funcs import read_config, get_abs_files, get_annotation_types, get_data_split, get_reference_node_types, COMMON_FREQ
+from util_funcs import read_config, get_abs_files, get_annotation_types, get_data_split, get_reference_node_types, COMMON_DELTA, np_rolling_window
 import multiprocessing as mp
 from pathos.multiprocessing import Pool
 import argparse
@@ -30,7 +30,27 @@ class EdfFFTDatasetTransformer():
     edf_dataset
 
     """
-    def __init__(self, edf_dataset, freq_bins = [i for i in range(100)], n_process=None, precache=False):
+    def __init__(self, edf_dataset, freq_bins = [i for i in range(100)], n_process=None, precache=False, window_size=None):
+        """Used to read the raw data in
+
+        Parameters
+        ----------
+        edf_dataset : EdfDataset
+            Array-like returning the channel data (channel by time) and annotations (doesn't matter what the shape is)
+        freq_bins : array
+            Used to segment the frequencies into histogram bins
+        n_process : int
+            Used to define the number of processes to use for large reads in. If None, uses cpu count
+        precache : bool
+            Use to load all data at beginning and keep cache of it during operations
+        window_size : pd.Timedelta
+            If None, runs the FFT on the entire datset. If set, uses overlapping windows to run fft on
+
+        Returns
+        -------
+        None
+
+        """
         self.edf_dataset = edf_dataset
         if n_process is None:
             n_process = mp.cpu_count()
@@ -41,6 +61,7 @@ class EdfFFTDatasetTransformer():
             print("starting precache job with: {} processes".format(self.n_process))
             self.data = self[:]
         self.precache = precache
+        self.window_size = window_size
 
     def __len__(self):
         return len(self.edf_dataset)
@@ -65,18 +86,39 @@ class EdfFFTDatasetTransformer():
             [p.join() for p in processes]
             while not outQ.empty():
                 index, res = outQ.get()
+                #NOTE: some EDF files fail to read, so accessing them from queue will fail with large slices
                 toReturn.append((res)) #no guarantee of order unfortunately...
             # toReturn.sort(key=lambda x: return x[0])
             return toReturn
             # return Pool().map(self.__getitem__, toReturn)
-        original_data = self.edf_dataset[i]
-        fft_data = np.nan_to_num(np.abs(np.fft.fft(original_data[0].values, axis=0)))
-        fft_freq = np.fft.fftfreq(fft_data.shape[0], d=COMMON_FREQ)
-        fft_freq_bins = self.freq_bins
-        new_fft_hist = pd.DataFrame(index=fft_freq_bins[:-1], columns=original_data[0].columns)
-        for i, name in enumerate(original_data[0].columns):
-            new_fft_hist[name] = np.histogram(fft_freq, bins=fft_freq_bins, weights=fft_data[:,i])[0]
-        return new_fft_hist, original_data[1]
+        if self.window_size == None:
+            original_data = self.edf_dataset[i]
+            fft_data = np.nan_to_num(np.abs(np.fft.fft(original_data[0].values, axis=0)))
+            fft_freq = np.fft.fftfreq(fft_data.shape[0], d=COMMON_DELTA)
+            fft_freq_bins = self.freq_bins
+            new_fft_hist = pd.DataFrame(index=fft_freq_bins[:-1], columns=original_data[0].columns)
+            for i, name in enumerate(original_data[0].columns):
+                new_fft_hist[name] = np.histogram(fft_freq, bins=fft_freq_bins, weights=fft_data[:,i])[0]
+            return new_fft_hist, original_data[1]
+        else:
+            window_count_size = int(self.window_size / pd.Timedelta(seconds=COMMON_DELTA))
+            original_data = self.edf_dataset[i]
+            fft_data = np.nan_to_num(np.abs(np.fft.fft(original_data[0].values, axis=0)))
+            fft_data = np.abs(
+                np.fft.fft(
+                    np_rolling_window(np.array(fft_data.T), window_count_size),
+                    axis=2)) #channel, window num, frequencies
+            fft_freq_bins = self.freq_bins
+            new_hist_bins = np.zeros((fft_data.shape[0], fft_data.shape[1], len(fft_freq_bins) - 1))
+            fft_freq = np.fft.fftfreq(window_count_size, d=COMMON_DELTA)
+            for i, channel in enumerate(fft_data):
+                for j, window_channel in enumerate(channel):
+                    new_hist_bins[i, j, :] = np.histogram(fft_freq, bins=fft_freq_bins, weights=window_channel)[0]
+
+            if (self.edf_dataset.expand_tse):
+                return new_hist_bins, original_data[1].rolling(window_count_size).mean()[:-window_count_size + 1]
+            else:
+                return new_hist_bins, original_data[1]
 
 class EdfDataset():
     """Short summary.
@@ -102,7 +144,7 @@ class EdfDataset():
     resample : pd.Timedelta
 
     """
-    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_FREQ), expand_tse=True):
+    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True):
         self.data_split = data_split
         self.ref = ref
         self.resample = resample
@@ -114,6 +156,9 @@ class EdfDataset():
     def __len__(self):
         return len(self.edf_tokens)
     def __getitem__(self, i):
+        if type(i) == slice:
+            indices = [j for j in range(*i.indices(len(self)))]
+            return [self[index] for index in indices]
         return get_edf_data_and_label_ts_format(self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
     #
     # def get_data_runner(to_get_queue, to_return_queue):
@@ -122,7 +167,7 @@ class EdfDataset():
     # def get_data_multiprocess():
 
 
-def get_edf_data_and_label_ts_format(edf_path, expand_tse=True, resample=pd.Timedelta(seconds=COMMON_FREQ)):
+def get_edf_data_and_label_ts_format(edf_path, expand_tse=True, resample=pd.Timedelta(seconds=COMMON_DELTA)):
     edf_data = edf_eeg_2_df(edf_path, resample)
     tse_data_path = convert_edf_path_to_tse(edf_path)
     if expand_tse:

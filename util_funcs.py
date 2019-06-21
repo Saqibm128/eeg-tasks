@@ -9,7 +9,13 @@ import itertools
 import pyedflib
 from sacred.serializer import restore #to return a stored sacred result back
 
-COMMON_FREQ = 1.0/256 #used for common resampling
+COMMON_DELTA = 1.0/256 #used for common resampling, inverse of sampling rate
+
+def np_rolling_window(a, window):
+    #https://stackoverflow.com/questions/6811183/rolling-window-for-1d-arrays-in-numpy
+    shape = a.shape[:-1] + (a.shape[-1] - window + 1, window)
+    strides = a.strides + (a.strides[-1],)
+    return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
 
 def get_sacred_runs():
     return get_mongo_client().sacred.runs
