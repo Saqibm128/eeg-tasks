@@ -9,12 +9,8 @@ from pathos.multiprocessing import Pool
 import argparse
 import pickle as pkl
 
-# dataset = Dataset(num_files=10)
-# eeg_df_256_hz, labels_by_256_hz = Dataset().get(i)
-# model
 
-
-#TODO: trying to allow us to load data in without dealing with resource issues
+# to allow us to load data in without dealing with resource issues
 # https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 class EdfFFTDatasetTransformer():
     """Implements an indexable dataset applying fft to entire timeseries,
@@ -57,11 +53,11 @@ class EdfFFTDatasetTransformer():
         self.n_process = n_process
         self.precache = False
         self.freq_bins = freq_bins
+        self.window_size = window_size
         if precache:
             print("starting precache job with: {} processes".format(self.n_process))
             self.data = self[:]
         self.precache = precache
-        self.window_size = window_size
 
     def __len__(self):
         return len(self.edf_dataset)
@@ -71,26 +67,29 @@ class EdfFFTDatasetTransformer():
                 print("retrieving: {}".format(i))
             out_q.put((i, self[i]))
 
+    def getItemSlice(self, i):
+        toReturn = []
+        manager = mp.Manager()
+        inQ = manager.Queue()
+        outQ = manager.Queue()
+        [inQ.put(j) for j in range(*i.indices(len(self)))]
+        [inQ.put(None) for j in range(self.n_process)]
+        processes = [mp.Process(target=self.helper_process, args=(inQ, outQ)) for j in range(self.n_process)]
+        [p.start() for p in processes]
+        [p.join() for p in processes]
+        while not outQ.empty():
+            index, res = outQ.get()
+            #NOTE: some EDF files fail to read, so accessing them from queue will fail with large slices
+            toReturn.append((res)) #no guarantee of order unfortunately...
+        # toReturn.sort(key=lambda x: return x[0])
+        return toReturn
+        # return Pool().map(self.__getitem__, toReturn)
+
     def __getitem__(self, i):
         if self.precache:
             return self.data[i]
         if type(i) == slice:
-            toReturn = []
-            manager = mp.Manager()
-            inQ = manager.Queue()
-            outQ = manager.Queue()
-            [inQ.put(j) for j in range(*i.indices(len(self)))]
-            [inQ.put(None) for j in range(self.n_process)]
-            processes = [mp.Process(target=self.helper_process, args=(inQ, outQ)) for j in range(self.n_process)]
-            [p.start() for p in processes]
-            [p.join() for p in processes]
-            while not outQ.empty():
-                index, res = outQ.get()
-                #NOTE: some EDF files fail to read, so accessing them from queue will fail with large slices
-                toReturn.append((res)) #no guarantee of order unfortunately...
-            # toReturn.sort(key=lambda x: return x[0])
-            return toReturn
-            # return Pool().map(self.__getitem__, toReturn)
+            self.getItemSlice(i)
         if self.window_size == None:
             original_data = self.edf_dataset[i]
             fft_data = np.nan_to_num(np.abs(np.fft.fft(original_data[0].values, axis=0)))
@@ -114,7 +113,6 @@ class EdfFFTDatasetTransformer():
             for i, channel in enumerate(fft_data):
                 for j, window_channel in enumerate(channel):
                     new_hist_bins[i, j, :] = np.histogram(fft_freq, bins=fft_freq_bins, weights=window_channel)[0]
-
             if (self.edf_dataset.expand_tse):
                 return new_hist_bins, original_data[1].rolling(window_count_size).mean()[:-window_count_size + 1]
             else:
