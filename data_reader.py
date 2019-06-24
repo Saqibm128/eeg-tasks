@@ -9,7 +9,12 @@ from pathos.multiprocessing import Pool
 import argparse
 import pickle as pkl
 
+# to allow us to load data in without dealing with resource issues
+# https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 class MultiProcessingDataset():
+    """Class to help improve speed of looking up multiple records at once using multiple processes.
+            Just make this the parent class, then call the getItemSlice method on slice objects
+    """
     def getItemSlice(self, i):
         toReturn = []
         manager = mp.Manager()
@@ -35,8 +40,6 @@ class MultiProcessingDataset():
             print("retrieving: {}".format(i))
             out_q.put((i, self[i]))
 
-# to allow us to load data in without dealing with resource issues
-# https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 class EdfFFTDatasetTransformer(MultiProcessingDataset):
     freq_bins = [0.2 * i for i in range(50)] + list(range(10, 50, 1)) + list(range(50,400, 20))
     """Implements an indexable dataset applying fft to entire timeseries,
