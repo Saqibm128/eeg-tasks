@@ -9,10 +9,35 @@ from pathos.multiprocessing import Pool
 import argparse
 import pickle as pkl
 
+class MultiProcessingDataset():
+    def getItemSlice(self, i):
+        toReturn = []
+        manager = mp.Manager()
+        inQ = manager.Queue()
+        outQ = manager.Queue()
+        [inQ.put(j) for j in range(*i.indices(len(self)))]
+        [inQ.put(None) for j in range(self.n_process)]
+        processes = [mp.Process(target=self.helper_process, args=(inQ, outQ)) for j in range(self.n_process)]
+        print("Starting {} processes".format(self.n_process))
+        [p.start() for p in processes]
+        [p.join() for p in processes]
+        while not outQ.empty():
+            index, res = outQ.get()
+            #NOTE: some EDF files fail to read, so accessing them from queue will fail with large slices
+            toReturn.append(res) #no guarantee of order unfortunately...
+        # toReturn.sort(key=lambda x: return x[0])
+        return toReturn
+        # return Pool().map(self.__getitem__, toReturn)
+
+    def helper_process(self, in_q, out_q):
+        for i in iter(in_q.get, None):
+            # if i%10 == 0:
+            print("retrieving: {}".format(i))
+            out_q.put((i, self[i]))
 
 # to allow us to load data in without dealing with resource issues
 # https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
-class EdfFFTDatasetTransformer():
+class EdfFFTDatasetTransformer(MultiProcessingDataset):
     """Implements an indexable dataset applying fft to entire timeseries,
         returning histogram bins of fft frequencies
 
@@ -20,13 +45,19 @@ class EdfFFTDatasetTransformer():
     ----------
     edf_dataset : EdfDataset
         an array-like returning the raw channel data and the output as a tuple
-
-    Attributes
-    ----------
-    edf_dataset
+    freq_bins : type
+        Description of parameter `freq_bins`.
+    n_process : type
+        Description of parameter `n_process`.
+    precache : type
+        Description of parameter `precache`.
+    window_size : type
+        Description of parameter `window_size`.
+    non_overlapping : type
+        Description of parameter `non_overlapping`.
 
     """
-    def __init__(self, edf_dataset, freq_bins = [i for i in range(100)], n_process=None, precache=False, window_size=None):
+    def __init__(self, edf_dataset, freq_bins = [i for i in range(100)], n_process=None, precache=False, window_size=None, non_overlapping=True):
         """Used to read the raw data in
 
         Parameters
@@ -41,6 +72,7 @@ class EdfFFTDatasetTransformer():
             Use to load all data at beginning and keep cache of it during operations
         window_size : pd.Timedelta
             If None, runs the FFT on the entire datset. If set, uses overlapping windows to run fft on
+        non_overlapping : bool
 
         Returns
         -------
@@ -58,32 +90,11 @@ class EdfFFTDatasetTransformer():
             print("starting precache job with: {} processes".format(self.n_process))
             self.data = self[:]
         self.precache = precache
+        self.non_overlapping = non_overlapping
 
     def __len__(self):
         return len(self.edf_dataset)
-    def helper_process(self, in_q, out_q):
-        for i in iter(in_q.get, None):
-            if i%10 == 0:
-                print("retrieving: {}".format(i))
-            out_q.put((i, self[i]))
 
-    def getItemSlice(self, i):
-        toReturn = []
-        manager = mp.Manager()
-        inQ = manager.Queue()
-        outQ = manager.Queue()
-        [inQ.put(j) for j in range(*i.indices(len(self)))]
-        [inQ.put(None) for j in range(self.n_process)]
-        processes = [mp.Process(target=self.helper_process, args=(inQ, outQ)) for j in range(self.n_process)]
-        [p.start() for p in processes]
-        [p.join() for p in processes]
-        while not outQ.empty():
-            index, res = outQ.get()
-            #NOTE: some EDF files fail to read, so accessing them from queue will fail with large slices
-            toReturn.append((res)) #no guarantee of order unfortunately...
-        # toReturn.sort(key=lambda x: return x[0])
-        return toReturn
-        # return Pool().map(self.__getitem__, toReturn)
 
     def __getitem__(self, i):
         if self.precache:
@@ -103,9 +114,13 @@ class EdfFFTDatasetTransformer():
             window_count_size = int(self.window_size / pd.Timedelta(seconds=COMMON_DELTA))
             original_data = self.edf_dataset[i]
             fft_data = np.nan_to_num(np.abs(np.fft.fft(original_data[0].values, axis=0)))
+            fft_data_windows = np_rolling_window(np.array(fft_data.T), window_count_size)
+            if self.non_overlapping:
+                fft_data_windows = fft_data_windows[:,list(range(0, fft_data_windows.shape[1], window_count_size))]
+
             fft_data = np.abs(
                 np.fft.fft(
-                    np_rolling_window(np.array(fft_data.T), window_count_size),
+                    fft_data_windows,
                     axis=2)) #channel, window num, frequencies
             fft_freq_bins = self.freq_bins
             new_hist_bins = np.zeros((fft_data.shape[0], fft_data.shape[1], len(fft_freq_bins) - 1))
@@ -118,7 +133,9 @@ class EdfFFTDatasetTransformer():
             else:
                 return new_hist_bins, original_data[1]
 
-class EdfDataset():
+
+
+class EdfDataset(MultiProcessingDataset):
     """Short summary.
 
     Parameters
@@ -137,13 +154,18 @@ class EdfDataset():
     edf_tokens : list
         a list of edf file paths to consider, assumes a corresponding tse file
         exists
+    n_process : int
+        When indexing by slice, use multiprocessing to speed up execution
     data_split : str
     ref : str
     resample : pd.Timedelta
 
     """
-    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True):
+    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True, n_process=None):
         self.data_split = data_split
+        if n_process is None:
+            n_process = mp.cpu_count()
+        self.n_process = n_process
         self.ref = ref
         self.resample = resample
         self.manager = mp.Manager()
@@ -153,10 +175,10 @@ class EdfDataset():
             self.edf_tokens = self.edf_tokens[0:num_files]
     def __len__(self):
         return len(self.edf_tokens)
+
     def __getitem__(self, i):
         if type(i) == slice:
-            indices = [j for j in range(*i.indices(len(self)))]
-            return [self[index] for index in indices]
+            return self.getItemSlice(i)
         return get_edf_data_and_label_ts_format(self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
     #
     # def get_data_runner(to_get_queue, to_return_queue):
