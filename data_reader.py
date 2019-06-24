@@ -100,7 +100,7 @@ class EdfFFTDatasetTransformer(MultiProcessingDataset):
         if self.precache:
             return self.data[i]
         if type(i) == slice:
-            self.getItemSlice(i)
+            return self.getItemSlice(i)
         if self.window_size == None:
             original_data = self.edf_dataset[i]
             fft_data = np.nan_to_num(np.abs(np.fft.fft(original_data[0].values, axis=0)))
@@ -128,8 +128,11 @@ class EdfFFTDatasetTransformer(MultiProcessingDataset):
             for i, channel in enumerate(fft_data):
                 for j, window_channel in enumerate(channel):
                     new_hist_bins[i, j, :] = np.histogram(fft_freq, bins=fft_freq_bins, weights=window_channel)[0]
-            if (self.edf_dataset.expand_tse):
+            if (self.edf_dataset.expand_tse and not self.non_overlapping):
                 return new_hist_bins, original_data[1].rolling(window_count_size).mean()[:-window_count_size + 1]
+            elif (self.edf_dataset.expand_tse and self.non_overlapping):
+                annotations = original_data[1].rolling(window_count_size).mean()[:-window_count_size + 1]
+                return new_hist_bins, annotations.iloc[list(range(0, annotations.shape[0], window_count_size))]
             else:
                 return new_hist_bins, original_data[1]
 
