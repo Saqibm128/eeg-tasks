@@ -38,6 +38,7 @@ class MultiProcessingDataset():
 # to allow us to load data in without dealing with resource issues
 # https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 class EdfFFTDatasetTransformer(MultiProcessingDataset):
+    freq_bins = [0.2 * i for i in range(50)] + list(range(10, 50, 1)) + list(range(50,400, 20))
     """Implements an indexable dataset applying fft to entire timeseries,
         returning histogram bins of fft frequencies
 
@@ -57,7 +58,14 @@ class EdfFFTDatasetTransformer(MultiProcessingDataset):
         Description of parameter `non_overlapping`.
 
     """
-    def __init__(self, edf_dataset, freq_bins = [i for i in range(100)], n_process=None, precache=False, window_size=None, non_overlapping=True):
+    def __init__(
+        self,
+        edf_dataset,
+        freq_bins = EdfFFTDatasetTransformer.freq_bins,
+        n_process=None,
+        precache=False,
+        window_size=None,
+        non_overlapping=True):
         """Used to read the raw data in
 
         Parameters
