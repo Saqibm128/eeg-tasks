@@ -242,23 +242,23 @@ def edf_eeg_2_df(path, resample=None):
         index is time, columns is waveform channel label
 
     """
-    reader = pyedflib.EdfReader(path)
-    channel_names = [headerDict['label'] for headerDict in reader.getSignalHeaders()]
-    sample_rates = [headerDict['sample_rate'] for headerDict in reader.getSignalHeaders()]
-    start_time = reader.getStartdatetime()
-    all_channels = []
-    for i, channel_name in enumerate(channel_names):
-        signal_data = reader.readSignal(i)
-        signal_data = pd.Series(
-            signal_data,
-            index=pd.date_range(
-                start=start_time,
-                freq=pd.Timedelta(seconds=1/sample_rates[i]),
-                periods=len(signal_data)
-                ),
-            name=channel_name
-            )
-        all_channels.append(signal_data)
+    with reader as pyedflib.EdfReader(path, check_file_size=pyedflib.DO_NOT_CHECK_FILE_SIZE):
+        channel_names = [headerDict['label'] for headerDict in reader.getSignalHeaders()]
+        sample_rates = [headerDict['sample_rate'] for headerDict in reader.getSignalHeaders()]
+        start_time = reader.getStartdatetime()
+        all_channels = []
+        for i, channel_name in enumerate(channel_names):
+            signal_data = reader.readSignal(i)
+            signal_data = pd.Series(
+                signal_data,
+                index=pd.date_range(
+                    start=start_time,
+                    freq=pd.Timedelta(seconds=1/sample_rates[i]),
+                    periods=len(signal_data)
+                    ),
+                name=channel_name
+                )
+            all_channels.append(signal_data)
     data = pd.concat(all_channels, axis=1)
     data.index = data.index - data.index[0]
     if resample != None:
@@ -354,6 +354,18 @@ if __name__ == "__main__":
     parser.add_argument("ref", type=str)
     parser.add_argument("--path", type=str, default="")
     parser.add_argument("--num_files", type=int, default=None)
+    parser.add_argument("--dry-run", action="store_true") #not a real soft-run but oh well
     args = parser.parse_args()
-    edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), precache=True)
-    pkl.dump(edf_dataset.data, open(args.path +  "{}_{}_fft.pkl".format(args.data_split, args.ref), 'wb'))
+    if not args.dry_run:
+        edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), precache=True)
+        pkl.dump(edf_dataset.data, open(args.path +  "{}_{}_fft.pkl".format(args.data_split, args.ref), 'wb'))
+    else:
+        print("Dry-Run, checking all EDF files are readable")
+        token_files = get_all_token_file_names(args.data_split, args.ref)
+        if args.num_files is not None:
+            token_files = token_files[:args.num_files]
+        for path in token_files:
+            try:
+                pyedflib.EdfReader(path)
+            except:
+                print("Path: {} is unsuccessful".format(path))
