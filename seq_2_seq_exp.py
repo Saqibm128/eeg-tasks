@@ -6,25 +6,46 @@ from copy import deepcopy as cp
 import data_reader as read
 import pandas as pd
 
+class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
+    def __init__(self, edfFFTData, n_process=None):
+        self.edfFFTData = edfFFTData
+        self.n_process = n_process
+
+    def __len__(self):
+        return len(self.edfFFTData)
+
+    def __getitem__(self, i):
+        if type(i) == slice:
+            return self.getItemSlice(i)
+        fftData, ann = self.edfFFTData[i]
+        fftData = (fftData).transpose((1, 0,2)).reshape(1, fftData.shape[1], -1)
+        return fftData, ann
+
+
 @ex.config
 def config():
-    num_files = None
+    num_files = 2
     n_process = 8
     latent_dim = 100
-    input_shape = 30*99
+    freq_bins = read.EdfFFTDatasetTransformer.freq_bins
+    input_shape = 21 * len(freq_bins) #num channels times number of freq bins we extrapolated out
+    window_size = 10 #seconds
+    non_overlapping = True
+    num_epochs = 10
+    batch_size = 10
+    precache = True
+    validation_split = 0.2
 
 @ex.capture
-def get_data(n_process, num_files):
+def get_data(n_process, num_files, window_size, non_overlapping, precache):
     edfRawData = read.EdfDataset("train", "01_tcp_ar", num_files=num_files, n_process=n_process)
-    edfFFTData = read.EdfFFTDatasetTransformer(edfRawData, window_size=pd.Timedelta(seconds=1), precache=False, n_process=7)
-
-    fftData = edfFFTData[0:1]
+    edfFFTData = read.EdfFFTDatasetTransformer(edfRawData, window_size=pd.Timedelta(seconds=window_size), non_overlapping=non_overlapping, precache=precache, n_process=n_process)
+    seq2seqData = Seq2SeqFFTDataset(edfFFTData, n_process=n_process)
+    return edfFFTData
 
 
 @ex.capture
 def create_model(input_shape, latent_dim):
-    # From https://blog.keras.io/a-ten-minute-introduction-to-sequence-to-sequence-learning-in-keras.html
-    # Define an input sequence and process it.
     encoder_inputs = Input(shape=(None, input_shape))
     encoder = LSTM(latent_dim, return_state=True)
     encoder_outputs, state_h, state_c = encoder(encoder_inputs)
@@ -44,4 +65,14 @@ def create_model(input_shape, latent_dim):
 
     # Define the model that will turn
     # `encoder_input_data` & `decoder_input_data` into `decoder_target_data`
-    model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
+    model = Model([encoder_inputs, decoder_inputs], [decoder_outputs, state_h, state_c])
+    model.compile(optimizer='rmsprop', loss=['categorical_crossentropy', None, None])
+    return model
+
+@ex.main
+def main():
+    print("hi")
+    data = get_data()
+
+if __name__ == "__main__":
+    ex.run_commandline()
