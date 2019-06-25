@@ -3,44 +3,14 @@ import numpy as np
 import itertools
 import pyedflib
 from os import path
+import util_funcs
 from util_funcs import read_config, get_abs_files, get_annotation_types, get_data_split, get_reference_node_types, COMMON_DELTA, np_rolling_window
 import multiprocessing as mp
 from pathos.multiprocessing import Pool
 import argparse
 import pickle as pkl
 
-# to allow us to load data in without dealing with resource issues
-# https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
-class MultiProcessingDataset():
-    """Class to help improve speed of looking up multiple records at once using multiple processes.
-            Just make this the parent class, then call the getItemSlice method on slice objects
-    """
-    def getItemSlice(self, i):
-        toReturn = []
-        manager = mp.Manager()
-        inQ = manager.Queue()
-        outQ = manager.Queue()
-        [inQ.put(j) for j in range(*i.indices(len(self)))]
-        [inQ.put(None) for j in range(self.n_process)]
-        processes = [mp.Process(target=self.helper_process, args=(inQ, outQ)) for j in range(self.n_process)]
-        print("Starting {} processes".format(self.n_process))
-        [p.start() for p in processes]
-        [p.join() for p in processes]
-        while not outQ.empty():
-            index, res = outQ.get()
-            #NOTE: some EDF files fail to read, so accessing them from queue will fail with large slices
-            toReturn.append(res) #no guarantee of order unfortunately...
-        # toReturn.sort(key=lambda x: return x[0])
-        return toReturn
-        # return Pool().map(self.__getitem__, toReturn)
-
-    def helper_process(self, in_q, out_q):
-        for i in iter(in_q.get, None):
-            # if i%10 == 0:
-            print("retrieving: {}".format(i))
-            out_q.put((i, self[i]))
-
-class EdfFFTDatasetTransformer(MultiProcessingDataset):
+class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
     freq_bins = [0.2 * i for i in range(50)] + list(range(10, 50, 1)) + list(range(50,400, 20))
     """Implements an indexable dataset applying fft to entire timeseries,
         returning histogram bins of fft frequencies
@@ -64,7 +34,7 @@ class EdfFFTDatasetTransformer(MultiProcessingDataset):
     def __init__(
         self,
         edf_dataset,
-        freq_bins = EdfFFTDatasetTransformer.freq_bins,
+        freq_bins = freq_bins,
         n_process=None,
         precache=False,
         window_size=None,
@@ -97,11 +67,12 @@ class EdfFFTDatasetTransformer(MultiProcessingDataset):
         self.precache = False
         self.freq_bins = freq_bins
         self.window_size = window_size
+        self.non_overlapping = non_overlapping
         if precache:
             print("starting precache job with: {} processes".format(self.n_process))
             self.data = self[:]
         self.precache = precache
-        self.non_overlapping = non_overlapping
+
 
     def __len__(self):
         return len(self.edf_dataset)
@@ -140,16 +111,15 @@ class EdfFFTDatasetTransformer(MultiProcessingDataset):
                 for j, window_channel in enumerate(channel):
                     new_hist_bins[i, j, :] = np.histogram(fft_freq, bins=fft_freq_bins, weights=window_channel)[0]
             if (self.edf_dataset.expand_tse and not self.non_overlapping):
-                return new_hist_bins, original_data[1].rolling(window_count_size).mean()[:-window_count_size + 1]
+                return new_hist_bins, original_data[1].rolling(window_count_size).mean()[:-window_count_size + 1].fillna(method="ffill").fillna(method="bfill")
             elif (self.edf_dataset.expand_tse and self.non_overlapping):
                 annotations = original_data[1].rolling(window_count_size).mean()[:-window_count_size + 1]
-                return new_hist_bins, annotations.iloc[list(range(0, annotations.shape[0], window_count_size))]
+                return new_hist_bins, annotations.iloc[list(range(0, annotations.shape[0], window_count_size))].fillna(method="ffill").fillna(method="bfill")
             else:
-                return new_hist_bins, original_data[1]
+                return new_hist_bins, original_data[1].fillna(method="ffill").fillna(method="bfill")
 
 
-
-class EdfDataset(MultiProcessingDataset):
+class EdfDataset(util_funcs.MultiProcessingDataset):
     """Short summary.
 
     Parameters
@@ -175,7 +145,7 @@ class EdfDataset(MultiProcessingDataset):
     resample : pd.Timedelta
 
     """
-    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True, n_process=None):
+    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True, n_process=None, use_average_ref_names=True):
         self.data_split = data_split
         if n_process is None:
             n_process = mp.cpu_count()
@@ -185,6 +155,7 @@ class EdfDataset(MultiProcessingDataset):
         self.manager = mp.Manager()
         self.edf_tokens = get_all_token_file_names(data_split, ref)
         self.expand_tse = expand_tse
+        self.use_average_ref_names = use_average_ref_names
         if num_files is not None:
             self.edf_tokens = self.edf_tokens[0:num_files]
     def __len__(self):
@@ -193,7 +164,10 @@ class EdfDataset(MultiProcessingDataset):
     def __getitem__(self, i):
         if type(i) == slice:
             return self.getItemSlice(i)
-        return get_edf_data_and_label_ts_format(self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
+        data, ann = get_edf_data_and_label_ts_format(self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
+        if self.use_average_ref_names:
+            data = data[util_funcs.get_common_channel_names()]
+        return data, ann
     #
     # def get_data_runner(to_get_queue, to_return_queue):
     #     for edf_path in iter(to_get_queue.get, None):
