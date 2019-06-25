@@ -7,8 +7,40 @@ import pymongo
 import itertools
 import pyedflib
 from sacred.serializer import restore #to return a stored sacred result back
+import multiprocessing as mp
 
 COMMON_DELTA = 1.0/256 #used for common resampling, inverse of sampling rate
+
+# to allow us to load data in without dealing with resource issues
+# https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
+class MultiProcessingDataset():
+    """Class to help improve speed of looking up multiple records at once using multiple processes.
+            Just make this the parent class, then call the getItemSlice method on slice objects
+    """
+    def getItemSlice(self, i):
+        toReturn = []
+        manager = mp.Manager()
+        inQ = manager.Queue()
+        outQ = manager.Queue()
+        [inQ.put(j) for j in range(*i.indices(len(self)))]
+        [inQ.put(None) for j in range(self.n_process)]
+        processes = [mp.Process(target=self.helper_process, args=(inQ, outQ)) for j in range(self.n_process)]
+        print("Starting {} processes".format(self.n_process))
+        [p.start() for p in processes]
+        [p.join() for p in processes]
+        while not outQ.empty():
+            index, res = outQ.get()
+            #NOTE: some EDF files fail to read, so accessing them from queue will fail with large slices
+            toReturn.append(res) #no guarantee of order unfortunately...
+        # toReturn.sort(key=lambda x: return x[0])
+        return toReturn
+        # return Pool().map(self.__getitem__, toReturn)
+
+    def helper_process(self, in_q, out_q):
+        for i in iter(in_q.get, None):
+            # if i%10 == 0:
+            print("retrieving: {}".format(i))
+            out_q.put((i, self[i]))
 
 def np_rolling_window(a, window):
     #https://stackoverflow.com/questions/6811183/rolling-window-for-1d-arrays-in-numpy
@@ -42,6 +74,12 @@ def get_abs_files(root_dir_path):
     subdirs = [path.join(root_dir_path, subdir) for subdir in subdirs]
     return subdirs
 
+cached_channel_names = None
+def get_common_channel_names():
+    global cached_channel_names
+    if cached_channel_names is None:
+        cached_channel_names = list(pd.read_csv("channel_names.csv", header=None)[1])
+    return cached_channel_names
 
 cached_annotation_csv = None
 
