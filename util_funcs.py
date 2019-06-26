@@ -40,7 +40,11 @@ class MultiProcessingDataset():
         for i in iter(in_q.get, None):
             # if i%10 == 0:
             print("retrieving: {}".format(i))
-            out_q.put((i, self[i]))
+            try:
+                out_q.put((i, self[i]))
+            except Exception as e:
+                print(e)
+                print(i)
 
 def np_rolling_window(a, window):
     #https://stackoverflow.com/questions/6811183/rolling-window-for-1d-arrays-in-numpy

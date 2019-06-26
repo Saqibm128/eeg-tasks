@@ -33,7 +33,7 @@ class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
         return fftData
 
 class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
-    freq_bins = [0.2 * i for i in range(50)] + list(range(10, 50, 1)) + list(range(50,400, 20))
+    freq_bins = [0.2 * i for i in range(50)] + list(range(10, 40, 1))
     """Implements an indexable dataset applying fft to entire timeseries,
         returning histogram bins of fft frequencies
 
@@ -76,7 +76,7 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
         window_size : pd.Timedelta
             If None, runs the FFT on the entire datset. If set, uses overlapping windows to run fft on
         non_overlapping : bool
-
+            If true, the windows are used to reduce dim red, we don't use rolling-like behavior
         Returns
         -------
         None
@@ -117,11 +117,9 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
         else:
             window_count_size = int(self.window_size / pd.Timedelta(seconds=COMMON_DELTA))
             original_data = self.edf_dataset[i]
-            fft_data = np.nan_to_num(np.abs(np.fft.fft(original_data[0].values, axis=0)))
             fft_data_windows = np_rolling_window(np.array(fft_data.T), window_count_size)
             if self.non_overlapping:
                 fft_data_windows = fft_data_windows[:,list(range(0, fft_data_windows.shape[1], window_count_size))]
-
             fft_data = np.abs(
                 np.fft.fft(
                     fft_data_windows,
@@ -198,12 +196,16 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
 
 
 def get_edf_data_and_label_ts_format(edf_path, expand_tse=True, resample=pd.Timedelta(seconds=COMMON_DELTA)):
-    edf_data = edf_eeg_2_df(edf_path, resample)
-    tse_data_path = convert_edf_path_to_tse(edf_path)
-    if expand_tse:
-        tse_data_ts = read_tse_file_and_return_ts(tse_data_path, edf_data.index)
-    else:
-        tse_data_ts = read_tse_file(tse_data_path)
+    try:
+        edf_data = edf_eeg_2_df(edf_path, resample)
+        tse_data_path = convert_edf_path_to_tse(edf_path)
+        if expand_tse:
+            tse_data_ts = read_tse_file_and_return_ts(tse_data_path, edf_data.index)
+        else:
+            tse_data_ts = read_tse_file(tse_data_path)
+    except Exception as e:
+        print("could not read: {}".format(tse_data_path))
+        raise e
     return edf_data, tse_data_ts
 
 def read_tse_file(tse_path):
@@ -383,8 +385,8 @@ if __name__ == "__main__":
         edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), precache=True)
         pkl.dump(edf_dataset.data, open(args.path +  "{}_{}{}_fft.pkl".format(args.data_split, args.ref, "" if args.num_files is None else "_n_{}".format(args.num_files)), 'wb'))
     elif not args.dry_run and args.use_s2s:
-        edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), window_size=pd.Timedelta(seconds=1), non_overlapping=True)
-        s2s_dataset = Seq2SeqFFTDataset(edfFFTData=edf_dataset, n_process=8)
+        edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), window_size=pd.Timedelta(seconds=10), non_overlapping=True)
+        s2s_dataset = Seq2SeqFFTDataset(edfFFTData=edf_dataset, n_process=12)
         pkl.dump(s2s_dataset[:], open(args.path +  "s2s_{}_{}{}_fft.pkl".format(args.data_split, args.ref, "" if args.num_files is None else "_n_{}".format(args.num_files)), 'wb'))
 
     else:
