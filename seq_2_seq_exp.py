@@ -10,26 +10,7 @@ import numpy as np
 from keras.models import Model
 from keras.layers import Input, LSTM, Dense
 
-class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
-    ndim = None
-    shape = None
-    def __init__(self, edfFFTData, n_process=None):
-        self.edfFFTData = edfFFTData
-        self.n_process = n_process
-        self.shape = np.asarray(self[0][0]).shape
-        self.ndim = len(self.shape)
-        self.shape = (len(self), *self.shape)
 
-
-    def __len__(self):
-        return len(self.edfFFTData)
-
-    def __getitem__(self, i):
-        if type(i) == slice:
-            return self.getItemSlice(i)
-        fftData, ann = self.edfFFTData[i]
-        fftData = (fftData).transpose((1, 0,2)).reshape(fftData.shape[1], -1)
-        return fftData
 
 
 @ex.config
@@ -50,7 +31,7 @@ def config():
 def get_data(n_process, num_files, window_size, non_overlapping, precache):
     edfRawData = read.EdfDataset("train", "01_tcp_ar", num_files=num_files, n_process=n_process)
     edfFFTData = read.EdfFFTDatasetTransformer(edfRawData, window_size=pd.Timedelta(seconds=window_size), non_overlapping=non_overlapping, precache=precache, n_process=n_process)
-    seq2seqData = Seq2SeqFFTDataset(edfFFTData, n_process=n_process)
+    seq2seqData = read.Seq2SeqFFTDataset(edfFFTData, n_process=n_process)
     return np.asarray(seq2seqData[:])
 
 

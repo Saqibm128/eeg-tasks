@@ -10,6 +10,28 @@ from pathos.multiprocessing import Pool
 import argparse
 import pickle as pkl
 
+class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
+    # ndim = None
+    # shape = None
+    def __init__(self, edfFFTData, n_process=None):
+        self.edfFFTData = edfFFTData
+        self.n_process = n_process
+        if n_process is None:
+            self.n_process = mp.cpu_count()
+        # self.shape = np.asarray(self[0][0]).shape
+        # self.ndim = len(self.shape)
+        # self.shape = (len(self), *self.shape)
+
+    def __len__(self):
+        return len(self.edfFFTData)
+
+    def __getitem__(self, i):
+        if type(i) == slice:
+            return self.getItemSlice(i)
+        fftData, ann = self.edfFFTData[i]
+        fftData = (fftData).transpose((1, 0,2)).reshape(fftData.shape[1], -1)
+        return fftData
+
 class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
     freq_bins = [0.2 * i for i in range(50)] + list(range(10, 50, 1)) + list(range(50,400, 20))
     """Implements an indexable dataset applying fft to entire timeseries,
@@ -242,7 +264,7 @@ def edf_eeg_2_df(path, resample=None):
         index is time, columns is waveform channel label
 
     """
-    with reader as pyedflib.EdfReader(path, check_file_size=pyedflib.DO_NOT_CHECK_FILE_SIZE):
+    with pyedflib.EdfReader(path, check_file_size=pyedflib.DO_NOT_CHECK_FILE_SIZE) as reader:
         channel_names = [headerDict['label'] for headerDict in reader.getSignalHeaders()]
         sample_rates = [headerDict['sample_rate'] for headerDict in reader.getSignalHeaders()]
         start_time = reader.getStartdatetime()
@@ -355,17 +377,27 @@ if __name__ == "__main__":
     parser.add_argument("--path", type=str, default="")
     parser.add_argument("--num_files", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true") #not a real soft-run but oh well
+    parser.add_argument("--use_s2s", action="store_true") #use s2s data to make a cached pickle instead
     args = parser.parse_args()
-    if not args.dry_run:
+    if not args.dry_run and not args.use_s2s:
         edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), precache=True)
-        pkl.dump(edf_dataset.data, open(args.path +  "{}_{}_fft.pkl".format(args.data_split, args.ref), 'wb'))
+        pkl.dump(edf_dataset.data, open(args.path +  "{}_{}{}_fft.pkl".format(args.data_split, args.ref, "" if args.num_files is None else "_n_{}".format(args.num_files)), 'wb'))
+    elif not args.dry_run and args.use_s2s:
+        edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), window_size=pd.Timedelta(seconds=1), non_overlapping=True)
+        s2s_dataset = Seq2SeqFFTDataset(edfFFTData=edf_dataset, n_process=8)
+        pkl.dump(s2s_dataset[:], open(args.path +  "s2s_{}_{}{}_fft.pkl".format(args.data_split, args.ref, "" if args.num_files is None else "_n_{}".format(args.num_files)), 'wb'))
+
     else:
         print("Dry-Run, checking all EDF files are readable")
         token_files = get_all_token_file_names(args.data_split, args.ref)
         if args.num_files is not None:
             token_files = token_files[:args.num_files]
+
+        times = []
         for path in token_files:
             try:
-                pyedflib.EdfReader(path)
+                with pyedflib.EdfReader(path, check_file_size=pyedflib.DO_NOT_CHECK_FILE_SIZE) as reader:
+                    times.append(reader.readSignal(0).shape[0]/reader.getSignalHeader(0)["sample_rate"])
             except:
                 print("Path: {} is unsuccessful".format(path))
+        pd.Series(times).to_csv("times.csv")

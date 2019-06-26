@@ -18,7 +18,7 @@ class MultiProcessingDataset():
             Just make this the parent class, then call the getItemSlice method on slice objects
     """
     def getItemSlice(self, i):
-        toReturn = []
+        toReturn = [j for j in range(*i.indices(len(self)))]
         manager = mp.Manager()
         inQ = manager.Queue()
         outQ = manager.Queue()
@@ -30,8 +30,8 @@ class MultiProcessingDataset():
         [p.join() for p in processes]
         while not outQ.empty():
             index, res = outQ.get()
+            toReturn[index] = res
             #NOTE: some EDF files fail to read, so accessing them from queue will fail with large slices
-            toReturn.append(res) #no guarantee of order unfortunately...
         # toReturn.sort(key=lambda x: return x[0])
         return toReturn
         # return Pool().map(self.__getitem__, toReturn)
