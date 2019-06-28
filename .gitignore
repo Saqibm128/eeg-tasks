@@ -8,3 +8,4 @@ configLinux.json
 *.pkl
 *.out
 *.png
+run.sh
