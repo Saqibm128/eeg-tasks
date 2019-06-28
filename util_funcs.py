@@ -38,8 +38,8 @@ class MultiProcessingDataset():
 
     def helper_process(self, in_q, out_q):
         for i in iter(in_q.get, None):
-            # if i%10 == 0:
-            print("retrieving: {}".format(i))
+            if i%5 == 0:
+                print("retrieving: {}".format(i))
             try:
                 out_q.put((i, self[i]))
             except Exception as e:

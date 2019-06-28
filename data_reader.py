@@ -11,6 +11,41 @@ import argparse
 import pickle as pkl
 import re
 
+def getBPMAndFileNames(split, ref):
+        all_token_fns = get_all_token_file_names(split, ref)
+        num_hits = []
+        bpms = {}
+        for token_fn in all_token_fns:
+            clinical_fn = convert_edf_path_to_txt(token_fn)
+            if clinical_fn in bpms:
+                continue
+            else:
+                bpms[clinical_fn] = None
+            try:
+                txt = get_all_clinical_notes(token_fn)
+                match = re.search(r'(\d+)\s*-\s*year\s*-\s*old', txt)
+                match = re.search(r'(\d+)\s*b\W*p\W*m', txt)
+                if match is None:
+                    match = re.search(r'(\d+)\s*h\W*r(\W+\s+)', txt)
+                    if match is None:
+                        match = re.search(r'heart\s*rate\s*\W*\s*(\d+)', txt)
+                        if match is None:
+                            num_hits.append(0)
+                            # print(txt)
+                            continue
+                num_hits.append(len(match.groups()))
+                if len(match.groups()) != 0:
+                    bpms[clinical_fn] = int(match.group(1))
+            except:
+                print("Could not read clinical txt for {}".format(token_fn))
+        toDels = []
+        for key,val in bpms.items():
+            if val is None:
+                toDels.append(key)
+        for toDel in toDels:
+            del bpms[toDel]
+        return list(bpms.items())
+
 
 def getAgesAndFileNames(split, ref):
         all_token_fns = get_all_token_file_names(split, ref)
@@ -39,7 +74,7 @@ def getAgesAndFileNames(split, ref):
                 if len(match.groups()) != 0:
                     ages[clinical_fn] = int(match.group(1))
             except:
-                print("Could not read {}".format(token_fn))
+                print("Could not read clinical txt for {}".format(token_fn))
         toDels = []
         for key,val in ages.items():
             if val is None:
@@ -99,7 +134,9 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
         n_process=None,
         precache=False,
         window_size=None,
-        non_overlapping=True):
+        non_overlapping=True,
+        return_ann = True
+        ):
         """Used to read the raw data in
 
         Parameters
@@ -116,6 +153,8 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
             If None, runs the FFT on the entire datset. If set, uses overlapping windows to run fft on
         non_overlapping : bool
             If true, the windows are used to reduce dim red, we don't use rolling-like behavior
+        return_ann : bool
+            If false, we just output the raw data
         Returns
         -------
         None
@@ -129,6 +168,7 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
         self.freq_bins = freq_bins
         self.window_size = window_size
         self.non_overlapping = non_overlapping
+        self.return_ann = return_ann
         if precache:
             print("starting precache job with: {} processes".format(self.n_process))
             self.data = self[:]
@@ -152,6 +192,8 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
             new_fft_hist = pd.DataFrame(index=fft_freq_bins[:-1], columns=original_data[0].columns)
             for i, name in enumerate(original_data[0].columns):
                 new_fft_hist[name] = np.histogram(fft_freq, bins=fft_freq_bins, weights=fft_data[:,i])[0]
+            if not self.return_ann:
+                return new_fft_hist
             return new_fft_hist, original_data[1]
         else:
             window_count_size = int(self.window_size / pd.Timedelta(seconds=COMMON_DELTA))
@@ -170,6 +212,8 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
             for i, channel in enumerate(fft_data):
                 for j, window_channel in enumerate(channel):
                     new_hist_bins[i, j, :] = np.histogram(fft_freq, bins=fft_freq_bins, weights=window_channel)[0]
+            if not self.return_ann:
+                return new_hist_bins
             if (self.edf_dataset.expand_tse and not self.non_overlapping):
                 return new_hist_bins, original_data[1].rolling(window_count_size).mean()[:-window_count_size + 1].fillna(method="ffill").fillna(method="bfill")
             elif (self.edf_dataset.expand_tse and self.non_overlapping):
@@ -296,11 +340,11 @@ def get_all_clinical_notes(session_path, edf_convert=True):
         clinical_notes_path = convert_edf_path_to_txt(session_path)
     else:
         clinical_notes_path = session_path
-    with open(clinical_notes_path, 'r') as f:
+    with open(clinical_notes_path, 'rb') as f:
         lines = f.readlines()
     res = ""
     for line in lines:
-        res += line
+        res += str(line)
     return res
 
 
