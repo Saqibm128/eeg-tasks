@@ -9,6 +9,45 @@ import multiprocessing as mp
 from pathos.multiprocessing import Pool
 import argparse
 import pickle as pkl
+import re
+
+
+def getAgesAndFileNames(split, ref):
+        all_token_fns = get_all_token_file_names(split, ref)
+        num_hits = []
+        ages = {}
+        for token_fn in all_token_fns:
+            clinical_fn = convert_edf_path_to_txt(token_fn)
+            if clinical_fn in ages:
+                continue
+            else:
+                ages[clinical_fn] = None
+            try:
+                txt = get_all_clinical_notes(token_fn)
+                match = re.search(r'(\d+)\s*-\s*year\s*-\s*old', txt)
+                if match is None:
+                    match = re.search(r'(\d+)\s*year\s*old', txt)
+                    if match is None:
+                        match = re.search(r'(\d+)\s*y\.\s*o\.', txt)
+                        if match is None:
+                            match = re.match(r'(\d+)\s*(yr|YR)', txt)
+                            if match is None:
+                                num_hits.append(0)
+        #                         print(txt)
+                                continue
+                num_hits.append(len(match.groups()))
+                if len(match.groups()) != 0:
+                    ages[clinical_fn] = int(match.group(1))
+            except:
+                print("Could not read {}".format(token_fn))
+        toDels = []
+        for key,val in ages.items():
+            if val is None:
+                toDels.append(key)
+        for toDel in toDels:
+            del ages[toDel]
+        return list(ages.items())
+
 
 class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
     # ndim = None
@@ -117,6 +156,7 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
         else:
             window_count_size = int(self.window_size / pd.Timedelta(seconds=COMMON_DELTA))
             original_data = self.edf_dataset[i]
+            fft_data = original_data[0].values
             fft_data_windows = np_rolling_window(np.array(fft_data.T), window_count_size)
             if self.non_overlapping:
                 fft_data_windows = fft_data_windows[:,list(range(0, fft_data_windows.shape[1], window_count_size))]
@@ -165,7 +205,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
     resample : pd.Timedelta
 
     """
-    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True, n_process=None, use_average_ref_names=True):
+    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True, n_process=None, use_average_ref_names=True, filter=False):
         self.data_split = data_split
         if n_process is None:
             n_process = mp.cpu_count()
@@ -178,6 +218,8 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         self.use_average_ref_names = use_average_ref_names
         if num_files is not None:
             self.edf_tokens = self.edf_tokens[0:num_files]
+        if filter:
+            raise NotImplementedError("We need to make some kinda filter, especially after we start eeg")
     def __len__(self):
         return len(self.edf_tokens)
 
@@ -193,7 +235,6 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
     #     for edf_path in iter(to_get_queue.get, None):
     #         to_return_queue = ()
     # def get_data_multiprocess():
-
 
 def get_edf_data_and_label_ts_format(edf_path, expand_tse=True, resample=pd.Timedelta(seconds=COMMON_DELTA)):
     try:
@@ -232,6 +273,36 @@ def read_tse_file(tse_path):
 
 def convert_edf_path_to_tse(edf_path):
     return edf_path[:-4] + ".tse"
+
+def convert_edf_path_to_txt(edf_path):
+    return edf_path[:-9] + ".txt"
+
+def get_all_clinical_notes(session_path, edf_convert=True):
+    """ gets the freeform text
+
+    Parameters
+    ----------
+    path : string
+        String to the file
+    edf_convert : bool
+        If this is actually a edf file passed in, we convert to txt file
+
+    Returns
+    -------
+    str
+        raw clinical notes
+    """
+    if edf_convert:
+        clinical_notes_path = convert_edf_path_to_txt(session_path)
+    else:
+        clinical_notes_path = session_path
+    with open(clinical_notes_path, 'r') as f:
+        lines = f.readlines()
+    res = ""
+    for line in lines:
+        res += line
+    return res
+
 
 def read_tse_file_and_return_ts(tse_path, ts_index):
     ann_y = read_tse_file(tse_path)
@@ -376,7 +447,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Holds utility functions for reading data. As a script, stores a copy of the dataset as pkl format')
     parser.add_argument("data_split", type=str)
     parser.add_argument("ref", type=str)
-    parser.add_argument("--path", type=str, default="")
+    parser.add_argument("--path", type=str, default="", description="directory to store output file in") #
     parser.add_argument("--num_files", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true") #not a real soft-run but oh well
     parser.add_argument("--use_s2s", action="store_true") #use s2s data to make a cached pickle instead
@@ -387,7 +458,8 @@ if __name__ == "__main__":
     elif not args.dry_run and args.use_s2s:
         edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), window_size=pd.Timedelta(seconds=10), non_overlapping=True)
         s2s_dataset = Seq2SeqFFTDataset(edfFFTData=edf_dataset, n_process=12)
-        pkl.dump(s2s_dataset[:], open(args.path +  "s2s_{}_{}{}_fft.pkl".format(args.data_split, args.ref, "" if args.num_files is None else "_n_{}".format(args.num_files)), 'wb'))
+        token_fns = edf_dataset.edf_dataset.edf_tokens
+        pkl.dump((token_fns,s2s_dataset[:]), open(args.path +  "s2s_{}_{}{}_fft.pkl".format(args.data_split, args.ref, "" if args.num_files is None else "_n_{}".format(args.num_files)), 'wb'))
 
     else:
         print("Dry-Run, checking all EDF files are readable")
