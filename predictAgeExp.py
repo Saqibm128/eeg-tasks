@@ -2,7 +2,7 @@ import sacred
 ex = sacred.Experiment(name="age_learning_exp")
 
 from keras.models import Sequential
-from keras.layers import Input, LSTM, Dense, Activation, Dropout
+from keras.layers import Input, LSTM, Dense, Activation, Dropout, Masking
 from keras import optimizers
 from keras.preprocessing.sequence import pad_sequences
 
@@ -13,7 +13,7 @@ import util_funcs
 import pandas as pd
 import numpy as np
 from os import path
-from sklearn.metrics import f1_score, make_scorer, mean_squared_error
+from sklearn.metrics import f1_score, make_scorer, mean_squared_error, r2_score
 from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.preprocessing import KBinsDiscretizer, StandardScaler
 from sklearn.decomposition import PCA
@@ -23,7 +23,7 @@ from addict import Dict
 import pickle as pkl
 
 from sacred.observers import MongoObserver
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 @ex.named_config
 def simple_pca_lin_reg_config():
@@ -43,11 +43,17 @@ def simple_pca_lr_config():
     }
 
 @ex.named_config
+def age():
+    return_mode="age"
+
+@ex.named_config
 def use_lstm():
-    discretize_age = True
+    discretize_age = False
+    output_size = 1
     use_simple_lstm = True
     kbins_encoding = "onehot-dense"
-    input_shape = (None, None, len(read.EdfFFTDatasetTransformer.freq_bins)) #variable batch, variable time steps, but constant num features
+    window = 5
+    input_shape = (None, None, (len(read.EdfFFTDatasetTransformer.freq_bins) - 1) * len(util_funcs.get_common_channel_names())) #variable batch, variable time steps, but constant num features
 
 @ex.named_config
 def bpm():
@@ -65,6 +71,7 @@ def config():
     precache = True
     num_epochs = 1000
     num_files = None
+    exclude_pca = False
     use_simple_lr_pca_pipeline = False
     use_simple_lin_reg_pca_pipeline = False
     use_simple_lstm = False
@@ -81,11 +88,14 @@ def config():
     latent_shape = (200)
     filter = True
     discretize_age = False
+    num_pca_comp = 10
     lr = 0.001
+    mask_value = -1000.0
 
 @ex.capture
-def get_lstm(input_shape, latent_shape, output_size, lr):
+def get_lstm(input_shape, latent_shape, output_size, lr, mask_value):
     model = Sequential([
+        Masking(mask_value=mask_value, input_shape=input_shape[1:]),
         LSTM(latent_shape),
         Dense(units=latent_shape),
         Dropout(0.5),
@@ -94,15 +104,28 @@ def get_lstm(input_shape, latent_shape, output_size, lr):
     ])
     sgd = optimizers.SGD(lr=lr, clipnorm=1.)
     model.compile(optimizer=sgd,
-              loss='categorical_crossentropy',
-              metrics=['accuracy'])
+              loss='mean_squared_error',
+              metrics=['mean_squared_error'])
     return model
+
+@ex.capture
+def three_dim_pad(data, mask_value):
+    #for n_batch, n_timestep, n_input matrix, pad_sequences fails
+    lengths = [datum.shape[1] for datum in data]
+    maxLength = max(lengths)
+    paddedBatch = np.zeros((len(data), maxLength, data.shape[2]))
+    paddedBatch.fill(mask_value)
+    for i, datum in enumerate(data):
+        paddedBatch[i, 0:lengths[i], :] = datum
+    return paddedBatch
+
 
 
 
 
 @ex.capture
 def get_data(split, ref, n_process, precache, num_files, window, non_overlapping, return_mode, filter):
+    window = window * pd.Timedelta(seconds=1)
     if return_mode=="age":
         ageData = read.getAgesAndFileNames(split, ref)
     elif return_mode=="bpm":
@@ -123,7 +146,12 @@ def get_data(split, ref, n_process, precache, num_files, window, non_overlapping
     edfReader = read.EdfDataset(split, ref, expand_tse=False, filter=filter) #discarding the annotations eventually
     edfReader.edf_tokens = tokenFiles #override to use only eegs with ages we have
     edfFFTData = read.EdfFFTDatasetTransformer(edf_dataset=edfReader, n_process=n_process, precache=True, window_size=window, non_overlapping=non_overlapping, return_ann=False)
-    return edfFFTData[:], ages, clinical_txt_paths
+    data = edfFFTData[:]
+    if window != None:
+        for i, datum in enumerate(data):
+            data[i] = datum.transpose(1, 0, 2).reshape(datum.shape[1], -1)
+    return data, ages, clinical_txt_paths
+
 
 
 @ex.main
@@ -132,6 +160,7 @@ def main(
     kbins_strat,
     train_split,
     test_split,
+    exclude_pca,
     hyperparameters,
     output_size,
     validation_size,
@@ -143,7 +172,8 @@ def main(
     use_simple_lstm,
     discretize_age,
     kbins_encoding,
-    num_epochs
+    num_epochs,
+    num_pca_comp
     ):
     if precached_pkl is not None:
         allData = pkl.load(open(precached_pkl, 'rb'))
@@ -181,25 +211,41 @@ def main(
         testAges = kbins.transform(testAges)
 
     if use_simple_lstm:
+        ageScaler = StandardScaler()
+        ages = np.array(ages).reshape(-1, 1)
+        ages = ageScaler.fit_transform(ages)
+        testAges = np.array(testAges).reshape(-1, 1)
+        testAges = ageScaler.transform(testAges)
         model = get_lstm()
         x = pad_sequences(data)
         model.fit(x, ages, epochs=num_epochs, validation_split=validation_size)
         testX = pad_sequences(testData)
         score = model.evaluate(testX, testAges)
-        model.save("model.h5")
-        ex.add_artifact("model.h5")
-        return score
+
+        ages = ageScaler.inverse_transform(ages)
+        testAges = ageScaler.inverse_transform(testAges)
+        mse = mean_squared_error(ages, testAges)
+        r2 = r2_score(ages, testAges)
+        print("MSE: {}".format(mse))
+        print("R2: {}".format(r2))
+        fn = "model_{}_epochs{}.h5".format(return_mode, num_epochs)
+        model.save(fn)
+        ex.add_artifact(fn)
+        return score, mse, r2
 
     if use_simple_lin_reg_pca_pipeline:
         ages = np.array(ages).reshape(-1, 1)
         testAges = np.array(testAges).reshape(-1, 1)
         data = np.stack(data).reshape(len(data), -1)
         testData = np.stack(testData).reshape(len(testData), -1)
+
         steps = [
-            ('pca', PCA(n_components=10)),
+            ('pca', PCA(n_components=num_pca_comp)),
             ('scaler', StandardScaler()),
             ('lin_reg', LinearRegression()),
         ]
+        if exclude_pca:
+            steps = steps[1:]
         p = Pipeline(steps)
         cv = int(1/validation_size)
         gridsearch = GridSearchCV(p, hyperparameters, scoring=make_scorer(mean_squared_error), cv=cv, n_jobs=n_process)
@@ -213,10 +259,11 @@ def main(
         y_pred = best_pipeline.predict(testData)
         test_score = mean_squared_error(testAges, y_pred)
         print("test_score: {}".format(test_score))
+        print("r^2 was {}".format(r2_score(testAges, y_pred)))
         return_dict["test_score"] = test_score
         pkl.dump(return_dict, open("predict_{}Exp.pkl".format(return_mode), 'wb'))
         ex.add_artifact("predict_{}Exp.pkl".format(return_mode))
-        return test_score
+        return test_score, r2_score(testAges, y_pred)
 
 
     if use_simple_lr_pca_pipeline:
@@ -224,10 +271,12 @@ def main(
         testData = np.stack(testData).reshape(len(testData), -1)
 
         steps = [
-            ('pca', PCA(n_components=10)),
+            ('pca', PCA(n_components=num_pca_comp)),
             ('scaler', StandardScaler()),
             ('lr', LogisticRegression()),
         ]
+        if exclude_pca:
+            steps = steps[1:]
         p = Pipeline(steps)
         cv = int(1/validation_size)
         gridsearch = GridSearchCV(p, hyperparameters, scoring=make_scorer(f1_score, average="weighted"), cv=cv, n_jobs=n_process)
