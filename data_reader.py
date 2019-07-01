@@ -10,6 +10,7 @@ from pathos.multiprocessing import Pool
 import argparse
 import pickle as pkl
 import re
+from scipy.signal import butter, lfilter
 
 def getBPMAndFileNames(split, ref):
         all_token_fns = get_all_token_file_names(split, ref)
@@ -249,7 +250,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
     resample : pd.Timedelta
 
     """
-    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True, n_process=None, use_average_ref_names=True, filter=False):
+    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True, n_process=None, use_average_ref_names=True, filter=True, lp_cutoff=50, hp_cutoff=70, order_filt=5):
         self.data_split = data_split
         if n_process is None:
             n_process = mp.cpu_count()
@@ -262,8 +263,10 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         self.use_average_ref_names = use_average_ref_names
         if num_files is not None:
             self.edf_tokens = self.edf_tokens[0:num_files]
-        if filter:
-            raise NotImplementedError("We need to make some kinda filter, especially after we start eeg")
+        self.filter = filter
+        self.hp_cutoff = hp_cutoff
+        self.lp_cutoff = lp_cutoff
+        self.order_filt = order_filt
     def __len__(self):
         return len(self.edf_tokens)
 
@@ -273,6 +276,8 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         data, ann = get_edf_data_and_label_ts_format(self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
         if self.use_average_ref_names:
             data = data[util_funcs.get_common_channel_names()]
+        if self.filter:
+            data = data.apply(lambda col: butter_bandgap_filter(col, lowcut=self.lp_cutoff, highcut=self.hp_cutoff, fs = pd.Timedelta(seconds=1) / self.resample, order = self.order_filt), axis=0)
         return data, ann
     #
     # def get_data_runner(to_get_queue, to_return_queue):
@@ -485,6 +490,26 @@ def get_session_data(session_dir_path):
     for fn in time_series_fns:
         signal_dfs.append(edf_eeg_2_df(fn))
     return pd.concat(signal_dfs)
+
+#https://scipy-cookbook.readthedocs.io/items/ButterworthBandpass.html
+
+def butter_bandpass(lowcut, highcut, fs, order=5):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    b, a = butter(order, [low, high], btype='band')
+    return b, a
+
+
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
+    fs = fs / (2 * np.pi)
+    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
+def butter_bandgap_filter(data, lowcut, highcut, fs, order=5):
+    toRemove = butter_bandpass_filter(data, lowcut, highcut, fs, order)
+    return data - toRemove
 
 
 if __name__ == "__main__":
