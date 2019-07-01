@@ -61,7 +61,7 @@ def config():
     train_split = "train"
     test_split = "dev_test"
     n_process = 6
-    k_bins = 10
+    output_size = 10
     precache = True
     num_epochs = 1000
     num_files = None
@@ -84,13 +84,13 @@ def config():
     lr = 0.001
 
 @ex.capture
-def get_lstm(input_shape, latent_shape, k_bins, lr):
+def get_lstm(input_shape, latent_shape, output_size, lr):
     model = Sequential([
         LSTM(latent_shape),
         Dense(units=latent_shape),
         Dropout(0.5),
         Activation("relu"),
-        Dense(units=k_bins),
+        Dense(units=output_size),
     ])
     sgd = optimizers.SGD(lr=lr, clipnorm=1.)
     model.compile(optimizer=sgd,
@@ -133,7 +133,7 @@ def main(
     train_split,
     test_split,
     hyperparameters,
-    k_bins,
+    output_size,
     validation_size,
     n_process,
     precached_pkl,
@@ -173,7 +173,7 @@ def main(
         return return_mode
 
     if discretize_age:
-        kbins = KBinsDiscretizer(k_bins, encode=kbins_encoding, strategy=kbins_strat)
+        kbins = KBinsDiscretizer(output_size, encode=kbins_encoding, strategy=kbins_strat)
         ages = np.array(ages).reshape(-1, 1)
         ages = kbins.fit_transform(ages)
         return_dict['kbins'] = kbins.bin_edges_
