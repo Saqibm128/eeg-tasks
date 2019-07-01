@@ -8,8 +8,8 @@ import util_funcs
 import pandas as pd
 import numpy as np
 from os import path
-from sklearn.metrics import f1_score, make_scorer
-from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import f1_score, make_scorer, mean_squared_error
+from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.preprocessing import KBinsDiscretizer, StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.model_selection import GridSearchCV
@@ -19,6 +19,10 @@ import pickle as pkl
 
 from sacred.observers import MongoObserver
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+
+@ex.named_config
+def simple_pca_lin_reg_config():
+    use_simple_lin_reg_pca_pipeline = True
 
 @ex.named_config
 def simple_pca_lr_config():
@@ -36,6 +40,10 @@ def simple_pca_lr_config():
 def use_lstm():
     use_simple_lstm = True
 
+@ex.named_config
+def bpm():
+    return_mode="bpm"
+
 
 @ex.config
 def config():
@@ -46,20 +54,25 @@ def config():
     precache = True
     num_files = None
     use_simple_lr_pca_pipeline = False
+    use_simple_lin_reg_pca_pipeline = False
     use_simple_lstm = False
-    hyperparameters = None
+    hyperparameters = {}
     window = None
     non_overlapping = True
     kbins_strat = "quantile"
     validation_size = 0.2
     prestore_data = False
     precached_pkl = None
+    return_mode = "age"
 
 
 
 @ex.capture
-def get_data(split, ref, n_process, precache, num_files, window, non_overlapping):
-    ageData = read.getAgesAndFileNames(split, ref)
+def get_data(split, ref, n_process, precache, num_files, window, non_overlapping, return_mode):
+    if return_mode=="age":
+        ageData = read.getAgesAndFileNames(split, ref)
+    elif return_mode=="bpm":
+        ageData = read.getBPMAndFileNames(split, ref) #not really agedata, bpmdata really
     if num_files is not None:
         ageData = ageData[0:num_files]
     clinical_txt_paths = [ageDatum[0] for ageDatum in ageData]
@@ -67,6 +80,7 @@ def get_data(split, ref, n_process, precache, num_files, window, non_overlapping
 
     #associate first token file with each session for now
     tokenFiles = []
+    problemFiles = []
     for session_file in clinical_txt_paths:
         session_dir = path.dirname(session_file)
         session_tkn_files = read.get_token_file_names(session_dir)
@@ -79,19 +93,31 @@ def get_data(split, ref, n_process, precache, num_files, window, non_overlapping
 
 
 @ex.main
-def main(use_simple_lr_pca_pipeline, kbins_strat, train_split, test_split, hyperparameters, validation_size, n_process, precached_pkl, prestore_data):
+def main(
+    use_simple_lr_pca_pipeline,
+    kbins_strat,
+    train_split,
+    test_split,
+    hyperparameters,
+    validation_size,
+    n_process,
+    precached_pkl,
+    prestore_data,
+    return_mode, 
+    use_simple_lin_reg_pca_pipeline,
+    use_simple_lstm):
     if precached_pkl is not None:
-        allData = pkl.load(precached_pkl)
-        data = precached_pkl["data"]
-        ages = precached_pkl["ages"]
+        allData = pkl.load(open(precached_pkl, 'rb'))
+        data = allData["data"]
         # clinical_txt_paths = precached_pkl["clinical_txt_paths"]
-        testAges = precached_pkl["testAges"]
-        testData = precached_pkl["testData"]
+        ages = allData["ages"]
+        testAges = allData["testAges"]
+        testData = allData["testData"]
         # test_clinical_txt_paths = precached_pkl["test_clinical_txt_paths"]
     else:
         data, ages, clinical_txt_paths = get_data(split=train_split)
         testData, testAges, test_clinical_txt_paths = get_data(split=test_split)
-        return_dict = Dict()
+    return_dict = Dict()
 
     if prestore_data:
         toStore = Dict()
@@ -101,8 +127,42 @@ def main(use_simple_lr_pca_pipeline, kbins_strat, train_split, test_split, hyper
         toStore.testData = testData
         toStore.testAges = testAges
         toStore.test_clinical_txt_paths = test_clinical_txt_paths
-        pkl.dump(toStore, open("agePredictionData.pkl", 'wb'))
+        if return_mode == "age":
+            pkl.dump(toStore, open("agePredictionData.pkl", 'wb'))
+        elif return_mode == "bpm":
+            pkl.dump(toStore, open("bpmPredictionData.pkl", 'wb'))
         return
+
+    if use_simple_lstm:
+        return
+
+    if use_simple_lin_reg_pca_pipeline:
+        ages = np.array(ages).reshape(-1, 1)
+        testAges = np.array(testAges).reshape(-1, 1)
+        data = np.stack(data).reshape(len(data), -1)
+        testData = np.stack(testData).reshape(len(testData), -1)
+        steps = [
+            ('pca', PCA(n_components=10)),
+            ('scaler', StandardScaler()),
+            ('lin_reg', LinearRegression()),
+        ]
+        p = Pipeline(steps)
+        cv = int(1/validation_size)
+        gridsearch = GridSearchCV(p, hyperparameters, scoring=make_scorer(mean_squared_error), cv=cv, n_jobs=n_process)
+        gridsearch.fit(data, ages)
+        return_dict["gridsearch_best_estimator"] = gridsearch.best_estimator_
+        return_dict["best_cv_score"] = gridsearch.best_score_
+        print("best cv score was {}".format(gridsearch.best_score_))
+        best_pipeline = gridsearch.best_estimator_
+        best_pipeline.fit(data, ages)
+
+        y_pred = best_pipeline.predict(testData)
+        test_score = mean_squared_error(testAges, y_pred)
+        print("test_score: {}".format(test_score))
+        return_dict["test_score"] = test_score
+        pkl.dump(return_dict, open("predict_{}Exp.pkl".format(return_mode), 'wb'))
+        ex.add_artifact("predict_{}Exp.pkl".format(return_mode))
+        return test_score
 
 
     if use_simple_lr_pca_pipeline:
@@ -113,7 +173,7 @@ def main(use_simple_lr_pca_pipeline, kbins_strat, train_split, test_split, hyper
         testAges = np.array(testAges).reshape(-1, 1)
         testAges = kbins.transform(testAges)
         data = np.stack(data).reshape(len(data), -1)
-        testData = np.stack(testData).reshape(len(data), -1)
+        testData = np.stack(testData).reshape(len(testData), -1)
 
         steps = [
             ('pca', PCA(n_components=10)),
@@ -130,11 +190,13 @@ def main(use_simple_lr_pca_pipeline, kbins_strat, train_split, test_split, hyper
         best_pipeline = gridsearch.best_estimator_
         best_pipeline.fit(data, ages)
 
-        y_pred = best_pipeline.predict(data)
+        y_pred = best_pipeline.predict(testData)
         test_score = f1_score(testAges, y_pred, average="weighted")
         print("test_score: {}".format(test_score))
         return_dict["test_score"] = test_score
-        return return_dict
+        pkl.dump(return_dict, open("predict_{}Exp.pkl".format(return_mode), 'wb'))
+        ex.add_artifact("predict_{}Exp.pkl".format(return_mode))
+        return test_score
 
     raise Exception()
     print("hi")
