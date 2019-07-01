@@ -1,7 +1,17 @@
 import keras
 import numpy as np
 from keras.models import Model
-from keras.layers import Input, LSTM, Dense
+from keras.layers import Input, LSTM, Dense, Activation
+
+def get_simple_lstm(input_shape, latent_shape, ffn_nodes, num_lstm, num_feed_forward, activation="relu"):
+    lstm = Input(shape=(None, input_shape)) #arbitrary time steps by num_features
+    for i in range(num_lstm - 1):
+        lstm = LSTM(latent_shape, return_state=False)(lstm)
+        lstm = Activation(activation)(lstm)
+    for i in range(num_feed_forward):
+        lstm = Dense(ffn_nodes)(lstm)
+
+
 
 def get_seq_2_seq(input_shape, latent_shape):
     encoder_inputs = Input(shape=(None, input_shape)) #arbitrary time steps by num features
