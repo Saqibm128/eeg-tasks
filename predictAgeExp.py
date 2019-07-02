@@ -23,7 +23,7 @@ from addict import Dict
 import pickle as pkl
 
 from sacred.observers import MongoObserver
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 @ex.named_config
 def simple_pca_lin_reg_config():
@@ -221,11 +221,12 @@ def main(
         model.fit(x, ages, epochs=num_epochs, validation_split=validation_size)
         testX = pad_sequences(testData)
         score = model.evaluate(testX, testAges)
+        y_pred = model.predict(testX)
 
         ages = ageScaler.inverse_transform(ages)
         testAges = ageScaler.inverse_transform(testAges)
-        mse = mean_squared_error(ages, testAges)
-        r2 = r2_score(ages, testAges)
+        mse = mean_squared_error(y_pred, testAges)
+        r2 = r2_score(y_pred, testAges)
         print("MSE: {}".format(mse))
         print("R2: {}".format(r2))
         fn = "model_{}_epochs{}.h5".format(return_mode, num_epochs)

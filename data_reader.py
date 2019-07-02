@@ -24,7 +24,6 @@ def getBPMAndFileNames(split, ref):
                 bpms[clinical_fn] = None
             try:
                 txt = get_all_clinical_notes(token_fn)
-                match = re.search(r'(\d+)\s*-\s*year\s*-\s*old', txt)
                 match = re.search(r'(\d+)\s*b\W*p\W*m', txt)
                 if match is None:
                     match = re.search(r'(\d+)\s*h\W*r(\W+\s+)', txt)
@@ -60,13 +59,14 @@ def getAgesAndFileNames(split, ref):
                 ages[clinical_fn] = None
             try:
                 txt = get_all_clinical_notes(token_fn)
-                match = re.search(r'(\d+)\s*-\s*year\s*-\s*old', txt)
+                txt = txt.lower()
+                match = re.search(r'(\d+)\s*-*\s*years*\s*-*\s*old', txt)
                 if match is None:
-                    match = re.search(r'(\d+)\s*year\s*old', txt)
+                    match = re.search(r'(\d+)\s*years*\s*old', txt)
                     if match is None:
                         match = re.search(r'(\d+)\s*y\.\s*o\.', txt)
                         if match is None:
-                            match = re.match(r'(\d+)\s*(yr|YR)', txt)
+                            match = re.match(r'(\d+)\s*(yr|YR)s*', txt)
                             if match is None:
                                 num_hits.append(0)
         #                         print(txt)
