@@ -13,77 +13,78 @@ import re
 from scipy.signal import butter, lfilter
 import pywt
 
+
 def getBPMAndFileNames(split, ref):
-        all_token_fns = get_all_token_file_names(split, ref)
-        num_hits = []
-        bpms = {}
-        for token_fn in all_token_fns:
-            clinical_fn = convert_edf_path_to_txt(token_fn)
-            if clinical_fn in bpms:
-                continue
-            else:
-                bpms[clinical_fn] = None
-            try:
-                txt = get_all_clinical_notes(token_fn)
-                match = re.search(r'(\d+)\s*b\W*p\W*m', txt)
+    all_token_fns = get_all_token_file_names(split, ref)
+    num_hits = []
+    bpms = {}
+    for token_fn in all_token_fns:
+        clinical_fn = convert_edf_path_to_txt(token_fn)
+        if clinical_fn in bpms:
+            continue
+        else:
+            bpms[clinical_fn] = None
+        try:
+            txt = get_all_clinical_notes(token_fn)
+            match = re.search(r'(\d+)\s*b\W*p\W*m', txt)
+            if match is None:
+                match = re.search(r'(\d+)\s*h\W*r\W+', txt)
                 if match is None:
-                    match = re.search(r'(\d+)\s*h\W*r\W+', txt)
+                    match = re.search(r'heart\s*rate\s*\W*\s*(\d+)', txt)
                     if match is None:
-                        match = re.search(r'heart\s*rate\s*\W*\s*(\d+)', txt)
-                        if match is None:
-                            num_hits.append(0)
-                            # print(txt)
-                            continue
-                num_hits.append(len(match.groups()))
-                if len(match.groups()) != 0:
-                    bpms[clinical_fn] = int(match.group(1))
-            except:
-                print("Could not read clinical txt for {}".format(token_fn))
-        toDels = []
-        for key,val in bpms.items():
-            if val is None:
-                toDels.append(key)
-        for toDel in toDels:
-            del bpms[toDel]
-        return list(bpms.items())
+                        num_hits.append(0)
+                        # print(txt)
+                        continue
+            num_hits.append(len(match.groups()))
+            if len(match.groups()) != 0:
+                bpms[clinical_fn] = int(match.group(1))
+        except BaseException:
+            print("Could not read clinical txt for {}".format(token_fn))
+    toDels = []
+    for key, val in bpms.items():
+        if val is None:
+            toDels.append(key)
+    for toDel in toDels:
+        del bpms[toDel]
+    return list(bpms.items())
 
 
 def getAgesAndFileNames(split, ref):
-        all_token_fns = get_all_token_file_names(split, ref)
-        num_hits = []
-        ages = {}
-        for token_fn in all_token_fns:
-            clinical_fn = convert_edf_path_to_txt(token_fn)
-            if clinical_fn in ages:
-                continue
-            else:
-                ages[clinical_fn] = None
-            try:
-                txt = get_all_clinical_notes(token_fn)
-                txt = txt.lower()
-                match = re.search(r'(\d+)\s*-*\s*years*\s*-*\s*old', txt)
+    all_token_fns = get_all_token_file_names(split, ref)
+    num_hits = []
+    ages = {}
+    for token_fn in all_token_fns:
+        clinical_fn = convert_edf_path_to_txt(token_fn)
+        if clinical_fn in ages:
+            continue
+        else:
+            ages[clinical_fn] = None
+        try:
+            txt = get_all_clinical_notes(token_fn)
+            txt = txt.lower()
+            match = re.search(r'(\d+)\s*-*\s*years*\s*-*\s*old', txt)
+            if match is None:
+                match = re.search(r'(\d+)\s*years*\s*old', txt)
                 if match is None:
-                    match = re.search(r'(\d+)\s*years*\s*old', txt)
+                    match = re.search(r'(\d+)\s*y\.\s*o\.', txt)
                     if match is None:
-                        match = re.search(r'(\d+)\s*y\.\s*o\.', txt)
+                        match = re.match(r'(\d+)\s*(yr|YR)s*', txt)
                         if match is None:
-                            match = re.match(r'(\d+)\s*(yr|YR)s*', txt)
-                            if match is None:
-                                num_hits.append(0)
-        #                         print(txt)
-                                continue
-                num_hits.append(len(match.groups()))
-                if len(match.groups()) != 0:
-                    ages[clinical_fn] = int(match.group(1))
-            except:
-                print("Could not read clinical txt for {}".format(token_fn))
-        toDels = []
-        for key,val in ages.items():
-            if val is None:
-                toDels.append(key)
-        for toDel in toDels:
-            del ages[toDel]
-        return list(ages.items())
+                            num_hits.append(0)
+    #                         print(txt)
+                            continue
+            num_hits.append(len(match.groups()))
+            if len(match.groups()) != 0:
+                ages[clinical_fn] = int(match.group(1))
+        except BaseException:
+            print("Could not read clinical txt for {}".format(token_fn))
+    toDels = []
+    for key, val in ages.items():
+        if val is None:
+            toDels.append(key)
+    for toDel in toDels:
+        del ages[toDel]
+    return list(ages.items())
 
 
 class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
@@ -102,11 +103,12 @@ class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
         return len(self.edfFFTData)
 
     def __getitem__(self, i):
-        if type(i) == slice:
+        if isinstance(i, slice):
             return self.getItemSlice(i)
         fftData, ann = self.edfFFTData[i]
-        fftData = (fftData).transpose((1, 0,2)).reshape(fftData.shape[1], -1)
+        fftData = (fftData).transpose((1, 0, 2)).reshape(fftData.shape[1], -1)
         return fftData
+
 
 class EdfDWTDatasetTransformer(util_funcs.MultiProcessingDataset):
     def __init__(
@@ -115,9 +117,9 @@ class EdfDWTDatasetTransformer(util_funcs.MultiProcessingDataset):
         n_process=None,
         precache=False,
         wavelet="db1",
-        return_ann = True,
-        max_coef = None,
-        ):
+        return_ann=True,
+        max_coef=None,
+    ):
         """Used to read the raw data in
 
         Parameters
@@ -148,22 +150,30 @@ class EdfDWTDatasetTransformer(util_funcs.MultiProcessingDataset):
         self.precache = False
         self.return_ann = return_ann
         if precache:
-            print("starting precache job with: {} processes".format(self.n_process))
+            print(
+                "starting precache job with: {} processes".format(
+                    self.n_process))
             self.data = self[:]
         self.precache = precache
         self.wavelet = wavelet
         self.max_coef = max_coef
+
     def __len__(self):
         return len(self.edf_dataset)
-
 
     def __getitem__(self, i):
         if self.precache:
             return self.data[i]
-        if type(i) == slice:
+        if isinstance(i, slice):
             return self.getItemSlice(i)
         original_data = self.edf_dataset[i]
-        return original_data.apply(lambda x: pywt.dwt(x.values, self.wavelet)[0], axis=0)[:self.max_coef]
+        return original_data.apply(
+            lambda x: pywt.dwt(
+                x.values,
+                self.wavelet)[0],
+            axis=0)[
+            :self.max_coef]
+
 
 class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
     freq_bins = [0.2 * i for i in range(50)] + list(range(10, 80, 1))
@@ -186,16 +196,17 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
         Description of parameter `non_overlapping`.
 
     """
+
     def __init__(
         self,
         edf_dataset,
-        freq_bins = freq_bins,
+        freq_bins=freq_bins,
         n_process=None,
         precache=False,
         window_size=None,
         non_overlapping=True,
-        return_ann = True
-        ):
+        return_ann=True
+    ):
         """Used to read the raw data in
 
         Parameters
@@ -229,57 +240,74 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
         self.non_overlapping = non_overlapping
         self.return_ann = return_ann
         if precache:
-            print("starting precache job with: {} processes".format(self.n_process))
+            print(
+                "starting precache job with: {} processes".format(
+                    self.n_process))
             self.data = self[:]
         self.precache = precache
-
 
     def __len__(self):
         return len(self.edf_dataset)
 
-
     def __getitem__(self, i):
         if self.precache:
             return self.data[i]
-        if type(i) == slice:
+        if isinstance(i, slice):
             return self.getItemSlice(i)
-        if self.window_size == None:
+        if self.window_size is None:
             original_data = self.edf_dataset[i]
-            fft_data = np.nan_to_num(np.abs(np.fft.fft(original_data[0].values, axis=0)))
+            fft_data = np.nan_to_num(
+                np.abs(
+                    np.fft.fft(
+                        original_data[0].values,
+                        axis=0)))
             fft_freq = np.fft.fftfreq(fft_data.shape[0], d=COMMON_DELTA)
             fft_freq_bins = self.freq_bins
-            new_fft_hist = pd.DataFrame(index=fft_freq_bins[:-1], columns=original_data[0].columns)
+            new_fft_hist = pd.DataFrame(
+                index=fft_freq_bins[:-1], columns=original_data[0].columns)
             for i, name in enumerate(original_data[0].columns):
-                new_fft_hist[name] = np.histogram(fft_freq, bins=fft_freq_bins, weights=fft_data[:,i])[0]
+                new_fft_hist[name] = np.histogram(
+                    fft_freq, bins=fft_freq_bins, weights=fft_data[:, i])[0]
             if not self.return_ann:
                 return new_fft_hist
             return new_fft_hist, original_data[1]
         else:
-            window_count_size = int(self.window_size / pd.Timedelta(seconds=COMMON_DELTA))
+            window_count_size = int(
+                self.window_size /
+                pd.Timedelta(
+                    seconds=COMMON_DELTA))
             original_data = self.edf_dataset[i]
             fft_data = original_data[0].values
-            fft_data_windows = np_rolling_window(np.array(fft_data.T), window_count_size)
+            fft_data_windows = np_rolling_window(
+                np.array(fft_data.T), window_count_size)
             if self.non_overlapping:
-                fft_data_windows = fft_data_windows[:,list(range(0, fft_data_windows.shape[1], window_count_size))]
+                fft_data_windows = fft_data_windows[:, list(
+                    range(0, fft_data_windows.shape[1], window_count_size))]
             fft_data = np.abs(
                 np.fft.fft(
                     fft_data_windows,
-                    axis=2)) #channel, window num, frequencies
+                    axis=2))  # channel, window num, frequencies
             fft_freq_bins = self.freq_bins
-            new_hist_bins = np.zeros((fft_data.shape[0], fft_data.shape[1], len(fft_freq_bins) - 1))
+            new_hist_bins = np.zeros(
+                (fft_data.shape[0], fft_data.shape[1], len(fft_freq_bins) - 1))
             fft_freq = np.fft.fftfreq(window_count_size, d=COMMON_DELTA)
             for i, channel in enumerate(fft_data):
                 for j, window_channel in enumerate(channel):
-                    new_hist_bins[i, j, :] = np.histogram(fft_freq, bins=fft_freq_bins, weights=window_channel)[0]
+                    new_hist_bins[i, j, :] = np.histogram(
+                        fft_freq, bins=fft_freq_bins, weights=window_channel)[0]
             if not self.return_ann:
                 return new_hist_bins
             if (self.edf_dataset.expand_tse and not self.non_overlapping):
-                return new_hist_bins, original_data[1].rolling(window_count_size).mean()[:-window_count_size + 1].fillna(method="ffill").fillna(method="bfill")
+                return new_hist_bins, original_data[1].rolling(window_count_size).mean(
+                )[:-window_count_size + 1].fillna(method="ffill").fillna(method="bfill")
             elif (self.edf_dataset.expand_tse and self.non_overlapping):
-                annotations = original_data[1].rolling(window_count_size).mean()[:-window_count_size + 1]
-                return new_hist_bins, annotations.iloc[list(range(0, annotations.shape[0], window_count_size))].fillna(method="ffill").fillna(method="bfill")
+                annotations = original_data[1].rolling(window_count_size).mean()[
+                    :-window_count_size + 1]
+                return new_hist_bins, annotations.iloc[list(range(
+                    0, annotations.shape[0], window_count_size))].fillna(method="ffill").fillna(method="bfill")
             else:
-                return new_hist_bins, original_data[1].fillna(method="ffill").fillna(method="bfill")
+                return new_hist_bins, original_data[1].fillna(
+                    method="ffill").fillna(method="bfill")
 
 
 class EdfDataset(util_funcs.MultiProcessingDataset):
@@ -308,7 +336,21 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
     resample : pd.Timedelta
 
     """
-    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True, n_process=None, use_average_ref_names=True, filter=False, lp_cutoff=50, hp_cutoff=70, order_filt=5):
+
+    def __init__(
+            self,
+            data_split,
+            ref,
+            num_files=None,
+            resample=pd.Timedelta(
+                seconds=COMMON_DELTA),
+            expand_tse=True,
+            n_process=None,
+            use_average_ref_names=True,
+            filter=False,
+            lp_cutoff=50,
+            hp_cutoff=70,
+            order_filt=5):
         self.data_split = data_split
         if n_process is None:
             n_process = mp.cpu_count()
@@ -325,17 +367,28 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         self.hp_cutoff = hp_cutoff
         self.lp_cutoff = lp_cutoff
         self.order_filt = order_filt
+
     def __len__(self):
         return len(self.edf_tokens)
 
     def __getitem__(self, i):
-        if type(i) == slice:
+        if isinstance(i, slice):
             return self.getItemSlice(i)
-        data, ann = get_edf_data_and_label_ts_format(self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
+        data, ann = get_edf_data_and_label_ts_format(
+            self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
         if self.use_average_ref_names:
             data = data[util_funcs.get_common_channel_names()]
         if self.filter:
-            data = data.apply(lambda col: butter_bandgap_filter(col, lowcut=self.lp_cutoff, highcut=self.hp_cutoff, fs = pd.Timedelta(seconds=1) / self.resample, order = self.order_filt), axis=0)
+            data = data.apply(
+                lambda col: butter_bandgap_filter(
+                    col,
+                    lowcut=self.lp_cutoff,
+                    highcut=self.hp_cutoff,
+                    fs=pd.Timedelta(
+                        seconds=1) /
+                    self.resample,
+                    order=self.order_filt),
+                axis=0)
         return data, ann
     #
     # def get_data_runner(to_get_queue, to_return_queue):
@@ -343,12 +396,16 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
     #         to_return_queue = ()
     # def get_data_multiprocess():
 
-def get_edf_data_and_label_ts_format(edf_path, expand_tse=True, resample=pd.Timedelta(seconds=COMMON_DELTA)):
+
+def get_edf_data_and_label_ts_format(
+    edf_path, expand_tse=True, resample=pd.Timedelta(
+        seconds=COMMON_DELTA)):
     try:
         edf_data = edf_eeg_2_df(edf_path, resample)
         tse_data_path = convert_edf_path_to_tse(edf_path)
         if expand_tse:
-            tse_data_ts = read_tse_file_and_return_ts(tse_data_path, edf_data.index)
+            tse_data_ts = read_tse_file_and_return_ts(
+                tse_data_path, edf_data.index)
         else:
             tse_data_ts = read_tse_file(tse_data_path)
     except Exception as e:
@@ -356,16 +413,17 @@ def get_edf_data_and_label_ts_format(edf_path, expand_tse=True, resample=pd.Time
         raise e
     return edf_data, tse_data_ts
 
+
 def read_tse_file(tse_path):
     tse_data_lines = []
     with open(tse_path, 'r') as f:
         for line in f:
             if "#" in line:
-                continue #this is a comment
+                continue  # this is a comment
             elif "version" in line:
-                assert "tse_v1.0.0" in line #assert file is correct version
+                assert "tse_v1.0.0" in line  # assert file is correct version
             elif len(line.strip()) == 0:
-                continue #Just blank space, continue
+                continue  # Just blank space, continue
             else:
                 line = line.strip()
                 subparts = line.split()
@@ -378,11 +436,14 @@ def read_tse_file(tse_path):
     tse_data = pd.concat(tse_data_lines, axis=1).T
     return tse_data
 
+
 def convert_edf_path_to_tse(edf_path):
     return edf_path[:-4] + ".tse"
 
+
 def convert_edf_path_to_txt(edf_path):
     return edf_path[:-9] + ".txt"
+
 
 def get_all_clinical_notes(session_path, edf_convert=True):
     """ gets the freeform text
@@ -419,7 +480,8 @@ def read_tse_file_and_return_ts(tse_path, ts_index):
 
 def expand_tse_file(ann_y, ts_index):
     ann_y_t = pd.DataFrame(columns=get_annotation_types(), index=ts_index)
-    ann_y.apply(lambda row: ann_y_t[row['label']].loc[pd.Timedelta(seconds=row['start']):pd.Timedelta(seconds=row['end'])].fillna(row['p'], inplace=True), axis=1)
+    ann_y.apply(lambda row: ann_y_t[row['label']].loc[pd.Timedelta(
+        seconds=row['start']):pd.Timedelta(seconds=row['end'])].fillna(row['p'], inplace=True), axis=1)
     ann_y_t.fillna(0, inplace=True)
     return ann_y_t
 
@@ -445,8 +507,10 @@ def edf_eeg_2_df(path, resample=None):
 
     """
     with pyedflib.EdfReader(path, check_file_size=pyedflib.DO_NOT_CHECK_FILE_SIZE) as reader:
-        channel_names = [headerDict['label'] for headerDict in reader.getSignalHeaders()]
-        sample_rates = [headerDict['sample_rate'] for headerDict in reader.getSignalHeaders()]
+        channel_names = [headerDict['label']
+                         for headerDict in reader.getSignalHeaders()]
+        sample_rates = [headerDict['sample_rate']
+                        for headerDict in reader.getSignalHeaders()]
         start_time = reader.getStartdatetime()
         all_channels = []
         for i, channel_name in enumerate(channel_names):
@@ -455,17 +519,18 @@ def edf_eeg_2_df(path, resample=None):
                 signal_data,
                 index=pd.date_range(
                     start=start_time,
-                    freq=pd.Timedelta(seconds=1/sample_rates[i]),
+                    freq=pd.Timedelta(seconds=1 / sample_rates[i]),
                     periods=len(signal_data)
-                    ),
+                ),
                 name=channel_name
-                )
+            )
             all_channels.append(signal_data)
     data = pd.concat(all_channels, axis=1)
     data.index = data.index - data.index[0]
-    if resample != None:
+    if resample is not None:
         data = data.resample(resample).ffill()
     return data
+
 
 def get_patient_dir_names(data_split, ref, full_path=True):
     """ Gets the path names of the folders holding the patient info
@@ -491,11 +556,13 @@ def get_patient_dir_names(data_split, ref, full_path=True):
     config = read_config()
     root_dir_path = config[root_dir_entry]
     subdirs = get_abs_files(root_dir_path)
-    patient_dirs = list(itertools.chain.from_iterable([get_abs_files(subdir) for subdir in subdirs]))
+    patient_dirs = list(itertools.chain.from_iterable(
+        [get_abs_files(subdir) for subdir in subdirs]))
     if full_path:
         return patient_dirs
     else:
         return [path.basename(patient_dir) for patient_dir in patient_dirs]
+
 
 def get_session_dir_names(data_split, ref, full_path=True, patient_dirs=None):
     """Gets the path names of the folders holding the session info
@@ -519,15 +586,18 @@ def get_session_dir_names(data_split, ref, full_path=True, patient_dirs=None):
     assert ref in get_reference_node_types()
     if patient_dirs is None:
         patient_dirs = get_patient_dir_names(data_split, ref)
-    session_dirs = list(itertools.chain.from_iterable([get_abs_files(patient_dir) for patient_dir in patient_dirs]))
+    session_dirs = list(itertools.chain.from_iterable(
+        [get_abs_files(patient_dir) for patient_dir in patient_dirs]))
     if full_path:
         return session_dirs
     else:
         return [path.basename(session_dir) for session_dir in session_dirs]
 
+
 def get_all_token_file_names(data_split, ref, full_path=True):
     session_dirs = get_session_dir_names(data_split, ref)
-    token_fns = list(itertools.chain.from_iterable([get_token_file_names(session_dir) for session_dir in session_dirs]))
+    token_fns = list(itertools.chain.from_iterable(
+        [get_token_file_names(session_dir) for session_dir in session_dirs]))
     if full_path:
         return token_fns
     else:
@@ -542,6 +612,7 @@ def get_token_file_names(session_dir_path, full_path=True):
     else:
         return [path.basename(fn) for fn in time_series_fns]
 
+
 def get_session_data(session_dir_path):
     time_series_fns = get_token_file_names(session_dir_path)
     signal_dfs = []
@@ -549,7 +620,8 @@ def get_session_data(session_dir_path):
         signal_dfs.append(edf_eeg_2_df(fn))
     return pd.concat(signal_dfs)
 
-#https://scipy-cookbook.readthedocs.io/items/ButterworthBandpass.html
+# https://scipy-cookbook.readthedocs.io/items/ButterworthBandpass.html
+
 
 def butter_bandpass(lowcut, highcut, fs, order=5):
     nyq = 0.5 * fs
@@ -564,28 +636,69 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
     y = lfilter(b, a, data)
     return y
 
+
 def butter_bandgap_filter(data, lowcut, highcut, fs, order=5):
     toRemove = butter_bandpass_filter(data, lowcut, highcut, fs, order)
     return data - toRemove
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Holds utility functions for reading data. As a script, stores a copy of the dataset as pkl format')
+    parser = argparse.ArgumentParser(
+        description='Holds utility functions for reading data. As a script, stores a copy of the dataset as pkl format')
     parser.add_argument("data_split", type=str)
     parser.add_argument("ref", type=str)
-    parser.add_argument("--path", type=str, default="", description="directory to store output file in") #
+    parser.add_argument(
+        "--path",
+        type=str,
+        default="",
+        description="directory to store output file in")
     parser.add_argument("--num_files", type=int, default=None)
-    parser.add_argument("--dry-run", action="store_true") #not a real soft-run but oh well
-    parser.add_argument("--use_s2s", action="store_true") #use s2s data to make a cached pickle instead
+    # not a real soft-run but oh well
+    parser.add_argument("--dry-run", action="store_true")
+    # use s2s data to make a cached pickle instead
+    parser.add_argument("--use_s2s", action="store_true")
     args = parser.parse_args()
     if not args.dry_run and not args.use_s2s:
-        edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), precache=True)
-        pkl.dump(edf_dataset.data, open(args.path +  "{}_{}{}_fft.pkl".format(args.data_split, args.ref, "" if args.num_files is None else "_n_{}".format(args.num_files)), 'wb'))
+        edf_dataset = EdfFFTDatasetTransformer(
+            EdfDataset(
+                args.data_split,
+                args.ref,
+                num_files=args.num_files,
+                expand_tse=False),
+            precache=True)
+        pkl.dump(
+            edf_dataset.data,
+            open(
+                args.path +
+                "{}_{}{}_fft.pkl".format(
+                    args.data_split,
+                    args.ref,
+                    "" if args.num_files is None else "_n_{}".format(
+                        args.num_files)),
+                'wb'))
     elif not args.dry_run and args.use_s2s:
-        edf_dataset = EdfFFTDatasetTransformer(EdfDataset(args.data_split, args.ref, num_files=args.num_files, expand_tse=False), window_size=pd.Timedelta(seconds=10), non_overlapping=True)
+        edf_dataset = EdfFFTDatasetTransformer(
+            EdfDataset(
+                args.data_split,
+                args.ref,
+                num_files=args.num_files,
+                expand_tse=False),
+            window_size=pd.Timedelta(
+                seconds=10),
+            non_overlapping=True)
         s2s_dataset = Seq2SeqFFTDataset(edfFFTData=edf_dataset, n_process=12)
         token_fns = edf_dataset.edf_dataset.edf_tokens
-        pkl.dump((token_fns,s2s_dataset[:]), open(args.path +  "s2s_{}_{}{}_fft.pkl".format(args.data_split, args.ref, "" if args.num_files is None else "_n_{}".format(args.num_files)), 'wb'))
+        pkl.dump(
+            (token_fns,
+             s2s_dataset[:]),
+            open(
+                args.path +
+                "s2s_{}_{}{}_fft.pkl".format(
+                    args.data_split,
+                    args.ref,
+                    "" if args.num_files is None else "_n_{}".format(
+                        args.num_files)),
+                'wb'))
 
     else:
         print("Dry-Run, checking all EDF files are readable")
@@ -597,7 +710,9 @@ if __name__ == "__main__":
         for path in token_files:
             try:
                 with pyedflib.EdfReader(path, check_file_size=pyedflib.DO_NOT_CHECK_FILE_SIZE) as reader:
-                    times.append(reader.readSignal(0).shape[0]/reader.getSignalHeader(0)["sample_rate"])
-            except:
+                    times.append(
+                        reader.readSignal(0).shape[0] /
+                        reader.getSignalHeader(0)["sample_rate"])
+            except BaseException:
                 print("Path: {} is unsuccessful".format(path))
         pd.Series(times).to_csv("times.csv")
