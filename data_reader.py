@@ -80,7 +80,7 @@ def getAgesAndFileNames(split, ref):
             print("Could not read clinical txt for {}".format(token_fn))
     toDels = []
     for key, val in ages.items():
-        if val is None:
+        if val is None: #if there was a token we couldn't get an age for.
             toDels.append(key)
     for toDel in toDels:
         del ages[toDel]
@@ -528,7 +528,7 @@ def edf_eeg_2_df(path, resample=None):
     data = pd.concat(all_channels, axis=1)
     data.index = data.index - data.index[0]
     if resample is not None:
-        data = data.resample(resample).ffill()
+        data = data.resample(resample).mean()
     return data
 
 
