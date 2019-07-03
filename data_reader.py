@@ -11,6 +11,7 @@ import argparse
 import pickle as pkl
 import re
 from scipy.signal import butter, lfilter
+import pywt
 
 def getBPMAndFileNames(split, ref):
         all_token_fns = get_all_token_file_names(split, ref)
@@ -26,7 +27,7 @@ def getBPMAndFileNames(split, ref):
                 txt = get_all_clinical_notes(token_fn)
                 match = re.search(r'(\d+)\s*b\W*p\W*m', txt)
                 if match is None:
-                    match = re.search(r'(\d+)\s*h\W*r(\W+\s+)', txt)
+                    match = re.search(r'(\d+)\s*h\W*r\W+', txt)
                     if match is None:
                         match = re.search(r'heart\s*rate\s*\W*\s*(\d+)', txt)
                         if match is None:
@@ -107,8 +108,65 @@ class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
         fftData = (fftData).transpose((1, 0,2)).reshape(fftData.shape[1], -1)
         return fftData
 
+class EdfDWTDatasetTransformer(util_funcs.MultiProcessingDataset):
+    def __init__(
+        self,
+        edf_dataset,
+        n_process=None,
+        precache=False,
+        wavelet="db1",
+        return_ann = True,
+        max_coef = None,
+        ):
+        """Used to read the raw data in
+
+        Parameters
+        ----------
+        edf_dataset : EdfDataset
+            Array-like returning the channel data (channel by time) and annotations (doesn't matter what the shape is)
+        freq_bins : array
+            Used to segment the frequencies into histogram bins
+        n_process : int
+            Used to define the number of processes to use for large reads in. If None, uses cpu count
+        precache : bool
+            Use to load all data at beginning and keep cache of it during operations
+        window_size : pd.Timedelta
+            If None, runs the FFT on the entire datset. If set, uses overlapping windows to run fft on
+        non_overlapping : bool
+            If true, the windows are used to reduce dim red, we don't use rolling-like behavior
+        return_ann : bool
+            If false, we just output the raw data
+        Returns
+        -------
+        None
+
+        """
+        self.edf_dataset = edf_dataset
+        if n_process is None:
+            n_process = mp.cpu_count()
+        self.n_process = n_process
+        self.precache = False
+        self.return_ann = return_ann
+        if precache:
+            print("starting precache job with: {} processes".format(self.n_process))
+            self.data = self[:]
+        self.precache = precache
+        self.wavelet = wavelet
+        self.max_coef = max_coef
+    def __len__(self):
+        return len(self.edf_dataset)
+
+
+    def __getitem__(self, i):
+        if self.precache:
+            return self.data[i]
+        if type(i) == slice:
+            return self.getItemSlice(i)
+        original_data = self.edf_dataset[i]
+        return original_data.apply(lambda x: pywt.dwt(x.values, self.wavelet)[0], axis=0)[:self.max_coef]
+
 class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
-    freq_bins = [0.2 * i for i in range(50)] + list(range(10, 40, 1))
+    freq_bins = [0.2 * i for i in range(50)] + list(range(10, 80, 1))
     """Implements an indexable dataset applying fft to entire timeseries,
         returning histogram bins of fft frequencies
 
@@ -250,7 +308,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
     resample : pd.Timedelta
 
     """
-    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True, n_process=None, use_average_ref_names=True, filter=True, lp_cutoff=50, hp_cutoff=70, order_filt=5):
+    def __init__(self, data_split, ref, num_files=None, resample=pd.Timedelta(seconds=COMMON_DELTA), expand_tse=True, n_process=None, use_average_ref_names=True, filter=False, lp_cutoff=50, hp_cutoff=70, order_filt=5):
         self.data_split = data_split
         if n_process is None:
             n_process = mp.cpu_count()
@@ -294,7 +352,7 @@ def get_edf_data_and_label_ts_format(edf_path, expand_tse=True, resample=pd.Time
         else:
             tse_data_ts = read_tse_file(tse_data_path)
     except Exception as e:
-        print("could not read: {}".format(tse_data_path))
+        print("could not read: {}".format(edf_path))
         raise e
     return edf_data, tse_data_ts
 
