@@ -9,6 +9,7 @@ import itertools
 import pyedflib
 from sacred.serializer import restore  # to return a stored sacred result back
 import multiprocessing as mp
+import queue
 
 COMMON_DELTA = 1.0 / 125  # used for common resampling, inverse of sampling rate
 
@@ -27,7 +28,7 @@ class MultiProcessingDataset():
         inQ = manager.Queue()
         outQ = manager.Queue()
         [inQ.put(j) for j in range(*i.indices(len(self)))]
-        [inQ.put(None) for j in range(self.n_process)]
+        # [inQ.put(None) for j in range(self.n_process)]
         processes = [
             mp.Process(
                 target=self.helper_process,
@@ -38,23 +39,30 @@ class MultiProcessingDataset():
         print("Starting {} processes".format(self.n_process))
         [p.start() for p in processes]
         [p.join() for p in processes]
+        startIndex = toReturn[0]
         while not outQ.empty():
-            index, res = outQ.get()
+            place, res = outQ.get()
+            index = place - startIndex
+            if type(res) == int:
+                res = self[place]
             toReturn[index] = res
-            # NOTE: some EDF files fail to read, so accessing them from queue will fail with large slices
-        # toReturn.sort(key=lambda x: return x[0])
         return toReturn
         # return Pool().map(self.__getitem__, toReturn)
 
     def helper_process(self, in_q, out_q):
-        for i in iter(in_q.get, None):
-            if i % 5 == 0:
-                print("retrieving: {}".format(i))
-            try:
-                out_q.put((i, self[i]))
-            except Exception as e:
-                print(e)
-                print(i)
+        try: #wait for blocking exception
+            while True:
+                i = in_q.get(block=True, timeout=1)
+                if i % 5 == 0:
+                    print("retrievings: {}".format(i))
+                try:
+                    out_q.put((i, self[i]))
+                except Exception as e:
+                    print(e, "Could not do {}, doing later".format(i))
+                    in_q.put(i) #retry later
+        except queue.Empty:
+            print("Process completed")
+            return
 
 
 def np_rolling_window(a, window):

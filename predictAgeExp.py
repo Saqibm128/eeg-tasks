@@ -27,7 +27,7 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 # Sanity check to see if we can do something fundamental like this
 
 
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 @ex.named_config
@@ -162,7 +162,8 @@ def get_data(
         return_mode,
         filter,
         use_multiple_tokens_per_session=False):
-    window = window * pd.Timedelta(seconds=1)
+    if window is not None:
+        window = window * pd.Timedelta(seconds=1)
     if return_mode == "age":
         ageData = read.getAgesAndFileNames(split, ref)
     elif return_mode == "bpm":
@@ -315,9 +316,13 @@ def main(
         best_pipeline.fit(data, ages)
 
         y_pred = best_pipeline.predict(data)
+        y_pred[y_pred < 0] = 0
+        y_pred[y_pred > 90] = 90
         print("train r^2 was {}".format(r2_score(ages, y_pred)))
 
         y_pred = best_pipeline.predict(testData)
+        y_pred[y_pred < 0] = 0
+        y_pred[y_pred > 90] = 90
         test_score = mean_squared_error(testAges, y_pred)
         print("test_score: {}".format(test_score))
         print("test r^2 was {}".format(r2_score(testAges, y_pred)))
