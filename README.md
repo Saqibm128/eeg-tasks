@@ -4,6 +4,39 @@ Uses the TUH dataset:  https://www.isip.piconepress.com/projects/tuh_eeg/
 This dataset is segmented into a train set and test set and includes annotations.
 In addition, there are subsets of the data based on the exact reference node of the EEG.
 
+## Setup
+Reads the directory of the data using config.json file
+
+``` config.json
+{
+  "train_01_tcp_ar": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/train/01_tcp_ar/",
+  "dev_test_01_tcp_ar": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/dev_test/01_tcp_ar/",
+  "train_02_tcp_le": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/train/02_tcp_le/",
+  "dev_test_02_tcp_le": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/dev_test/02_tcp_le/",
+  "train_03_tcp_ar_a": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/dev_test/03_tcp_ar_a/",
+  "dev_test_03_tcp_ar_a": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/train/03_tcp_ar_a/"
+}
+```
+
+## Code Overview
+
+### Reading Data
+Data is read using classes from data_reader class. All classes implement __getitem__ and __len__ (array-like).
+
+#### EdfDataset
+Reads data directly from file structure, returns raw data. Is constructor parameter for other classes
+
+#### EdfFFTDatasetTransformer
+Transforms raw data into:
+* either an FFT analysis of data for entire window of token file if window parameter is None
+* a STFFT (FFT on multiple windows) based on the window given
+
+#### EdfDWTDatasetTransformer
+Transforms raw data using DWT
+
+#### SinpleHandEngineeredDataset
+Transforms single channel into multiple features using a set of simple uni-channel transforms passed in.
+
 ## Sacred
 Uses sacred to control experiments and provides logging
 https://sacred.readthedocs.io/en/latest/
@@ -32,17 +65,3 @@ data should be accessible using the EdfDataset and EdfFFTDatasetTransformer
 EdfDataset and EdfFFTDatasetTransformer is array-like, and will return tuples.
 The first elem is the actual data, second is a timeseries by annotation array
 showing the assigned probabilities for various annotations
-
-## Setup
-Reads the directory of the data using config.json file
-
-``` config.json
-{
-  "train_01_tcp_ar": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/train/01_tcp_ar/",
-  "dev_test_01_tcp_ar": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/dev_test/01_tcp_ar/",
-  "train_02_tcp_le": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/train/02_tcp_le/",
-  "dev_test_02_tcp_le": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/dev_test/02_tcp_le/",
-  "train_03_tcp_ar_a": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/dev_test/03_tcp_ar_a/",
-  "dev_test_03_tcp_ar_a": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/train/03_tcp_ar_a/"
-}
-```

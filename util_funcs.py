@@ -54,7 +54,7 @@ class MultiProcessingDataset():
             while True:
                 i = in_q.get(block=True, timeout=1)
                 if i % 5 == 0:
-                    print("retrievings: {}".format(i))
+                    print("retrieving: {}".format(i))
                 try:
                     out_q.put((i, self[i]))
                 except Exception as e:

@@ -13,6 +13,39 @@ import re
 from scipy.signal import butter, lfilter
 import pywt
 
+def getGenderAndFileNames(split, ref):
+    all_token_fns = get_all_token_file_names(split, ref)
+    num_hits = []
+    genders = {}
+    for token_fn in all_token_fns:
+        clinical_fn = convert_edf_path_to_txt(token_fn)
+        if clinical_fn in genders:
+            continue
+        else:
+            genders[clinical_fn] = None
+        try:
+            txt = get_all_clinical_notes(token_fn)
+            gender = None
+            match = re.search(r'female', txt)
+            if match is not None:
+                gender = 'f'
+            elif re.search(r'woman', txt) is not None:
+                gender = 'f'
+            elif re.search(r'man', txt) is not None:
+                gender = 'm'
+            elif re.search(r'male', txt) is not None:
+                gender = 'm'
+            if gender is not None:
+                genders[clinical_fn] = gender
+        except:
+            print("Could not read {}".format(token_fn))
+    toDels = []
+    for key, val in genders.items():
+        if val is None:
+            toDels.append(key)
+    for toDel in toDels:
+        del genders[toDel]
+    return list(genders.items())
 
 def getBPMAndFileNames(split, ref):
     all_token_fns = get_all_token_file_names(split, ref)
@@ -86,6 +119,36 @@ def getAgesAndFileNames(split, ref):
         del ages[toDel]
     return list(ages.items())
 
+class SimpleHandEngineeredDataset(util_funcs.MultiProcessingDataset):
+    def __init__(self, edfRawData, n_process=None, features = [], f_names = [], max_size=None, vectorize=None):
+        assert len(features) == len(f_names)
+        self.edfRawData = edfRawData
+        self.n_process = n_process
+        if n_process is None:
+            self.n_process = mp.cpu_count()
+        self.features = features
+        self.f_names = f_names
+        self.max_size = max_size
+        self.vectorize = vectorize
+
+    def __len__(self):
+        return len(self.edfRawData)
+
+    def __getitem__(self, i):
+        if type(i) == slice:
+            return self.getItemSlice(i)
+        fftData, ann = self.edfRawData[i]
+        if self.max_size is not None and max(fftData.index) < self.max_size:
+            fftData = fftData[:self.max_size]
+        handEngineeredData = pd.DataFrame(index=fftData.columns, columns=self.f_names)
+
+        for i, feature in enumerate(self.features):
+            handEngineeredData[self.f_names[i]] = fftData.apply(lambda x: feature(x))
+        if self.vectorize == "full":
+            return handEngineeredData.values.reshape(-1)
+        if self.vectorize == "mean":
+            return handEngineeredData.values.mean()
+        return handEngineeredData
 
 class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
     # ndim = None
@@ -350,7 +413,9 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             filter=False,
             lp_cutoff=50,
             hp_cutoff=70,
-            order_filt=5):
+            order_filt=5,
+            columns_to_use=util_funcs.get_common_channel_names()
+            ):
         self.data_split = data_split
         if n_process is None:
             n_process = mp.cpu_count()
@@ -367,6 +432,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         self.hp_cutoff = hp_cutoff
         self.lp_cutoff = lp_cutoff
         self.order_filt = order_filt
+        self.columns_to_use = columns_to_use
 
     def __len__(self):
         return len(self.edf_tokens)
@@ -377,7 +443,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         data, ann = get_edf_data_and_label_ts_format(
             self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
         if self.use_average_ref_names:
-            data = data[util_funcs.get_common_channel_names()]
+            data = data[self.columns_to_use]
         if self.filter:
             data = data.apply(
                 lambda col: butter_bandgap_filter(
@@ -389,7 +455,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
                     self.resample,
                     order=self.order_filt),
                 axis=0)
-        return data, ann
+        return data.fillna(method="ffill").fillna(method="bfill"), ann
     #
     # def get_data_runner(to_get_queue, to_return_queue):
     #     for edf_path in iter(to_get_queue.get, None):
