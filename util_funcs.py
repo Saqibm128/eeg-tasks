@@ -10,8 +10,7 @@ import pyedflib
 from sacred.serializer import restore  # to return a stored sacred result back
 import multiprocessing as mp
 import queue
-
-COMMON_DELTA = 1.0 / 125  # used for common resampling, inverse of sampling rate
+import constants
 
 # to allow us to load data in without dealing with resource issues
 # https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly

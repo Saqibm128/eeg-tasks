@@ -19,6 +19,7 @@ from keras.layers import Input, LSTM, Dense, Activation, Dropout, Masking
 from keras.models import Sequential
 import tensorflow as tf
 import sacred
+import clinical_text_analysis as cta
 ex = sacred.Experiment(name="age_learning_exp")
 
 tf.logging.set_verbosity(tf.logging.ERROR)
@@ -165,10 +166,10 @@ def get_data(
     if window is not None:
         window = window * pd.Timedelta(seconds=1)
     if return_mode == "age":
-        ageData = read.getAgesAndFileNames(split, ref)
+        ageData = cta.getAgesAndFileNames(split, ref)
     elif return_mode == "bpm":
         # not really agedata, bpmdata really
-        ageData = read.getBPMAndFileNames(split, ref)
+        ageData = cta.getBPMAndFileNames(split, ref)
     if num_files is not None:
         ageData = ageData[0:num_files]
     clinical_txt_paths = [ageDatum[0] for ageDatum in ageData]

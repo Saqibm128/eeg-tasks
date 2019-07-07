@@ -4,120 +4,16 @@ import itertools
 import pyedflib
 from os import path
 import util_funcs
-from util_funcs import read_config, get_abs_files, get_annotation_types, get_data_split, get_reference_node_types, COMMON_DELTA, np_rolling_window
+from util_funcs import read_config, get_abs_files, get_annotation_types, get_data_split, get_reference_node_types, np_rolling_window
 import multiprocessing as mp
 from pathos.multiprocessing import Pool
 import argparse
 import pickle as pkl
+import constants
 import re
 from scipy.signal import butter, lfilter
 import pywt
 
-def getGenderAndFileNames(split, ref):
-    all_token_fns = get_all_token_file_names(split, ref)
-    num_hits = []
-    genders = {}
-    for token_fn in all_token_fns:
-        clinical_fn = convert_edf_path_to_txt(token_fn)
-        if clinical_fn in genders:
-            continue
-        else:
-            genders[clinical_fn] = None
-        try:
-            txt = get_all_clinical_notes(token_fn)
-            gender = None
-            match = re.search(r'female', txt)
-            if match is not None:
-                gender = 'f'
-            elif re.search(r'woman', txt) is not None:
-                gender = 'f'
-            elif re.search(r'man', txt) is not None:
-                gender = 'm'
-            elif re.search(r'male', txt) is not None:
-                gender = 'm'
-            if gender is not None:
-                genders[clinical_fn] = gender
-        except:
-            print("Could not read {}".format(token_fn))
-    toDels = []
-    for key, val in genders.items():
-        if val is None:
-            toDels.append(key)
-    for toDel in toDels:
-        del genders[toDel]
-    return list(genders.items())
-
-def getBPMAndFileNames(split, ref):
-    all_token_fns = get_all_token_file_names(split, ref)
-    num_hits = []
-    bpms = {}
-    for token_fn in all_token_fns:
-        clinical_fn = convert_edf_path_to_txt(token_fn)
-        if clinical_fn in bpms:
-            continue
-        else:
-            bpms[clinical_fn] = None
-        try:
-            txt = get_all_clinical_notes(token_fn)
-            match = re.search(r'(\d+)\s*b\W*p\W*m', txt)
-            if match is None:
-                match = re.search(r'(\d+)\s*h\W*r\W+', txt)
-                if match is None:
-                    match = re.search(r'heart\s*rate\s*\W*\s*(\d+)', txt)
-                    if match is None:
-                        num_hits.append(0)
-                        # print(txt)
-                        continue
-            num_hits.append(len(match.groups()))
-            if len(match.groups()) != 0:
-                bpms[clinical_fn] = int(match.group(1))
-        except BaseException:
-            print("Could not read clinical txt for {}".format(token_fn))
-    toDels = []
-    for key, val in bpms.items():
-        if val is None:
-            toDels.append(key)
-    for toDel in toDels:
-        del bpms[toDel]
-    return list(bpms.items())
-
-
-def getAgesAndFileNames(split, ref):
-    all_token_fns = get_all_token_file_names(split, ref)
-    num_hits = []
-    ages = {}
-    for token_fn in all_token_fns:
-        clinical_fn = convert_edf_path_to_txt(token_fn)
-        if clinical_fn in ages:
-            continue
-        else:
-            ages[clinical_fn] = None
-        try:
-            txt = get_all_clinical_notes(token_fn)
-            txt = txt.lower()
-            match = re.search(r'(\d+)\s*-*\s*years*\s*-*\s*old', txt)
-            if match is None:
-                match = re.search(r'(\d+)\s*years*\s*old', txt)
-                if match is None:
-                    match = re.search(r'(\d+)\s*y\.\s*o\.', txt)
-                    if match is None:
-                        match = re.match(r'(\d+)\s*(yr|YR)s*', txt)
-                        if match is None:
-                            num_hits.append(0)
-    #                         print(txt)
-                            continue
-            num_hits.append(len(match.groups()))
-            if len(match.groups()) != 0:
-                ages[clinical_fn] = int(match.group(1))
-        except BaseException:
-            print("Could not read clinical txt for {}".format(token_fn))
-    toDels = []
-    for key, val in ages.items():
-        if val is None: #if there was a token we couldn't get an age for.
-            toDels.append(key)
-    for toDel in toDels:
-        del ages[toDel]
-    return list(ages.items())
 
 class SimpleHandEngineeredDataset(util_funcs.MultiProcessingDataset):
     def __init__(self, edfRawData, n_process=None, features = [], f_names = [], max_size=None, vectorize=None):
@@ -324,7 +220,7 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
                     np.fft.fft(
                         original_data[0].values,
                         axis=0)))
-            fft_freq = np.fft.fftfreq(fft_data.shape[0], d=COMMON_DELTA)
+            fft_freq = np.fft.fftfreq(fft_data.shape[0], d=constants.COMMON_DELTA)
             fft_freq_bins = self.freq_bins
             new_fft_hist = pd.DataFrame(
                 index=fft_freq_bins[:-1], columns=original_data[0].columns)
@@ -338,7 +234,7 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
             window_count_size = int(
                 self.window_size /
                 pd.Timedelta(
-                    seconds=COMMON_DELTA))
+                    seconds=constants.COMMON_DELTA))
             original_data = self.edf_dataset[i]
             fft_data = original_data[0].values
             fft_data_windows = np_rolling_window(
@@ -353,7 +249,7 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
             fft_freq_bins = self.freq_bins
             new_hist_bins = np.zeros(
                 (fft_data.shape[0], fft_data.shape[1], len(fft_freq_bins) - 1))
-            fft_freq = np.fft.fftfreq(window_count_size, d=COMMON_DELTA)
+            fft_freq = np.fft.fftfreq(window_count_size, d=constants.COMMON_DELTA)
             for i, channel in enumerate(fft_data):
                 for j, window_channel in enumerate(channel):
                     new_hist_bins[i, j, :] = np.histogram(
@@ -406,7 +302,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             ref,
             num_files=None,
             resample=pd.Timedelta(
-                seconds=COMMON_DELTA),
+                seconds=constants.COMMON_DELTA),
             expand_tse=True,
             n_process=None,
             use_average_ref_names=True,
@@ -465,7 +361,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
 
 def get_edf_data_and_label_ts_format(
     edf_path, expand_tse=True, resample=pd.Timedelta(
-        seconds=COMMON_DELTA)):
+        seconds=constants.COMMON_DELTA)):
     try:
         edf_data = edf_eeg_2_df(edf_path, resample)
         tse_data_path = convert_edf_path_to_tse(edf_path)
