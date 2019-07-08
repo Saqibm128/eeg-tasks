@@ -20,6 +20,16 @@ Reads the directory of the data using config.json file
 
 ## Code Overview
 
+### Experiments
+
+Actual experiments are run as python scripts from the experiment folder while in the root project directory.
+
+```
+python -u experiments/predictAgeExp.py with  use_lstm n_process=4 num_epochs=150
+```
+
+
+
 ### Reading Data
 Data is read using classes from data_reader class. All classes implement __getitem__ and __len__ (array-like).
 
@@ -37,13 +47,18 @@ Transforms raw data using DWT
 #### SinpleHandEngineeredDataset
 Transforms single channel into multiple features using a set of simple uni-channel transforms passed in.
 
+### util_funcs.py and constants.py
+constants.py determines key constants for project like resampling frequency
+util_funcs.py includes utility functions, like reading config data out
+
 ## Sacred
 Uses sacred to control experiments and provides logging
 https://sacred.readthedocs.io/en/latest/
 
-## Project Setup
-Notebooks are messy and are currently used for scratch code.
+I used MongoObserver to record experiment results
 
+## Project Setup
+Notebooks include some test code.
 [environmentSetup.sh](environmentSetup.sh) can be used to create a conda environment that can run this code
 
 [data_reader.py](data_reader.py) is used to read data from edf files.
