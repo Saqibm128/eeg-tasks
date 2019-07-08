@@ -22,6 +22,7 @@ class MultiProcessingDataset():
     """
 
     def getItemSlice(self, i):
+        assert type(i) == slice
         toReturn = [j for j in range(*i.indices(len(self)))]
         manager = mp.Manager()
         inQ = manager.Queue()
@@ -43,7 +44,7 @@ class MultiProcessingDataset():
             place, res = outQ.get()
             index = place - startIndex
             if type(res) == int:
-                res = self[place]
+                res = self[place] #slurm sent oom event, we gotta try again.
             toReturn[index] = res
         return toReturn
         # return Pool().map(self.__getitem__, toReturn)
