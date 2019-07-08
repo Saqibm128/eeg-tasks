@@ -14,7 +14,7 @@ import re
 from scipy.signal import butter, lfilter
 import pywt
 
-
+#TODO: Move appropriate code from here into wf_analysis
 class SimpleHandEngineeredDataset(util_funcs.MultiProcessingDataset):
     def __init__(self, edfRawData, n_process=None, features = [], f_names = [], max_size=None, vectorize=None):
         assert len(features) == len(f_names)
