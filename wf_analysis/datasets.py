@@ -3,6 +3,7 @@ import filters
 import pywt
 import tsfresh.feature_extraction.feature_calculators as feats
 import constants
+from scipy.signal import coherence
 
 
 def norm_num_peaks_func(n):
@@ -16,6 +17,33 @@ def norm_num_vals_func(n):
 def autocorrelation(lag):
     return lambda x: feats.autocorrelation(x, lag)
 
+class CoherenceTransformer(util_funcs.MultiProcessingDataset):
+    def __init__(self, edfRawData, n_process=None, coherence_all=True, coherence_pairs):
+        """
+
+        Parameters
+        ----------
+        edfRawData : array-like
+            An array-like holding the data for coherence
+        n_process : int
+            number of processes to use when indexing a slice
+        coherence_all : bool
+            If to do pair-wise coherence on all channels, if so we increase
+            num features to n*n-1
+        coherence_pairs : list
+            If coherence_all is false, pass in a list of tuples holding columns
+            to run coherence measurements on
+
+        Returns
+        -------
+        CoherenceTransformer
+            Array-like
+
+        """
+        self.edfRawData = edfRawData
+        self.n_process = n_process
+        self.coherence_all = coherence_all
+        self.coherence_pairs = coherence_pairs
 
 class BandPassTransformer(util_funcs.MultiProcessingDataset):
     """Transforms a set of channel data intoo segmented signals based on a
@@ -23,9 +51,9 @@ class BandPassTransformer(util_funcs.MultiProcessingDataset):
 
     Parameters
     ----------
-    edfRawData : type
+    edfRawData : array-like
         Description of parameter `edfRawData`.
-    n_process : type
+    n_process : int
         Description of parameter `n_process`.
     bandpass_gaps : type
         Description of parameter `bandpass_gaps`.

@@ -31,8 +31,9 @@ python -u experiments/predictAgeExp.py with  use_lstm n_process=4 num_epochs=150
 
 
 ### Reading Data
-Data is read using classes from data_reader class. All classes implement __getitem__ and __len__ (array-like).
+Data is read using classes from data_reader file or from waveform_analysis/dataset.py file. All classes implement __getitem__ and __len__ (array-like).
 
+(Originally created because of fears that loading entire dataset locally would be too much for local machine, so better to dynamically load data in. https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly)
 #### EdfDataset
 Reads data directly from file structure, returns raw data. Is constructor parameter for other classes
 
@@ -44,8 +45,23 @@ Transforms raw data into:
 #### EdfDWTDatasetTransformer
 Transforms raw data using DWT
 
-#### SinpleHandEngineeredDataset
+#### SimpleHandEngineeredDataset
 Transforms single channel into multiple features using a set of simple uni-channel transforms passed in.
+
+#### BandPassTransformer
+Separates out signals from a single channel. Is intended to separate out alpha, beta, delta, theta bands. Will increase number of channels to # bandpass freqs * # channels.
+
+#### CoherenceTransformer
+Does coherence transformation. If run in coherence_all mode, then returns all channels coherence with all other channels (increases number of channels to #numchannels * #numchannels - 1)
+
+#### Combining the Transformers and Datasets
+All datasets were built with expectation of an array like, so it could be possible to pipe data.
+
+I.e. get hand engineered features of alpha, beta, delta, theta bands then do
+(with appropriate args)
+```
+SimpleHandEngineeredDataset(BandPassTransformer(EdfDataset))
+```
 
 ### util_funcs.py and constants.py
 constants.py determines key constants for project like resampling frequency
