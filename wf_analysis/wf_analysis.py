@@ -38,7 +38,7 @@ class BandPassTransformer(util_funcs.MultiProcessingDataset):
 
     """
 
-    def __init__(self, edfRawData, n_process=None, bandpass_freqs=[]):
+    def __init__(self, edfRawData, n_process=None, bandpass_freqs=[], order=5):
         """
 
         Parameters
@@ -59,6 +59,7 @@ class BandPassTransformer(util_funcs.MultiProcessingDataset):
         self.edfRawData = edfRawData
         self.n_process = n_process
         self.bandpass_freqs = bandpass_freqs
+        self.order = order
 
     def __len__(self):
         return len(self.edfRawData)
@@ -75,5 +76,6 @@ class BandPassTransformer(util_funcs.MultiProcessingDataset):
             for freqs in self.bandpass_freqs:
                 lp, hp = freqs
                 singChannelData = rawData[rawDataColumn]
-                filters.butter_bandpass_filter(
-                    singChannelData, lp, hp, constants.fs)
+                newBandPass[rawDataColumn] = filters.butter_bandpass_filter(
+                    singChannelData, lp, hp, constants.fs, order=self.order)
+        return newBandPass, ann
