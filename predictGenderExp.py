@@ -24,7 +24,7 @@ https://www.sciencedirect.com/science/article/pii/S0028393210004100?via%3Dihub
 '''
 
 
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 @ex.named_config
