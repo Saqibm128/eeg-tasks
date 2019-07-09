@@ -19,6 +19,21 @@ import constants
 class MultiProcessingDataset():
     """Class to help improve speed of looking up multiple records at once using multiple processes.
             Just make this the parent class, then call the getItemSlice method on slice objects
+        Issues:
+            Doesn't solve original problem of being optimized for keras batches, only solves
+                the fact that I needed some dataset that could quickly use multiple cores to
+                get data. Need to scope this out eventually.
+            SLURM opaquely kills processes if it consume too much memory, so we gotta
+                double check and see that there are placeholders in the toReturn array left
+            The toReturn array uses integer placeholders (representing logical indices of the
+                dataset ). If the returning datatype returned by indexing is also
+                an integer, then this won't work
+            This doesn't work with lists or for slices with increments that aren't 1
+             i.e. slice(0, 10, 2) or slice(10, 0, -1)
+            Recovery from OOM is single threaded. Maybe we wanna make this
+                use mp if this becomes a new bottleneck?
+
+
     """
     def should_use_mp(self, i):
         return type(i) == slice

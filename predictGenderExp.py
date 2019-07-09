@@ -17,7 +17,7 @@ import sacred
 ex = sacred.Experiment(name="gender_predict")
 
 
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 @ex.named_config

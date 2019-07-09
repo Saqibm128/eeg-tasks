@@ -1,5 +1,7 @@
+import pandas as pd
+import numpy as np
 import util_funcs
-import filters
+import wf_analysis.filters as filters
 import pywt
 import tsfresh.feature_extraction.feature_calculators as feats
 import constants
@@ -18,12 +20,12 @@ def autocorrelation(lag):
     return lambda x: feats.autocorrelation(x, lag)
 
 class CoherenceTransformer(util_funcs.MultiProcessingDataset):
-    def __init__(self, edfRawData, n_process=None, coherence_all=True, coherence_pairs):
+    def __init__(self, edfRawData, n_process=None, coherence_all=True, coherence_pairs=None):
         """
 
         Parameters
         ----------
-        edfRawData : array-like
+        edfRawData : DataFrame
             An array-like holding the data for coherence
         n_process : int
             number of processes to use when indexing a slice
@@ -44,14 +46,26 @@ class CoherenceTransformer(util_funcs.MultiProcessingDataset):
         self.n_process = n_process
         self.coherence_all = coherence_all
         self.coherence_pairs = coherence_pairs
+    def __len__(self):
+        return len(self.edfRawData)
+    def __getitem__(self, i):
+        if self.should_use_mp(i):
+            return self.getItemSlice(i)
+        if self.coherence_all:
+            coherence_pairs = []
+            for i, column in enumerate(self.edfRawData.columns)
+
+
+
 
 class BandPassTransformer(util_funcs.MultiProcessingDataset):
-    """Transforms a set of channel data intoo segmented signals based on a
-    bandpass filter. Used primarily to separate alpha, beta, gamma, and delta components
+    """Transforms a set of channel data into segmented signals based on a
+            bandpass filter. Used primarily to separate alpha, beta, gamma,
+            and delta components for further feature extraction
 
     Parameters
     ----------
-    edfRawData : array-like
+    edfRawData : DataFrame
         Description of parameter `edfRawData`.
     n_process : int
         Description of parameter `n_process`.
@@ -93,17 +107,17 @@ class BandPassTransformer(util_funcs.MultiProcessingDataset):
         return len(self.edfRawData)
 
     def __getitem__(self, i):
-        if self.should_use_mp(i, slice):
+        if self.should_use_mp(i):
             return self.getItemSlice(i)
         rawData, ann = self.edfRawData[i]
         bandPassColumns = [
             rawDataColumn +
-            str(freq) for rawDataColumn in rawData.columns for freq in self.bandpass_freqs]
+            str(freqs) for rawDataColumn in rawData.columns for freqs in self.bandpass_freqs]
         newBandPass = pd.DataFrame(columns=[bandPassColumns])
         for rawDataColumn in rawData.columns:
             for freqs in self.bandpass_freqs:
                 lp, hp = freqs
                 singChannelData = rawData[rawDataColumn]
-                newBandPass[rawDataColumn] = filters.butter_bandpass_filter(
-                    singChannelData, lp, hp, constants.fs, order=self.order)
+                newBandPass[rawDataColumn + str(freqs)] = filters.butter_bandpass_filter(
+                    singChannelData, lp, hp, constants.COMMON_FREQ, order=self.order)
         return newBandPass, ann
