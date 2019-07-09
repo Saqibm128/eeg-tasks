@@ -83,6 +83,7 @@ def config():
     columns_to_use = constants.SMALLEST_COLUMN_SUBSET
     n_process = 7
     num_cv_folds = 5
+    n_gridsearch_process = n_process
 
 @ex.capture
 def get_data(split, ref, num_files, freq_bins, columns_to_use, n_process, include_simple_coherence):
@@ -120,13 +121,13 @@ def get_data(split, ref, num_files, freq_bins, columns_to_use, n_process, includ
 
 
 @ex.capture
-def getGridsearch(clf_step, parameters, n_process, num_cv_folds):
+def getGridsearch(clf_step, parameters, n_gridsearch_process, num_cv_folds):
     steps = [
         clf_step
     ]
     pipeline = Pipeline(steps)
     return GridSearchCV(pipeline, parameters, cv=num_cv_folds,
-                        scoring=make_scorer(f1_score), n_jobs=n_process)
+                        scoring=make_scorer(f1_score), n_jobs=n_gridsearch_process)
 
 
 @ex.capture
@@ -151,7 +152,9 @@ def main(train_split, test_split, clf_name):
     print("Best Parameters were: ", gridsearch.best_params_)
     print("Proportion Male in Test Set: ", testGenders.sum() / len(testGenders),
           "Proportion Female in Test Set: ", 1 - testGenders.sum() / len(testGenders))
-    y_pred = gridsearch.predict(testData)
+    bestPredictor = gridsearch.best_estimator_
+    bestPredictor.fit(trainData, trainGenders)
+    y_pred = bestPredictor.predict(testData)
     print("Proportion Male in Predicted Test Set: ", y_pred.sum() / len(testGenders),
           "Proportion Female in Predicted Test Set: ", 1 - y_pred.sum() / len(testGenders))
 
