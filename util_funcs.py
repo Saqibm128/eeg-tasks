@@ -22,8 +22,10 @@ class MultiProcessingDataset():
     """
 
     def getItemSlice(self, i):
-        assert type(i) == slice
-        toReturn = [j for j in range(*i.indices(len(self)))]
+        if type(i) == slice:
+            toReturn = [j for j in range(*i.indices(len(self)))]
+        elif type(i) == list: #indexing by list
+            toReturn = i
         manager = mp.Manager()
         inQ = manager.Queue()
         outQ = manager.Queue()
@@ -46,10 +48,12 @@ class MultiProcessingDataset():
             if type(res) == int:
                 res = self[place] #slurm sent oom event, we gotta try again.
             toReturn[index] = res
+        toRedo = []
         for j, value in enumerate(toReturn):
-            if type(toReturn[j]) == int:
-                print("SLURM sent OOM event, manually returning result for index: {}".format(j))
-                toReturn[j] = self[place] 
+            if type(value) == int:
+                print("SLURM sent OOM event, manually returning result for index: {}".format(value))
+                toRedo.append(value)
+        toReturn[toRedo] = self[toRedo]
         return toReturn
         # return Pool().map(self.__getitem__, toReturn)
 
