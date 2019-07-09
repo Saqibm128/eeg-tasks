@@ -93,7 +93,7 @@ class BandPassTransformer(util_funcs.MultiProcessingDataset):
         return len(self.edfRawData)
 
     def __getitem__(self, i):
-        if isinstance(i, slice):
+        if self.should_use_mp(i, slice):
             return self.getItemSlice(i)
         rawData, ann = self.edfRawData[i]
         bandPassColumns = [

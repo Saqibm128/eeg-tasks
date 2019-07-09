@@ -31,7 +31,7 @@ class SimpleHandEngineeredDataset(util_funcs.MultiProcessingDataset):
         return len(self.edfRawData)
 
     def __getitem__(self, i):
-        if type(i) == slice:
+        if self.should_use_mp(i):
             return self.getItemSlice(i)
         fftData, ann = self.edfRawData[i]
         if self.max_size is not None and max(fftData.index) < self.max_size:
@@ -62,7 +62,7 @@ class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
         return len(self.edfFFTData)
 
     def __getitem__(self, i):
-        if isinstance(i, slice):
+        if self.should_use_mp(i):
             return self.getItemSlice(i)
         fftData, ann = self.edfFFTData[i]
         fftData = (fftData).transpose((1, 0, 2)).reshape(fftData.shape[1], -1)
@@ -123,7 +123,7 @@ class EdfDWTDatasetTransformer(util_funcs.MultiProcessingDataset):
     def __getitem__(self, i):
         if self.precache:
             return self.data[i]
-        if isinstance(i, slice):
+        if self.should_use_mp(i):
             return self.getItemSlice(i)
         original_data = self.edf_dataset[i]
         return original_data.apply(
@@ -211,7 +211,7 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
     def __getitem__(self, i):
         if self.precache:
             return self.data[i]
-        if isinstance(i, slice):
+        if self.should_use_mp(i):
             return self.getItemSlice(i)
         if self.window_size is None:
             original_data = self.edf_dataset[i]
@@ -334,7 +334,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         return len(self.edf_tokens)
 
     def __getitem__(self, i):
-        if isinstance(i, slice):
+        if self.should_use_mp(i):
             return self.getItemSlice(i)
         data, ann = get_edf_data_and_label_ts_format(
             self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)

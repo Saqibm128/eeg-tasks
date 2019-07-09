@@ -20,6 +20,8 @@ class MultiProcessingDataset():
     """Class to help improve speed of looking up multiple records at once using multiple processes.
             Just make this the parent class, then call the getItemSlice method on slice objects
     """
+    def should_use_mp(self, i):
+        return type(i) == slice
 
     def getItemSlice(self, i):
         assert type(i) == slice
@@ -49,7 +51,7 @@ class MultiProcessingDataset():
         for j, value in enumerate(toReturn):
             if type(toReturn[j]) == int:
                 print("SLURM sent OOM event, manually returning result for index: {}".format(j))
-                toReturn[j] = self[place] 
+                toReturn[j] = self[place]
         return toReturn
         # return Pool().map(self.__getitem__, toReturn)
 
