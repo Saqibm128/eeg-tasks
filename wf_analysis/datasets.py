@@ -20,7 +20,7 @@ def autocorrelation(lag):
     return lambda x: feats.autocorrelation(x, lag)
 
 class CoherenceTransformer(util_funcs.MultiProcessingDataset):
-    def __init__(self, edfRawData, n_process=None, coherence_all=True, coherence_pairs=None):
+    def __init__(self, edfRawData, n_process=None, coherence_all=True, coherence_pairs=None, average_coherence=True, coherence_bins=None, columns_to_use=util_funcs.get_common_channel_names()):
         """
 
         Parameters
@@ -35,6 +35,9 @@ class CoherenceTransformer(util_funcs.MultiProcessingDataset):
         coherence_pairs : list
             If coherence_all is false, pass in a list of tuples holding columns
             to run coherence measurements on
+        average_coherence : bool
+            If true, just do an average of all coherences over all represented
+            frequencies. If False, use coherence_bins to histogram bin everything
 
         Returns
         -------
@@ -46,6 +49,9 @@ class CoherenceTransformer(util_funcs.MultiProcessingDataset):
         self.n_process = n_process
         self.coherence_all = coherence_all
         self.coherence_pairs = coherence_pairs
+        self.average_coherence = average_coherence
+        self.coherence_bins = coherence_bins
+        self.columns_to_use = columns_to_use
     def __len__(self):
         return len(self.edfRawData)
     def __getitem__(self, i):
@@ -53,7 +59,22 @@ class CoherenceTransformer(util_funcs.MultiProcessingDataset):
             return self.getItemSlice(i)
         if self.coherence_all:
             coherence_pairs = []
-            for i, column in enumerate(self.edfRawData.columns)
+            for k in range(len(self.columns_to_use) - 1):
+                column_1 = self.columns_to_use[k]
+                for j in range(k + 1, len(self.columns_to_use)):
+                    column_2 = self.columns_to_use[j]
+                    coherence_pairs.append((column_1, column_2))
+
+        else:
+            coherence_pairs = self.coherence_pairs
+        raw_data, ann = self.edfRawData[i]
+        if self.average_coherence:
+            toReturn = pd.Series()
+            for column_1, column_2 in coherence_pairs:
+                toReturn["coherence {}".format((column_1, column_2))] =  np.mean(coherence(raw_data[column_1], raw_data[column_2], fs=constants.COMMON_FREQ)[1])
+        else:
+            raise NotImplemented("yet")
+        return toReturn, ann
 
 
 

@@ -13,11 +13,18 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import f1_score, make_scorer, accuracy_score, auc, matthews_corrcoef
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
+import wf_analysis.datasets as wfdata
 import sacred
 ex = sacred.Experiment(name="gender_predict")
 
+'''
+Based on
+https://www.nature.com/articles/s41598-018-21495-7
+https://www.sciencedirect.com/science/article/pii/S0028393210004100?via%3Dihub
+'''
 
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 @ex.named_config
@@ -58,12 +65,16 @@ def debug():
 def use_all_columns():
     columns_to_use = util_funcs.get_common_channel_names()
 
+@ex.named_config
+def use_both_hemispheres():
+    columns_to_use = constants.SYMMETRIC_COLUMN_SUBSET
 
 @ex.config
 def config():
     train_split = "train"
     test_split = "test"
     ref = "01_tcp_ar"
+    include_simple_coherence = False
     parameters = {}
     clf_step = None
     clf_name = ''
@@ -73,9 +84,8 @@ def config():
     n_process = 7
     num_cv_folds = 5
 
-
 @ex.capture
-def get_data(split, ref, num_files, freq_bins, columns_to_use, n_process):
+def get_data(split, ref, num_files, freq_bins, columns_to_use, n_process, include_simple_coherence):
     genderDictItems = cta.getGenderAndFileNames(split, ref)
     clinicalTxtPaths = [genderDictItem[0]
                         for genderDictItem in genderDictItems]
@@ -95,7 +105,17 @@ def get_data(split, ref, num_files, freq_bins, columns_to_use, n_process):
     fullData = edfFFTData[:]
     # transform to number
     genders = [1 if gender == 'm' else 0 for gender in genders]
-    return np.stack([datum.values.reshape(-1) for datum in fullData]), \
+
+    toReturnData = np.stack([datum.values.reshape(-1) for datum in fullData])
+
+    if include_simple_coherence:
+        coherData = wfdata.CoherenceTransformer(edfRawData, columns_to_use=columns_to_use, n_process=n_process)
+        fullCoherData = [datum[0] for datum in coherData[:]]
+        fullCoherData = np.stack([datum.values for datum in fullCoherData])
+        toReturnData = np.hstack([toReturnData, fullCoherData])
+
+
+    return toReturnData, \
         np.array(genders).reshape(-1, 1)[:num_files]
 
 
