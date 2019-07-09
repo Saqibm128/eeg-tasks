@@ -46,6 +46,10 @@ class MultiProcessingDataset():
             if type(res) == int:
                 res = self[place] #slurm sent oom event, we gotta try again.
             toReturn[index] = res
+        for j, value in enumerate(toReturn):
+            if type(toReturn[j]) == int:
+                print("SLURM sent OOM event, manually returning result for index: {}".format(j))
+                toReturn[j] = self[place] 
         return toReturn
         # return Pool().map(self.__getitem__, toReturn)
 
