@@ -21,7 +21,11 @@ class MultiProcessingDataset():
             Just make this the parent class, then call the getItemSlice method on slice objects
     """
 
+    def should_use_mp(self, i):
+        return type(i) == slice or type(i) == list
+
     def getItemSlice(self, i):
+        #assign index as placeholder for result in toReturn
         if type(i) == slice:
             toReturn = [j for j in range(*i.indices(len(self)))]
         elif type(i) == list: #indexing by list
@@ -29,7 +33,7 @@ class MultiProcessingDataset():
         manager = mp.Manager()
         inQ = manager.Queue()
         outQ = manager.Queue()
-        [inQ.put(j) for j in range(*i.indices(len(self)))]
+        [inQ.put(j) for j in toReturn]
         # [inQ.put(None) for j in range(self.n_process)]
         processes = [
             mp.Process(
@@ -53,7 +57,8 @@ class MultiProcessingDataset():
             if type(value) == int:
                 print("SLURM sent OOM event, manually returning result for index: {}".format(value))
                 toRedo.append(value)
-        toReturn[toRedo] = self[toRedo]
+        if len(toRedo) != 0:
+            toReturn[toRedo] = self[toRedo]
         return toReturn
         # return Pool().map(self.__getitem__, toReturn)
 
