@@ -16,6 +16,9 @@ import clinical_text_analysis as cta
 from sklearn.pipeline import Pipeline
 from addict import Dict
 import pickle as pkl
+from sacred.observers import MongoObserver
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+
 
 @ex.named_config
 def rf():

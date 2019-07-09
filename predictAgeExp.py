@@ -82,7 +82,7 @@ def config():
     test_split = "dev_test"
     use_dwt = False
     dwt_max_coef = 100
-    n_process = 6
+    n_process = 8
     output_size = 10
     precache = True
     num_epochs = 1000
