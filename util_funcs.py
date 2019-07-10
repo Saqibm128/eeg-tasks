@@ -130,7 +130,7 @@ def get_common_channel_names():
     if cached_channel_names is None:
         cached_channel_names = list(
             pd.read_csv(
-                "channel_names.csv",
+                "/home/ms994/dbmi_eeg_clustering/channel_names.csv",
                 header=None)[1])
     return cached_channel_names
 
@@ -142,7 +142,7 @@ def get_annotation_csv():
     global cached_annotation_csv
     if cached_annotation_csv is None:
         cached_annotation_csv = pd.read_csv(
-            "data_labels.csv",
+            "/home/ms994/dbmi_eeg_clustering/data_labels.csv",
             header=0,
             dtype=str,
             keep_default_na=False,
@@ -190,7 +190,7 @@ def get_reference_node_types():
     return ["01_tcp_ar", "02_tcp_le", "03_tcp_ar_a"]
 
 
-def get_mongo_client(path="config.json"):
+def get_mongo_client(path="/home/ms994/dbmi_eeg_clustering/config.json"):
     '''
     Used for Sacred to record results
     '''
@@ -202,7 +202,7 @@ def get_mongo_client(path="config.json"):
         return pymongo.MongoClient(mongo_uri)
 
 
-def read_config(path="config.json"):
+def read_config(path="/home/ms994/dbmi_eeg_clustering/config.json"):
     return json.load(open(path, "rb"))
 
 
