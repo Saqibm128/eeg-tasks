@@ -49,7 +49,7 @@ def getBPMAndFileNames(split, ref):
             txt = get_all_clinical_notes(token_fn)
             match = re.search(r'(\d+)\s*b\W*p\W*m', txt)
             if match is None:
-                match = re.search(r'(\d+)\s*h\W*r\W+', txt)
+                match = re.search(r'(\d+)\s*h\W+r\W+', txt)
                 if match is None:
                     match = re.search(r'heart\s*rate\s*\W*\s*(\d+)', txt)
                     if match is None:

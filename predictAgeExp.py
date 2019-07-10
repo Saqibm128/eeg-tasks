@@ -177,7 +177,6 @@ def get_data(
 
     # associate first token file with each session for now
     tokenFiles = []
-    problemFiles = []
     for session_file in clinical_txt_paths:
         session_dir = path.dirname(session_file)
         session_tkn_files = sorted(read.get_token_file_names(session_dir))
