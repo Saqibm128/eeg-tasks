@@ -33,8 +33,8 @@ def rf():
     parameters = {
         'rf__criterion': ["gini", "entropy"],
         'rf__n_estimators': [50, 100, 200, 400, 600],
-        'rf__max_features': ['auto', 'log2', .1, .4, .6, .8],
-        'rf__max_depth': [None, 2, 4, 6, 8, 10, 12],
+        'rf__max_features': ['auto', 'log2', .1, .4, .6],
+        'rf__max_depth': [None, 4, 8, 12],
         'rf__min_samples_split': [2, 4, 8],
         'rf__n_jobs': [1],
         'rf__min_weight_fraction_leaf': [0, 0.2, 0.5]
@@ -73,7 +73,7 @@ def use_single_hemispheres():
 @ex.config
 def config():
     train_split = "train"
-    test_split = "test"
+    test_split = "dev_test"
     ref = "01_tcp_ar"
     include_simple_coherence = True
     parameters = {}
@@ -85,8 +85,9 @@ def config():
     n_process = 7
     num_cv_folds = 5
     n_gridsearch_process = n_process
+    precache = False
     train_pkl="trainGenderData.pkl"
-    test_pkl="trainGenderData.pkl"
+    test_pkl="testGenderData.pkl"
 
 @ex.capture
 def get_data(split, ref, num_files, freq_bins, columns_to_use, n_process, include_simple_coherence):
@@ -142,8 +143,8 @@ def getFeatureScores(gridsearch, clf_name):
 
 
 @ex.main
-def main(train_pkl, test_pkl, train_split, test_split, clf_name):
-    if os.path.exists(train_pkl):
+def main(train_pkl, test_pkl, train_split, test_split, clf_name, precache):
+    if path.exists(train_pkl) and precache:
         trainData, trainGenders = pkl.load(open(train_pkl, 'rb'))
         ex.add_resource(train_pkl)
     else:
@@ -151,11 +152,11 @@ def main(train_pkl, test_pkl, train_split, test_split, clf_name):
         pkl.dump((trainData, trainGenders), open(train_pkl, 'wb'))
         ex.add_artifact(train_pkl)
 
-    if os.path.exists(test_pkl):
+    if path.exists(test_pkl) and precache:
         testData, testGenders = pkl.load(open(train_pkl, 'rb'))
         ex.add_resource(train_pkl)
     else:
-        testData, testGenders = get_data(split=train_split)
+        testData, testGenders = get_data(split=test_split)
         pkl.dump((testData, testGenders), open(test_pkl, 'wb'))
         ex.add_artifact(test_pkl)
     print("Starting ", clf_name)
@@ -191,8 +192,8 @@ def main(train_pkl, test_pkl, train_split, test_split, clf_name):
     return {'test_scores': {
         'f1': f1_score(y_pred, testGenders),
         'acc': accuracy_score(y_pred, testGenders),
-        'mcc': matthews_corrcoef(y_pred, testGenders)
-        'auc': roc
+        'mcc': matthews_corrcoef(y_pred, testGenders),
+        'auc': roc_auc_score(y_pred, testGenders)
     }}
 
 
