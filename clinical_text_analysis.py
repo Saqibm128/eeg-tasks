@@ -19,9 +19,9 @@ def getGenderAndFileNames(split, ref):
                 gender = 'f'
             elif re.search(r'woman', txt) is not None:
                 gender = 'f'
-            elif re.search(r'man', txt) is not None:
+            elif re.search(r'man\W', txt) is not None:
                 gender = 'm'
-            elif re.search(r'male', txt) is not None:
+            elif re.search(r'male\W', txt) is not None:
                 gender = 'm'
             if gender is not None:
                 genders[clinical_fn] = gender
