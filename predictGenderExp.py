@@ -10,10 +10,11 @@ import data_reader as read
 import constants
 import util_funcs
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import f1_score, make_scorer, accuracy_score, auc, matthews_corrcoef
+from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
+import pickle as pkl
 import sacred
 ex = sacred.Experiment(name="gender_predict")
 
@@ -66,24 +67,26 @@ def use_all_columns():
     columns_to_use = util_funcs.get_common_channel_names()
 
 @ex.named_config
-def use_both_hemispheres():
-    columns_to_use = constants.SYMMETRIC_COLUMN_SUBSET
+def use_single_hemispheres():
+    columns_to_use = constants.SMALLEST_COLUMN_SUBSET
 
 @ex.config
 def config():
     train_split = "train"
     test_split = "test"
     ref = "01_tcp_ar"
-    include_simple_coherence = False
+    include_simple_coherence = True
     parameters = {}
     clf_step = None
     clf_name = ''
     num_files = None
     freq_bins = constants.FREQ_BANDS  # bands for alpha, beta, theta, delta
-    columns_to_use = constants.SMALLEST_COLUMN_SUBSET
+    columns_to_use = constants.SYMMETRIC_COLUMN_SUBSET
     n_process = 7
     num_cv_folds = 5
     n_gridsearch_process = n_process
+    train_pkl="trainGenderData.pkl"
+    test_pkl="trainGenderData.pkl"
 
 @ex.capture
 def get_data(split, ref, num_files, freq_bins, columns_to_use, n_process, include_simple_coherence):
@@ -139,9 +142,22 @@ def getFeatureScores(gridsearch, clf_name):
 
 
 @ex.main
-def main(train_split, test_split, clf_name):
-    trainData, trainGenders = get_data(split=train_split)
-    testData, testGenders = get_data(split=train_split)
+def main(train_pkl, test_pkl, train_split, test_split, clf_name):
+    if os.path.exists(train_pkl):
+        trainData, trainGenders = pkl.load(open(train_pkl, 'rb'))
+        ex.add_resource(train_pkl)
+    else:
+        trainData, trainGenders = get_data(split=train_split)
+        pkl.dump((trainData, trainGenders), open(train_pkl, 'wb'))
+        ex.add_artifact(train_pkl)
+
+    if os.path.exists(test_pkl):
+        testData, testGenders = pkl.load(open(train_pkl, 'rb'))
+        ex.add_resource(train_pkl)
+    else:
+        testData, testGenders = get_data(split=train_split)
+        pkl.dump((testData, testGenders), open(test_pkl, 'wb'))
+        ex.add_artifact(test_pkl)
     print("Starting ", clf_name)
 
     gridsearch = getGridsearch()
@@ -161,6 +177,8 @@ def main(train_split, test_split, clf_name):
     print("F1_score: ", f1_score(y_pred, testGenders))
     print("accuracy: ", accuracy_score(y_pred, testGenders))
     print("MCC: ", matthews_corrcoef(y_pred, testGenders))
+    print("AUC: ", roc_auc_score(y_pred, testGenders))
+
     # print("auc: ", auc(y_pred, testGenders))
     toSaveDict = Dict()
     toSaveDict.getFeatureScores = getFeatureScores(gridsearch)
@@ -174,6 +192,7 @@ def main(train_split, test_split, clf_name):
         'f1': f1_score(y_pred, testGenders),
         'acc': accuracy_score(y_pred, testGenders),
         'mcc': matthews_corrcoef(y_pred, testGenders)
+        'auc': roc
     }}
 
 

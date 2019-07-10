@@ -6,7 +6,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import KBinsDiscretizer, StandardScaler
 from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.metrics import f1_score, make_scorer, mean_squared_error, r2_score, accuracy_score
+from sklearn.metrics import f1_score, make_scorer, mean_squared_error, r2_score, accuracy_score, roc_auc_score
 from os import path
 import numpy as np
 import pandas as pd
