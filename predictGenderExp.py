@@ -146,19 +146,19 @@ def getFeatureScores(gridsearch, clf_name):
 def main(train_pkl, test_pkl, train_split, test_split, clf_name, precache):
     if path.exists(train_pkl) and precache:
         trainData, trainGenders = pkl.load(open(train_pkl, 'rb'))
-        ex.add_resource(train_pkl)
+        # ex.add_resource(train_pkl)
     else:
         trainData, trainGenders = get_data(split=train_split)
         pkl.dump((trainData, trainGenders), open(train_pkl, 'wb'))
-        ex.add_artifact(train_pkl)
+        # ex.add_artifact(train_pkl)
 
     if path.exists(test_pkl) and precache:
         testData, testGenders = pkl.load(open(train_pkl, 'rb'))
-        ex.add_resource(train_pkl)
+        # ex.add_resource(train_pkl)
     else:
         testData, testGenders = get_data(split=test_split)
         pkl.dump((testData, testGenders), open(test_pkl, 'wb'))
-        ex.add_artifact(test_pkl)
+        # ex.add_artifact(test_pkl)
     print("Starting ", clf_name)
 
     gridsearch = getGridsearch()
