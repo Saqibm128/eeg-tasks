@@ -96,3 +96,9 @@ data should be accessible using the EdfDataset and EdfFFTDatasetTransformer
 EdfDataset and EdfFFTDatasetTransformer is array-like, and will return tuples.
 The first elem is the actual data, second is a timeseries by annotation array
 showing the assigned probabilities for various annotations
+
+## Data
+Data is from TUH project.
+https://www.isip.piconepress.com/projects/tuh_eeg/
+
+3d_positions is generated from code in https://github.com/sappelhoff/eeg_positions/

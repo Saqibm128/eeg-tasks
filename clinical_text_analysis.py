@@ -1,6 +1,36 @@
 import re
 from data_reader import convert_edf_path_to_txt, get_all_clinical_notes, get_all_token_file_names
 
+
+def demux_to_tokens(dataDictItems):
+    """utility method to deal with fact that labels are on session level, but
+    data is on token level (all getXandFileNames methods give out on session level)
+
+    Parameters
+    ----------
+    dataDictItems : list
+        list of tuples of session clinical text filenames, and extracted label value
+
+    Returns
+    -------
+    array
+        list of edf tokens
+    array
+        list of repeated labels, "demuxed" to tokens
+    """
+    clinicalTxtPaths = [dataDictItem[0]
+                        for dataDictItem in dataDictItems]
+    singLabels = [dataDictItem[1] for dataDictItem in dataDictItems]
+    tokenFiles = []
+    labels = []  # duplicate/demux single labels depending on number of tokens per session
+    for i, txtPath in enumerate(clinicalTxtPaths):
+        session_dir = path.dirname(txtPath)
+        session_tkn_files = sorted(read.get_token_file_names(session_dir))
+        tokenFiles += session_tkn_files
+        labels += [singlabels[i] for tkn_file in session_tkn_files]
+    return tokenFiles, labels
+
+
 def getGenderAndFileNames(split, ref):
     all_token_fns = get_all_token_file_names(split, ref)
     num_hits = []
