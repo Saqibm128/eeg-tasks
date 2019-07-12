@@ -16,36 +16,6 @@ import pywt
 from wf_analysis import filters
 
 #TODO: Move appropriate code from here into wf_analysis
-class SimpleHandEngineeredDataset(util_funcs.MultiProcessingDataset):
-    def __init__(self, edfRawData, n_process=None, features = [], f_names = [], max_size=None, vectorize=None):
-        assert len(features) == len(f_names)
-        self.edfRawData = edfRawData
-        self.n_process = n_process
-        if n_process is None:
-            self.n_process = mp.cpu_count()
-        self.features = features
-        self.f_names = f_names
-        self.max_size = max_size
-        self.vectorize = vectorize
-
-    def __len__(self):
-        return len(self.edfRawData)
-
-    def __getitem__(self, i):
-        if self.should_use_mp(i):
-            return self.getItemSlice(i)
-        fftData, ann = self.edfRawData[i]
-        if self.max_size is not None and max(fftData.index) < self.max_size:
-            fftData = fftData[:self.max_size]
-        handEngineeredData = pd.DataFrame(index=fftData.columns, columns=self.f_names)
-
-        for i, feature in enumerate(self.features):
-            handEngineeredData[self.f_names[i]] = fftData.apply(lambda x: feature(x))
-        if self.vectorize == "full":
-            return handEngineeredData.values.reshape(-1)
-        if self.vectorize == "mean":
-            return handEngineeredData.values.mean()
-        return handEngineeredData
 
 class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
     # ndim = None
@@ -68,71 +38,6 @@ class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
         fftData, ann = self.edfFFTData[i]
         fftData = (fftData).transpose((1, 0, 2)).reshape(fftData.shape[1], -1)
         return fftData
-
-
-class EdfDWTDatasetTransformer(util_funcs.MultiProcessingDataset):
-    def __init__(
-        self,
-        edf_dataset,
-        n_process=None,
-        precache=False,
-        wavelet="db1",
-        return_ann=True,
-        max_coef=None,
-    ):
-        """Used to read the raw data in
-
-        Parameters
-        ----------
-        edf_dataset : EdfDataset
-            Array-like returning the channel data (channel by time) and annotations (doesn't matter what the shape is)
-        freq_bins : array
-            Used to segment the frequencies into histogram bins
-        n_process : int
-            Used to define the number of processes to use for large reads in. If None, uses cpu count
-        precache : bool
-            Use to load all data at beginning and keep cache of it during operations
-        window_size : pd.Timedelta
-            If None, runs the FFT on the entire datset. If set, uses overlapping windows to run fft on
-        non_overlapping : bool
-            If true, the windows are used to reduce dim red, we don't use rolling-like behavior
-        return_ann : bool
-            If false, we just output the raw data
-        Returns
-        -------
-        None
-
-        """
-        self.edf_dataset = edf_dataset
-        if n_process is None:
-            n_process = mp.cpu_count()
-        self.n_process = n_process
-        self.precache = False
-        self.return_ann = return_ann
-        if precache:
-            print(
-                "starting precache job with: {} processes".format(
-                    self.n_process))
-            self.data = self[:]
-        self.precache = precache
-        self.wavelet = wavelet
-        self.max_coef = max_coef
-
-    def __len__(self):
-        return len(self.edf_dataset)
-
-    def __getitem__(self, i):
-        if self.precache:
-            return self.data[i]
-        if self.should_use_mp(i):
-            return self.getItemSlice(i)
-        original_data = self.edf_dataset[i]
-        return original_data.apply(
-            lambda x: pywt.dwt(
-                x.values,
-                self.wavelet)[0],
-            axis=0)[
-            :self.max_coef]
 
 
 class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
@@ -309,7 +214,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             use_average_ref_names=True,
             filter=False,
             lp_cutoff=30,
-            hp_cutoff=60,
+            hp_cutoff=(constants.COMMON_FREQ/2-2), #get close to nyq without actually hitting it
             order_filt=5,
             columns_to_use=util_funcs.get_common_channel_names()
             ):
@@ -585,7 +490,7 @@ def get_session_data(session_dir_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description='Holds utility functions for reading data. As a script, stores a copy of the dataset as pkl format')
+        description='Holds utility functions for reading data. As a script, stores a copy of the fft dataset as pkl format')
     parser.add_argument("data_split", type=str)
     parser.add_argument("ref", type=str)
     parser.add_argument(
