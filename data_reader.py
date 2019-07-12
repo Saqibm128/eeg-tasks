@@ -13,6 +13,7 @@ import constants
 import re
 from scipy.signal import butter, lfilter
 import pywt
+from wf_analysis import filters
 
 #TODO: Move appropriate code from here into wf_analysis
 class SimpleHandEngineeredDataset(util_funcs.MultiProcessingDataset):
@@ -307,8 +308,8 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             n_process=None,
             use_average_ref_names=True,
             filter=False,
-            lp_cutoff=50,
-            hp_cutoff=70,
+            lp_cutoff=30,
+            hp_cutoff=60,
             order_filt=5,
             columns_to_use=util_funcs.get_common_channel_names()
             ):
@@ -342,7 +343,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             data = data[self.columns_to_use]
         if self.filter:
             data = data.apply(
-                lambda col: butter_bandgap_filter(
+                lambda col: filters.butter_bandgap_filter(
                     col,
                     lowcut=self.lp_cutoff,
                     highcut=self.hp_cutoff,
@@ -581,28 +582,6 @@ def get_session_data(session_dir_path):
     for fn in time_series_fns:
         signal_dfs.append(edf_eeg_2_df(fn))
     return pd.concat(signal_dfs)
-
-# https://scipy-cookbook.readthedocs.io/items/ButterworthBandpass.html
-
-
-def butter_bandpass(lowcut, highcut, fs, order=5):
-    nyq = 0.5 * fs
-    low = lowcut / nyq
-    high = highcut / nyq
-    b, a = butter(order, [low, high], btype='band')
-    return b, a
-
-
-def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
-    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
-    y = lfilter(b, a, data)
-    return y
-
-
-def butter_bandgap_filter(data, lowcut, highcut, fs, order=5):
-    toRemove = butter_bandpass_filter(data, lowcut, highcut, fs, order)
-    return data - toRemove
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
