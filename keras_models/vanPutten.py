@@ -28,6 +28,6 @@ def vp_conv2d(dropout=0.25):
 
         Conv2D(300, (1,3)),
         Conv2D(300, (1,3)),
-        Dense(activation='softmax', output=2)
+        Dense(activation='softmax', units=2)
     ]
     return Sequential(layers)
