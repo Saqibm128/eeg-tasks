@@ -42,6 +42,12 @@ def rf():
     clf_name = "rf"
     clf_step = ('rf', RandomForestClassifier())
 
+@ex.named_config
+def linked_ear():
+    ref = "02_tcp_le"
+    train_pkl="trainGenderDataLe.pkl"
+    test_pkl="testGenderDataLe.pkl"
+
 
 @ex.named_config
 def lr():
