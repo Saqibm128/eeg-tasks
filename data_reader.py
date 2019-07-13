@@ -176,7 +176,12 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
 
 
 class EdfDataset(util_funcs.MultiProcessingDataset):
-    """Short summary.
+    """Basic access to the raw data. Is the first layer in any/all data processing
+    and is usually what is passed to the other datasets/transformers
+
+    TODO: possibly create a parallel backend so that same calls to same data input
+    with multiple higher level layers don't do same expensive io/mem allocations
+    in this base dataset
 
     Parameters
     ----------

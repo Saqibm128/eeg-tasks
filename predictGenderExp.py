@@ -93,10 +93,11 @@ def config():
     n_gridsearch_process = n_process
     precache = False
     train_pkl="trainGenderData.pkl"
+    filter = False
     test_pkl="testGenderData.pkl"
 
 @ex.capture
-def get_data(split, ref, num_files, freq_bins, columns_to_use, n_process, include_simple_coherence):
+def get_data(split, ref, num_files, freq_bins, columns_to_use, n_process, include_simple_coherence, filter):
     genderDictItems = cta.getGenderAndFileNames(split, ref)
     clinicalTxtPaths = [genderDictItem[0]
                         for genderDictItem in genderDictItems]
@@ -109,7 +110,7 @@ def get_data(split, ref, num_files, freq_bins, columns_to_use, n_process, includ
         tokenFiles += session_tkn_files
         genders += [singGenders[i] for tkn_file in session_tkn_files]
     edfRawData = read.EdfDataset(
-        split, ref, num_files=num_files, columns_to_use=columns_to_use, expand_tse=False)
+        split, ref, num_files=num_files, columns_to_use=columns_to_use, expand_tse=False, filter=filter)
     edfRawData.edf_tokens = tokenFiles[:num_files]
     edfFFTData = read.EdfFFTDatasetTransformer(
         edfRawData, n_process=n_process, freq_bins=freq_bins, return_ann=False)
