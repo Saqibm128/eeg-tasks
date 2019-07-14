@@ -214,6 +214,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             num_files=None,
             resample=pd.Timedelta(
                 seconds=constants.COMMON_DELTA),
+            max_length=None,
             expand_tse=True,
             n_process=None,
             use_average_ref_names=True,
@@ -229,6 +230,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         self.n_process = n_process
         self.ref = ref
         self.resample = resample
+        self.max_length = max_length
         self.manager = mp.Manager()
         self.edf_tokens = get_all_token_file_names(data_split, ref)
         self.expand_tse = expand_tse
@@ -249,6 +251,8 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             return self.getItemSlice(i)
         data, ann = get_edf_data_and_label_ts_format(
             self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
+        if (self.max_length != None and max(data.index) > self.max_length):
+            data = data.loc[pd.Timedelta(seconds=0):self.max_length]
         if self.use_average_ref_names:
             data = data[self.columns_to_use]
         if self.filter:

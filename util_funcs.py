@@ -71,13 +71,6 @@ class MultiProcessingDataset():
             if type(res) == int:
                 res = self[place] #slurm sent oom event, we gotta try again.
             toReturn[index] = res
-        toRedo = []
-        for j, value in enumerate(toReturn):
-            if type(value) == int:
-                print("SLURM sent OOM event, manually returning result for index: {}".format(value))
-                toRedo.append(value)
-        if len(toRedo) != 0:
-            toReturn[toRedo] = self[toRedo]
         return toReturn
         # return Pool().map(self.__getitem__, toReturn)
 
@@ -87,11 +80,7 @@ class MultiProcessingDataset():
                 i = in_q.get(block=True, timeout=1)
                 if i % 5 == 0:
                     print("retrieving: {}".format(i))
-                try:
-                    out_q.put((i, self[i]))
-                except Exception as e:
-                    print(e, "Could not do {}, doing later".format(i))
-                    in_q.put(i) #retry later
+                out_q.put((i, self[i]))
         except queue.Empty:
             print("Process completed")
             return
