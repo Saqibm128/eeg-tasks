@@ -38,13 +38,21 @@ class MultiProcessingDataset():
     def should_use_mp(self, i):
         return type(i) == slice
 
+    def should_use_mp(self, i):
+        return type(i) == slice or type(i) == list
+
     def getItemSlice(self, i):
-        assert type(i) == slice
-        toReturn = [j for j in range(*i.indices(len(self)))]
+        #assign index as placeholder for result in toReturn
+        if type(i) == slice:
+            placeholder = [j for j in range(*i.indices(len(self)))] #use to look up correct index because using the ".index" method in an array holding arrays leads to comparison error
+            toReturn = [j for j in range(*i.indices(len(self)))]
+        elif type(i) == list: #indexing by list
+            placeholder = [j for j in i]
+            toReturn = i
         manager = mp.Manager()
         inQ = manager.Queue()
         outQ = manager.Queue()
-        [inQ.put(j) for j in range(*i.indices(len(self)))]
+        [inQ.put(j) for j in toReturn]
         # [inQ.put(None) for j in range(self.n_process)]
         processes = [
             mp.Process(
@@ -59,14 +67,17 @@ class MultiProcessingDataset():
         startIndex = toReturn[0]
         while not outQ.empty():
             place, res = outQ.get()
-            index = place - startIndex
+            index = placeholder.index(place)
             if type(res) == int:
                 res = self[place] #slurm sent oom event, we gotta try again.
             toReturn[index] = res
+        toRedo = []
         for j, value in enumerate(toReturn):
-            if type(toReturn[j]) == int:
-                print("SLURM sent OOM event, manually returning result for index: {}".format(j))
-                toReturn[j] = self[place]
+            if type(value) == int:
+                print("SLURM sent OOM event, manually returning result for index: {}".format(value))
+                toRedo.append(value)
+        if len(toRedo) != 0:
+            toReturn[toRedo] = self[toRedo]
         return toReturn
         # return Pool().map(self.__getitem__, toReturn)
 
