@@ -34,50 +34,6 @@ def three_dim_pad(data, mask_value, num_channels=1):
         paddedBatch[i, 0:lengths[i], :] = datum
     return paddedBatch
 
-
-class EdfDataGenerator(DataGenerator):
-    'Can accept EdfDataset and any of its intermediates to make data (i.e. sftft)'
-    def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=10, shuffle=True):
-        super().__init__(list_IDs=list(range(len(dataset))), labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
-                     n_classes=n_classes, shuffle=shuffle)
-        self.dataset = dataset
-        self.mask_value=mask_value
-    def get_x_y(self, i):
-        data = self.dataset[i]
-        if (type(i) != slice) and type(i) != list:
-            return data
-        else:
-            x = [datum[0] for datum in data]
-            y = [datum[1] for datum in data]
-        if self.labels != None:
-            y = self.labels[i]
-        return x, y
-
-    def __getitem__(self, index):
-        'Generate one batch of data'
-        # Generate indexes of the batch
-        indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
-
-        # Find list of IDs
-        list_IDs_temp = [self.list_IDs[k] for k in indexes]
-
-        # Generate data
-        X, y = self.__data_generation(list_IDs_temp)
-
-        return X, y
-
-    def __data_generation(self, list_IDs_temp):
-        '''Overriding this to deal with None dimensions (i.e. variable length times)
-        and allow for MultiProcessingDataset to work (only works for slices) '''
-
-        x, y = self.get_x_y(list_IDs_temp)
-        x = three_dim_pad(x, self.mask_value)
-        if self.labels == None:
-            return x, y
-        else:
-            return x,  keras.utils.to_categorical(y, num_classes=self.n_classes)
-
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
     def __init__(self, list_IDs, labels, batch_size=32, dim=(32,32,32), n_channels=1,
@@ -129,6 +85,54 @@ class DataGenerator(keras.utils.Sequence):
         for i, ID in enumerate(list_IDs_temp):
             # Store sample
             X[i,], y[i] = self.get_x_y(ID)
+
+
+
+
+class EdfDataGenerator(DataGenerator):
+    'Can accept EdfDataset and any of its intermediates to make data (i.e. sftft)'
+    def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
+                 n_classes=10, shuffle=True):
+        super().__init__(list_IDs=list(range(len(dataset))), labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
+                     n_classes=n_classes, shuffle=shuffle)
+        self.dataset = dataset
+        self.mask_value=mask_value
+    def get_x_y(self, i):
+        if self.labels is not None:
+            print(i)
+            y = self.labels[i]
+            print(y)
+            print(y.shape)
+        data = self.dataset[i]
+        x = [datum[0] for datum in data]
+        if self.labels is None:
+            y = [datum[1] for datum in data]
+
+        return x, y
+
+    def __getitem__(self, index):
+        'Generate one batch of data'
+        # Generate indexes of the batch
+        indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
+
+        # Find list of IDs
+        list_IDs_temp = [self.list_IDs[k] for k in indexes]
+
+        # Generate data
+        X, y = self.__data_generation(list_IDs_temp)
+
+        return X, y
+
+    def __data_generation(self, list_IDs_temp):
+        '''Overriding this to deal with None dimensions (i.e. variable length times)
+        and allow for MultiProcessingDataset to work (only works for slices) '''
+
+        x, y = self.get_x_y(list_IDs_temp)
+        x = three_dim_pad(x, self.mask_value)
+        if self.labels is None:
+            return x, y
+        else:
+            return x,  keras.utils.to_categorical(y, num_classes=self.n_classes)
 
 
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
