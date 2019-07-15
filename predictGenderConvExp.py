@@ -30,6 +30,7 @@ def debug():
     max_length=constants.COMMON_FREQ
     num_files=20
     batch_size=8
+    num_epochs=1
 
 @ex.config
 def config():
@@ -44,6 +45,7 @@ def config():
     spatialMapping = constants.SIMPLE_CONV2D_MAP
     use_early_stopping = True
     patience = 10
+    num_epochs = 100
 
 
 
@@ -57,7 +59,7 @@ def get_data(split, ref, n_process, num_files, max_length):
     return edfData, genders
 
 @ex.capture
-def get_simple_mapping_data(split, batch_size, spatialMapping, num_files, max_length):
+def get_simple_mapping_data(split, batch_size, spatialMapping, num_files, max_length, num_epochs):
     """Based on a really naive, dumb mapping of eeg electrodes into 2d space
 
     Parameters
@@ -76,8 +78,8 @@ def get_simple_mapping_data(split, batch_size, spatialMapping, num_files, max_le
 
     """
     edfData, genders = get_data(split)
-    edfData = edfData[:]
-    edfData = BasicSpatialDataset(edfData, spatialMapping=spatialMapping)
+    edfData = BasicSpatialDataset(edfData[:], spatialMapping=spatialMapping)
+    edfData.use_mp = False
     return EdfDataGenerator(edfData, n_classes=2, labels=np.array(genders), batch_size=batch_size, max_length=max_length)
 
 @ex.capture
@@ -87,12 +89,12 @@ def get_model(dropout, spatialMapping, max_length):
     return model
 
 @ex.main
-def main(train_split, test_split, spatialMapping):
+def main(train_split, test_split, spatialMapping, num_epochs):
     trainDataGenerator = get_simple_mapping_data(train_split)
     model = get_model()
     x, y  = trainDataGenerator[0]
     y_pred = model.predict(x)
-    model.fit_generator(trainDataGenerator)
+    model.fit_generator(trainDataGenerator, epochs=num_epochs)
     testData, testGender = get_data(test_split)
     testData = testData[:]
     testData = BasicSpatialDataset(testData, spatialMapping=spatialMapping)[:]

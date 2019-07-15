@@ -48,7 +48,11 @@ class MultiProcessingDataset():
             toReturn = [j for j in range(*i.indices(len(self)))]
         elif type(i) == list: #indexing by list
             placeholder = [j for j in i]
-            toReturn = i
+            toReturn = [j for j in i]
+        if hasattr(self, "use_mp") and self.use_mp == False: #in case it makes more sense to just use a loop instead of dealing with overhead of starting processes
+            for i, j in enumerate(toReturn):
+                toReturn[i] = self[j]
+            return toReturn
         manager = mp.Manager()
         inQ = manager.Queue()
         outQ = manager.Queue()
