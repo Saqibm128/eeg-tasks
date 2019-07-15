@@ -57,11 +57,11 @@ def get_data(split, ref, n_process, num_files, max_length):
     edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
     edfData = read.EdfDataset(split, ref, n_process=n_process, max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA))
     edfData.edf_tokens = edfTokenPaths[:num_files]
-    genders = [1 if item[1]=='m' else 0 for item in genderDict][:num_files]
+    genders = [1 if item=='m' else 0 for item in genders][:num_files]
     return edfData, genders
 
 @ex.capture
-def get_simple_mapping_data(split, batch_size, spatialMapping, num_files, max_length, num_epochs):
+def get_simple_mapping_data(split, batch_size, spatialMapping, num_files, max_length):
     """Based on a really naive, dumb mapping of eeg electrodes into 2d space
 
     Parameters
@@ -86,7 +86,7 @@ def get_simple_mapping_data(split, batch_size, spatialMapping, num_files, max_le
 
 @ex.capture
 def get_model(dropout, spatialMapping, max_length,lr):
-    model = (dropout=dropout, input_shape=(max_length + 1, len(spatialMapping), len(spatialMapping[0]), 1))
+    model = vp_conv2d(dropout=dropout, input_shape=(max_length + 1, len(spatialMapping), len(spatialMapping[0]), 1))
     adam = optimizers.Adam(lr=lr)
     model.compile(adam, loss="categorical_crossentropy", metrics=["binary_accuracy"])
     return model
