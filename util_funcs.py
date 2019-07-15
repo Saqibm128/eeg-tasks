@@ -12,6 +12,10 @@ import multiprocessing as mp
 import queue
 import constants
 
+#http://newbebweb.blogspot.com/2012/02/python-head-ioerror-errno-32-broken.html
+# from signal import signal, SIGPIPE, SIG_DFL
+# signal(SIGPIPE,SIG_DFL)
+
 # to allow us to load data in without dealing with resource issues
 # https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 
@@ -57,7 +61,7 @@ class MultiProcessingDataset():
         inQ = manager.Queue()
         outQ = manager.Queue()
         [inQ.put(j) for j in toReturn]
-        # [inQ.put(None) for j in range(self.n_process)]
+        [inQ.put(None) for j in range(self.n_process)]
         processes = [
             mp.Process(
                 target=self.helper_process,
@@ -78,21 +82,25 @@ class MultiProcessingDataset():
                     print("SLURM sent OOM event, retrying: ", res)
                 res = self[place] #slurm sent oom event, we gotta try again.
             toReturn[index] = res
+        for index, res in enumerate(toReturn):
+            if type(res) == int:
+                toReturn[index] = self[res]
         return toReturn
         # return Pool().map(self.__getitem__, toReturn)
 
     def helper_process(self, in_q, out_q):
-        try: #wait for blocking exception
-            while True:
-                i = in_q.get(block=True, timeout=1)
-                if i % 5 == 0:
-                    if not hasattr(self, "verbose") or self.verbose == True:
-                        print("retrieving: {}".format(i))
+        for i in iter(in_q.get, None):
+            if i % 10 == 0:
+                if not hasattr(self, "verbose") or self.verbose == True:
+                    print("retrieving: {}".format(i))
+            try:
                 out_q.put((i, self[i]))
-        except queue.Empty:
-            if not hasattr(self, "verbose") or self.verbose == True:
-                print("Process completed")
-            return
+            except Exception as e:
+                if not hasattr(self, "verbose") or self.verbose == True:
+                    print("Encounter unexpected exception, continuing: ",e) #may be just slurm OOM event
+                continue
+
+
 
 
 def np_rolling_window(a, window):
