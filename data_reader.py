@@ -215,14 +215,16 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             resample=pd.Timedelta(
                 seconds=constants.COMMON_DELTA),
             max_length=None,
-            expand_tse=True,
+            expand_tse=False, #Save memory, don't try to make time by annotation df
+            dtype=np.float32,
             n_process=None,
             use_average_ref_names=True,
             filter=False,
             lp_cutoff=30,
             hp_cutoff=(constants.COMMON_FREQ/2-2), #get close to nyq without actually hitting it
             order_filt=5,
-            columns_to_use=util_funcs.get_common_channel_names()
+            columns_to_use=util_funcs.get_common_channel_names(),
+            use_numpy=False
             ):
         self.data_split = data_split
         if n_process is None:
@@ -230,6 +232,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         self.n_process = n_process
         self.ref = ref
         self.resample = resample
+        self.dtype = dtype
         self.max_length = max_length
         self.manager = mp.Manager()
         self.edf_tokens = get_all_token_file_names(data_split, ref)
@@ -242,6 +245,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         self.lp_cutoff = lp_cutoff
         self.order_filt = order_filt
         self.columns_to_use = columns_to_use
+        self.use_numpy = use_numpy
 
     def __len__(self):
         return len(self.edf_tokens)
@@ -250,7 +254,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         if self.should_use_mp(i):
             return self.getItemSlice(i)
         data, ann = get_edf_data_and_label_ts_format(
-            self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
+            self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse, dtype=self.dtype, max_length=self.max_length)
         if (self.max_length != None and max(data.index) > self.max_length):
             if type(self.max_length) == pd.Timedelta:
                 data = data.loc[pd.Timedelta(seconds=0):self.max_length]
@@ -269,7 +273,10 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
                     self.resample,
                     order=self.order_filt),
                 axis=0)
-        return data.fillna(method="ffill").fillna(method="bfill"), ann
+        data = data.fillna(method="ffill").fillna(method="bfill")
+        if self.use_numpy:
+            data = data.values
+        return data, ann
     #
     # def get_data_runner(to_get_queue, to_return_queue):
     #     for edf_path in iter(to_get_queue.get, None):
@@ -279,9 +286,9 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
 
 def get_edf_data_and_label_ts_format(
     edf_path, expand_tse=True, resample=pd.Timedelta(
-        seconds=constants.COMMON_DELTA)):
+        seconds=constants.COMMON_DELTA), dtype=np.float32, max_length=None):
     try:
-        edf_data = edf_eeg_2_df(edf_path, resample)
+        edf_data = edf_eeg_2_df(edf_path, resample, dtype=dtype, max_length=max_length)
         tse_data_path = convert_edf_path_to_tse(edf_path)
         if expand_tse:
             tse_data_ts = read_tse_file_and_return_ts(
@@ -358,7 +365,7 @@ def read_tse_file_and_return_ts(tse_path, ts_index):
     return expand_tse_file(ann_y, ts_index)
 
 
-def expand_tse_file(ann_y, ts_index):
+def expand_tse_file(ann_y, ts_index, dtype=np.float32):
     ann_y_t = pd.DataFrame(columns=get_annotation_types(), index=ts_index)
     ann_y.apply(lambda row: ann_y_t[row['label']].loc[pd.Timedelta(
         seconds=row['start']):pd.Timedelta(seconds=row['end'])].fillna(row['p'], inplace=True), axis=1)
@@ -366,7 +373,7 @@ def expand_tse_file(ann_y, ts_index):
     return ann_y_t
 
 
-def edf_eeg_2_df(path, resample=None):
+def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None):
     """ Transforms from EDF to pd.df, with channel labels as columns.
         This does not attempt to concatenate multiple time series but only takes
         a single edf filepath
@@ -379,6 +386,12 @@ def edf_eeg_2_df(path, resample=None):
     resample : pd.Timedelta
         if None, returns original data with original sampling
         otherwise, resamples to correct Timedelta using forward filling
+
+    dtype : dtype
+        used to reduce memory consumption (np.float64 can be expensive)
+
+    start : int or pd.Timedelta
+        which place to start at.
 
     Returns
     -------
@@ -394,7 +407,14 @@ def edf_eeg_2_df(path, resample=None):
         start_time = reader.getStartdatetime()
         all_channels = []
         for i, channel_name in enumerate(channel_names):
-            signal_data = reader.readSignal(i)
+            if type(start) != int: #we ask for time t=1 s, then we take into account sample rate
+                start = start/pd.Timedelta(seconds=1/sample_rates[i])
+            if max_length is None: #read everything
+                signal_data = reader.readSignal(i, start=start)
+            else:
+                numStepsToRead = int(np.ceil(max_length / pd.Timedelta(seconds=1/sample_rates[i]))) + 5 #adding a fudge factor of 5 cuz y not.
+                signal_data = reader.readSignal(i, start=start, n=numStepsToRead)
+
             signal_data = pd.Series(
                 signal_data,
                 index=pd.date_range(
@@ -407,6 +427,7 @@ def edf_eeg_2_df(path, resample=None):
             all_channels.append(signal_data)
     data = pd.concat(all_channels, axis=1)
     data.index = data.index - data.index[0]
+    data = data.astype(dtype)
     if resample is not None:
         data = data.resample(resample).mean()
     return data
