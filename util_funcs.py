@@ -69,6 +69,7 @@ class MultiProcessingDataset():
             place, res = outQ.get()
             index = placeholder.index(place)
             if type(res) == int:
+                print("SLURM sent OOM event, retrying: ", res)
                 res = self[place] #slurm sent oom event, we gotta try again.
             toReturn[index] = res
         return toReturn

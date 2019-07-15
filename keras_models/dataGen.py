@@ -5,7 +5,7 @@ import pandas as pd
 
 #Wrapper classes for batch training in Keras
 
-def three_dim_pad(data, mask_value, num_channels=1):
+def three_dim_pad(data, mask_value, num_channels=1, max_length=None):
     """Used to pad in a list of variable length data
 
     Parameters
@@ -23,7 +23,8 @@ def three_dim_pad(data, mask_value, num_channels=1):
     """
     # for n_batch, n_timestep, n_input matrix, pad_sequences fails
     lengths = [datum.shape[0] for datum in data]
-    maxLength = max(lengths)
+    if max_length is not None:
+        maxLength = max(lengths)
     paddedBatch = np.zeros((len(data), maxLength, *data[0].shape[1:], num_channels))
     paddedBatch.fill(mask_value)
     for i, datum in enumerate(data):
@@ -31,7 +32,11 @@ def three_dim_pad(data, mask_value, num_channels=1):
             datum = datum.values
         if num_channels == 1:
             datum = datum.reshape(*datum.shape, 1)
-        paddedBatch[i, 0:lengths[i], :] = datum
+        if max_length is None:
+            paddedBatch[i, 0:lengths[i], :] = datum
+        else:
+            datum = datum[0:max_length,:]
+            paddedBatch[i, 0:datum.shape[0], :] = datum
     return paddedBatch
 
 class DataGenerator(keras.utils.Sequence):
@@ -92,17 +97,15 @@ class DataGenerator(keras.utils.Sequence):
 class EdfDataGenerator(DataGenerator):
     'Can accept EdfDataset and any of its intermediates to make data (i.e. sftft)'
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=10, shuffle=True):
+                 n_classes=10, shuffle=True, max_length=None):
         super().__init__(list_IDs=list(range(len(dataset))), labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
                      n_classes=n_classes, shuffle=shuffle)
         self.dataset = dataset
         self.mask_value=mask_value
+        self.max_length=max_length
     def get_x_y(self, i):
         if self.labels is not None:
-            print(i)
             y = self.labels[i]
-            print(y)
-            print(y.shape)
         data = self.dataset[i]
         x = [datum[0] for datum in data]
         if self.labels is None:
@@ -128,7 +131,7 @@ class EdfDataGenerator(DataGenerator):
         and allow for MultiProcessingDataset to work (only works for slices) '''
 
         x, y = self.get_x_y(list_IDs_temp)
-        x = three_dim_pad(x, self.mask_value)
+        x = three_dim_pad(x, self.mask_value, max_length=self.max_length)
         if self.labels is None:
             return x, y
         else:

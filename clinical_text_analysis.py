@@ -1,5 +1,7 @@
 import re
-from data_reader import convert_edf_path_to_txt, get_all_clinical_notes, get_all_token_file_names
+from data_reader import convert_edf_path_to_txt, get_all_clinical_notes, get_all_token_file_names, get_token_file_names
+from os import path
+
 
 
 def demux_to_tokens(dataDictItems):
@@ -25,9 +27,9 @@ def demux_to_tokens(dataDictItems):
     labels = []  # duplicate/demux single labels depending on number of tokens per session
     for i, txtPath in enumerate(clinicalTxtPaths):
         session_dir = path.dirname(txtPath)
-        session_tkn_files = sorted(read.get_token_file_names(session_dir))
+        session_tkn_files = sorted(get_token_file_names(session_dir))
         tokenFiles += session_tkn_files
-        labels += [singlabels[i] for tkn_file in session_tkn_files]
+        labels += [singLabels[i] for tkn_file in session_tkn_files]
     return tokenFiles, labels
 
 

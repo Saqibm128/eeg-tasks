@@ -252,7 +252,10 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         data, ann = get_edf_data_and_label_ts_format(
             self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse)
         if (self.max_length != None and max(data.index) > self.max_length):
-            data = data.loc[pd.Timedelta(seconds=0):self.max_length]
+            if type(self.max_length) == pd.Timedelta:
+                data = data.loc[pd.Timedelta(seconds=0):self.max_length]
+            else:
+                data = data.iloc[0:self.max_length]
         if self.use_average_ref_names:
             data = data[self.columns_to_use]
         if self.filter:
