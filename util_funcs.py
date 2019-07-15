@@ -65,7 +65,8 @@ class MultiProcessingDataset():
                     inQ,
                     outQ)) for j in range(
                 self.n_process)]
-        print("Starting {} processes".format(self.n_process))
+        if not hasattr(self, "verbose") or self.verbose == True:
+            print("Starting {} processes".format(self.n_process))
         [p.start() for p in processes]
         [p.join() for p in processes]
         startIndex = toReturn[0]
@@ -73,7 +74,8 @@ class MultiProcessingDataset():
             place, res = outQ.get()
             index = placeholder.index(place)
             if type(res) == int:
-                print("SLURM sent OOM event, retrying: ", res)
+                if not hasattr(self, "verbose") or self.verbose == True:
+                    print("SLURM sent OOM event, retrying: ", res)
                 res = self[place] #slurm sent oom event, we gotta try again.
             toReturn[index] = res
         return toReturn
@@ -84,10 +86,12 @@ class MultiProcessingDataset():
             while True:
                 i = in_q.get(block=True, timeout=1)
                 if i % 5 == 0:
-                    print("retrieving: {}".format(i))
+                    if not hasattr(self, "verbose") or self.verbose == True:
+                        print("retrieving: {}".format(i))
                 out_q.put((i, self[i]))
         except queue.Empty:
-            print("Process completed")
+            if not hasattr(self, "verbose") or self.verbose == True:
+                print("Process completed")
             return
 
 
