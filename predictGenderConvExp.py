@@ -16,13 +16,14 @@ from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
 from wf_analysis.spatialTemporalDatasets import BasicSpatialDataset
 from keras_models.dataGen import EdfDataGenerator
-from keras_models.vanPutten import simplified_vp_conv2d
+from keras_models.vanPutten import vp_conv2d
+from keras import optimizers
 import pickle as pkl
 import sacred
 ex = sacred.Experiment(name="gender_predict_conv")
 
 from sacred.observers import MongoObserver
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 @ex.named_config
@@ -46,6 +47,7 @@ def config():
     use_early_stopping = True
     patience = 10
     num_epochs = 100
+    lr = 0.0001
 
 
 
@@ -78,23 +80,24 @@ def get_simple_mapping_data(split, batch_size, spatialMapping, num_files, max_le
 
     """
     edfData, genders = get_data(split)
-    edfData = BasicSpatialDataset(edfData[:], spatialMapping=spatialMapping)
+    edfData = edfData[:]
     edfData.use_mp = False
     return EdfDataGenerator(edfData, n_classes=2, labels=np.array(genders), batch_size=batch_size, max_length=max_length)
 
 @ex.capture
-def get_model(dropout, spatialMapping, max_length):
-    model = simplified_vp_conv2d(dropout=dropout, input_shape=(max_length + 1, len(spatialMapping), len(spatialMapping[0]), 1))
-    model.compile("sgd", loss="categorical_crossentropy", metrics=["binary_accuracy"])
+def get_model(dropout, spatialMapping, max_length,lr):
+    model = (dropout=dropout, input_shape=(max_length + 1, len(spatialMapping), len(spatialMapping[0]), 1))
+    adam = optimizers.Adam(lr=lr)
+    model.compile(adam, loss="categorical_crossentropy", metrics=["binary_accuracy"])
     return model
 
 @ex.main
-def main(train_split, test_split, spatialMapping, num_epochs):
+def main(train_split, test_split, spatialMapping, num_epochs, lr, n_process):
     trainDataGenerator = get_simple_mapping_data(train_split)
     model = get_model()
     x, y  = trainDataGenerator[0]
     y_pred = model.predict(x)
-    model.fit_generator(trainDataGenerator, epochs=num_epochs)
+    model.fit_generator(trainDataGenerator, epochs=num_epochs, use_multiprocessing=True, workers=n_process)
     testData, testGender = get_data(test_split)
     testData = testData[:]
     testData = BasicSpatialDataset(testData, spatialMapping=spatialMapping)[:]

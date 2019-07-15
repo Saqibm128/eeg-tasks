@@ -23,9 +23,9 @@ def three_dim_pad(data, mask_value, num_channels=1, max_length=None):
     """
     # for n_batch, n_timestep, n_input matrix, pad_sequences fails
     lengths = [datum.shape[0] for datum in data]
-    if max_length is not None:
-        maxLength = max(lengths)
-    paddedBatch = np.zeros((len(data), maxLength, *data[0].shape[1:], num_channels))
+    if max_length is None:
+        max_length = max(lengths)
+    paddedBatch = np.zeros((len(data), max_length, *data[0].shape[1:], num_channels))
     paddedBatch.fill(mask_value)
     for i, datum in enumerate(data):
         if type(datum) == pd.DataFrame:
@@ -97,12 +97,13 @@ class DataGenerator(keras.utils.Sequence):
 class EdfDataGenerator(DataGenerator):
     'Can accept EdfDataset and any of its intermediates to make data (i.e. sftft)'
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=10, shuffle=True, max_length=None):
+                 n_classes=10, shuffle=True, max_length=None, time_first=True):
         super().__init__(list_IDs=list(range(len(dataset))), labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
                      n_classes=n_classes, shuffle=shuffle)
         self.dataset = dataset
         self.mask_value=mask_value
         self.max_length=max_length
+        self.time_first = time_first
     def get_x_y(self, i):
         if self.labels is not None:
             y = self.labels[i]
@@ -132,6 +133,8 @@ class EdfDataGenerator(DataGenerator):
 
         x, y = self.get_x_y(list_IDs_temp)
         x = three_dim_pad(x, self.mask_value, max_length=self.max_length)
+        if not self.time_first: # we want batch by feature by time
+            x = x.transpose((0, 2,1, *[i + 3 for i in range(x.ndim - 3)]))
         if self.labels is None:
             return x, y
         else:
