@@ -58,7 +58,7 @@ def config():
     batch_size = 64
     dropout = 0.25
     use_early_stopping = True
-    patience = 30
+    patience = 20
     model_name = "best_cnn_model.h5"
     precached_pkl = "train_data.pkl"
     precached_test_pkl = "test_data.pkl"
@@ -195,9 +195,10 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
     accuracy = accuracy_score(testGender, y_pred.argmax(axis=1))
 
     return {
+        'history': history.history,
         'val_scores': {
-            'val_loss': min(history.history['val_loss']),
-            'val_acc': max(history.history['val_binary_accuracy']),
+            'min_val_loss': min(history.history['val_loss']),
+            'max_val_acc': max(history.history['val_binary_accuracy']),
         },
         'test_scores': {
         'f1': f1,
