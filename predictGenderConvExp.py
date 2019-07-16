@@ -20,21 +20,32 @@ from keras import optimizers
 import pickle as pkl
 import sacred
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-ex = sacred.Experiment(name="gender_predict_conv")
+ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
 
 from sacred.observers import MongoObserver
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
+@ex.named_config
+def conv_spatial_filter_2_2():
+    conv_spatial_filter = (2,2)
+
+@ex.named_config
+def conv_spatial_filter_3_3():
+    conv_spatial_filter = (3,3)
+
+@ex.named_config
+def conv_temporal_filter_1_7():
+    conv_temporal_filter=(1,7)
+
+@ex.named_config
+def conv_temporal_filter_2_3():
+    conv_temporal_filter=(2,3)
 
 @ex.named_config
 def debug():
     num_files=200
     batch_size=16
     num_epochs=20
-
-@ex.named_config
-def four_seconds():
-    max_length = 4 * constants.COMMON_FREQ
 
 @ex.config
 def config():
@@ -43,12 +54,14 @@ def config():
     ref = "01_tcp_ar"
     n_process = 7
     num_files = None
-    max_length = 2 * constants.COMMON_FREQ
+    max_length = 4 * constants.COMMON_FREQ
     batch_size = 64
     dropout = 0.25
     use_early_stopping = True
     patience = 50
     model_name = "best_cnn_model.h5"
+    precached_pkl = "train_data.pkl"
+    precached_test_pkl = "test_data.pkl"
     num_epochs = 500
     lr = 0.0001
     validation_size = 0.2
@@ -78,11 +91,16 @@ def get_cb_list(use_early_stopping):
     else:
         return [get_model_checkpoint()]
 @ex.capture
-def get_data(split, ref, n_process, num_files, max_length):
+def get_data(split, ref, n_process, num_files, max_length, precached_pkl):
     genderDict = cta.getGenderAndFileNames(split, ref)
     edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
     edfData = read.EdfDataset(split, ref, n_process=n_process, max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA), use_numpy=True)
     edfData.edf_tokens = edfTokenPaths[:num_files]
+    if path.exists(precached_pkl):
+        edfData = pkl.load(open(precached_pkl, 'rb'))
+    else:
+        edfData = edfData[:]
+        pkl.dump(edfData, open(precached_pkl, 'wb'))
     genders = [1 if item=='m' else 0 for item in genders][:num_files]
     return edfData, genders
 
@@ -150,9 +168,13 @@ def get_custom_model(
 
 
 @ex.capture
-def get_test_data(test_split, max_length):
+def get_test_data(test_split, max_length, precached_test_pkl):
     testData, testGender = get_data(test_split)
-    testData = testData[:]
+    if path.exists(precached_test_pkl):
+        testData = pkl.load(open(precached_test_pkl, 'rb'))
+    else:
+        testData = testData[:]
+        pkl.dump(testData, open(precached_test_pkl, 'wb'))
     testData = np.stack([datum[0] for datum in testData])
     testData = testData[:, 0:max_length]
     testData=testData.reshape(*testData.shape, 1).transpose(0,2,1,3)

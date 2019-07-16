@@ -55,16 +55,16 @@ def conv2d_gridsearch(
         if i == 2:
             num_spatial_filter *= 3 #match van_putten magic
         layers += [
-            Conv2D(num_spatial_filter, conv_spatial_filter, input_shape=input_shape, padding='valid'),
+            Conv2D(num_spatial_filter, conv_spatial_filter, input_shape=input_shape, padding='same'),
             Activation('relu'),
-            MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride),
+            MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride, padding='same'),
             Dropout(dropout),
         ]
     for i in range(num_conv_temporal_layers):
         layers += [
-            Conv2D(num_temporal_filter, conv_temporal_filter, input_shape=input_shape, padding='valid'),
+            Conv2D(num_temporal_filter, conv_temporal_filter, input_shape=input_shape, padding='same'),
             Activation('relu'),
-            MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride),
+            MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride, padding='same'),
             Dropout(dropout),
         ]
 
