@@ -15,7 +15,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator
-from keras_models.vanPutten import vp_conv2d
+from keras_models.vanPutten import vp_conv2d, conv2d_gridsearch
 from keras import optimizers
 import pickle as pkl
 import sacred
@@ -28,9 +28,9 @@ from sacred.observers import MongoObserver
 
 @ex.named_config
 def debug():
-    num_files=20
-    batch_size=8
-    num_epochs=1
+    num_files=200
+    batch_size=16
+    num_epochs=20
 
 @ex.named_config
 def four_seconds():
@@ -44,14 +44,23 @@ def config():
     n_process = 7
     num_files = None
     max_length = 2 * constants.COMMON_FREQ
-    batch_size = 32
+    batch_size = 64
     dropout = 0.25
     use_early_stopping = True
-    patience = 30
+    patience = 50
     model_name = "best_cnn_model.h5"
     num_epochs = 1000
     lr = 0.0001
     validation_size = 0.2
+    use_vp = True
+    #for custom architectures
+    num_conv_spatial_layers=1
+    num_conv_temporal_layers=1
+    conv_spatial_filter=(3,3)
+    num_spatial_filter=100
+    conv_temporal_filter=(2,5)
+    num_temporal_filter=300
+    max_pool_size=(2,2)
 
 
 @ex.capture
@@ -99,11 +108,43 @@ def get_data_generator(split, batch_size, num_files, max_length):
     return EdfDataGenerator(edfData, precache=True, time_first=False, n_classes=2, labels=np.array(genders), batch_size=batch_size, max_length=max_length)
 
 @ex.capture
-def get_model(dropout, max_length,lr):
-    model = vp_conv2d(dropout=dropout, input_shape=(21, max_length, 1))
+def get_model(dropout, max_length,lr, use_vp):
+    if use_vp:
+        model = vp_conv2d(dropout=dropout, input_shape=(21, max_length, 1))
+        adam = optimizers.Adam(lr=lr)
+        model.compile(adam, loss="categorical_crossentropy", metrics=["binary_accuracy"])
+        return model
+    else:
+        return get_custom_model()
+
+@ex.capture
+def get_custom_model(
+    dropout,
+    max_length,
+    lr,
+    num_conv_spatial_layers=1,
+    num_conv_temporal_layers=1,
+    conv_spatial_filter=(3,3),
+    num_spatial_filter=100,
+    conv_temporal_filter=(2,5),
+    num_temporal_filter=300,
+    max_pool_size=(2,2)
+    ):
+    model = conv2d_gridsearch(
+        dropout=dropout,
+        input_shape=(21, max_length, 1),
+        num_conv_spatial_layers=num_conv_spatial_layers,
+        num_conv_temporal_layers=num_conv_temporal_layers,
+        conv_spatial_filter=conv_spatial_filter,
+        num_spatial_filter=num_spatial_filter,
+        conv_temporal_filter=conv_temporal_filter,
+        num_temporal_filter=num_temporal_filter,
+        max_pool_size=max_pool_size
+        )
     adam = optimizers.Adam(lr=lr)
     model.compile(adam, loss="categorical_crossentropy", metrics=["binary_accuracy"])
     return model
+
 
 @ex.capture
 def get_test_data(test_split, max_length):
