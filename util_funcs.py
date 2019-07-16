@@ -11,7 +11,7 @@ from sacred.serializer import restore  # to return a stored sacred result back
 import multiprocessing as mp
 import queue
 import constants
-
+from functools import lru_cache
 #http://newbebweb.blogspot.com/2012/02/python-head-ioerror-errno-32-broken.html
 # from signal import signal, SIGPIPE, SIG_DFL
 # signal(SIGPIPE,SIG_DFL)
@@ -139,31 +139,30 @@ def get_abs_files(root_dir_path):
     return subdirs
 
 
-cached_channel_names = None
 
-
-def get_common_channel_names():
-    global cached_channel_names
-    if cached_channel_names is None:
-        cached_channel_names = list(
-            pd.read_csv(
-                "/home/ms994/dbmi_eeg_clustering/assets/channel_names.csv",
-                header=None)[1])
+@lru_cache(10)
+def get_common_channel_names(): #21 channels in all edf datafiles
+    cached_channel_names = list(
+        pd.read_csv(
+            "/home/ms994/dbmi_eeg_clustering/assets/channel_names.csv",
+            header=None)[1])
     return cached_channel_names
 
+@lru_cache(10)
+def get_file_sizes(split, ref):
+    assert split in get_data_split()
+    assert ref in get_reference_node_types()
+    return pd.read_csv("../assets/{}_{}_file_lengths.csv".format(split, ref), header=None, index_col=[0])
 
-cached_annotation_csv = None
 
-
+@lru_cache(10)
 def get_annotation_csv():
-    global cached_annotation_csv
-    if cached_annotation_csv is None:
-        cached_annotation_csv = pd.read_csv(
-            "/home/ms994/dbmi_eeg_clustering/assets/data_labels.csv",
-            header=0,
-            dtype=str,
-            keep_default_na=False,
-        )
+    cached_annotation_csv = pd.read_csv(
+        "/home/ms994/dbmi_eeg_clustering/assets/data_labels.csv",
+        header=0,
+        dtype=str,
+        keep_default_na=False,
+    )
     return cached_annotation_csv
 
 

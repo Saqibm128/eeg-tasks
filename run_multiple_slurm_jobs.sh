@@ -10,7 +10,7 @@ do
             do
               for num_spatial_filter in 50 100 200 400
               do
-                echo sbatch -n 6 --mem-per-cpu 6G -t 1:00:00 -p gpu --gres=gpu:1 run.sh model_name=$(hexdump -n 16 -e '4/4 "%08X" 1 "\n"' /dev/urandom).h5 n_process=6 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers $conv_spatial_filter num_spatial_filter=$num_spatial_filter $conv_temporal_filter
+                sbatch -n 6 --mem-per-cpu 6G -t 1:00:00 -p gpu --gres=gpu:1 run.sh model_name=$(hexdump -n 16 -e '4/4 "%08X" 1 "\n"' /dev/urandom).h5 n_process=6 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers $conv_spatial_filter num_spatial_filter=$num_spatial_filter $conv_temporal_filter
               done
         done
       done

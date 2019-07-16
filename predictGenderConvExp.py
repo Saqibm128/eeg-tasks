@@ -58,7 +58,7 @@ def config():
     batch_size = 64
     dropout = 0.25
     use_early_stopping = True
-    patience = 50
+    patience = 30
     model_name = "best_cnn_model.h5"
     precached_pkl = "train_data.pkl"
     precached_test_pkl = "test_data.pkl"
