@@ -2,6 +2,7 @@
 import numpy as np
 import keras
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 #Wrapper classes for batch training in Keras
 
@@ -40,7 +41,10 @@ def three_dim_pad(data, mask_value, num_channels=1, max_length=None):
     return paddedBatch
 
 class DataGenerator(keras.utils.Sequence):
-    'Generates data for Keras'
+    '''
+    Generates data for Keras, based on code from https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
+    Primarily made because I thought data wouldn't fit inside memory
+    '''
     def __init__(self, list_IDs, labels, batch_size=32, dim=(32,32,32), n_channels=1,
                  n_classes=10, shuffle=True):
         'Initialization'
@@ -110,6 +114,24 @@ class EdfDataGenerator(DataGenerator):
         self.precache = precache
         if type(self.labels) == list:
             self.labels = np.array(self.labels)
+
+    def create_validation_train_split(self, validation_size=0.1):
+        '''
+        Used to make a split in the EdfDataGenerator with respect to the labels; wasn't sure where better to place this for a data_generator class
+        '''
+        if not self.precache:
+            raise Exception("NOT IMPLEMENTED")
+        train_data, validation_data, train_labels, validation_labels = train_test_split(self.dataset, self.labels, test_size=validation_size, stratify=self.labels)
+
+        train_data_gen = EdfDataGenerator(dataset=train_data, mask_value=self.mask_value, labels=train_labels, batch_size=self.batch_size, dim=self.dim, n_channels=self.n_channels,
+                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache)
+
+
+        validation_data_gen = EdfDataGenerator( dataset=validation_data, mask_value=self.mask_value, labels=validation_labels, batch_size=self.batch_size, dim=self.dim, n_channels=self.n_channels,
+                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache)
+
+        return train_data_gen, validation_data_gen
+
 
     def get_x_y(self, i):
         if self.precache:

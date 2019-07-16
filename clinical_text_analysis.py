@@ -1,6 +1,8 @@
 import re
 from data_reader import convert_edf_path_to_txt, get_all_clinical_notes, get_all_token_file_names, get_token_file_names
 from os import path
+import argparse
+import pandas as pd
 
 
 
@@ -138,3 +140,7 @@ def getAgesAndFileNames(split, ref):
     for toDel in toDels:
         del ages[toDel]
     return list(ages.items())
+
+if __name__ == "__main__":
+    splits = ["dev_test", "train"]
+    file_stats = pd.DataFrame(columns=["sessionName", "patientName", "reference_system", "split", "gender", "age", "heart_rate", "data_length"])

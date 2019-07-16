@@ -14,12 +14,12 @@ from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
-from wf_analysis.spatialTemporalDatasets import BasicSpatialDataset
 from keras_models.dataGen import EdfDataGenerator
 from keras_models.vanPutten import vp_conv2d
 from keras import optimizers
 import pickle as pkl
 import sacred
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv")
 
 from sacred.observers import MongoObserver
@@ -28,10 +28,13 @@ from sacred.observers import MongoObserver
 
 @ex.named_config
 def debug():
-    max_length=constants.COMMON_FREQ
     num_files=20
     batch_size=8
     num_epochs=1
+
+@ex.named_config
+def four_seconds():
+    max_length = 4 * constants.COMMON_FREQ
 
 @ex.config
 def config():
@@ -43,25 +46,38 @@ def config():
     max_length = 2 * constants.COMMON_FREQ
     batch_size = 32
     dropout = 0.25
-    spatialMapping = constants.SIMPLE_CONV2D_MAP
     use_early_stopping = True
-    patience = 10
-    num_epochs = 100
+    patience = 30
+    model_name = "best_cnn_model.h5"
+    num_epochs = 1000
     lr = 0.0001
+    validation_size = 0.2
 
 
+@ex.capture
+def get_model_checkpoint(model_name):
+    return ModelCheckpoint(model_name, monitor='val_loss', save_best_only=True, verbose=1)
 
+@ex.capture
+def get_early_stopping(patience):
+    return EarlyStopping(patience=patience, verbose=1)
+@ex.capture
+def get_cb_list(use_early_stopping):
+    if use_early_stopping:
+        return [get_early_stopping(), get_model_checkpoint()]
+    else:
+        return [get_model_checkpoint()]
 @ex.capture
 def get_data(split, ref, n_process, num_files, max_length):
     genderDict = cta.getGenderAndFileNames(split, ref)
     edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
-    edfData = read.EdfDataset(split, ref, n_process=n_process, max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA))
+    edfData = read.EdfDataset(split, ref, n_process=n_process, max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA), use_numpy=True)
     edfData.edf_tokens = edfTokenPaths[:num_files]
     genders = [1 if item=='m' else 0 for item in genders][:num_files]
     return edfData, genders
 
 @ex.capture
-def get_simple_mapping_data(split, batch_size, spatialMapping, num_files, max_length):
+def get_data_generator(split, batch_size, num_files, max_length):
     """Based on a really naive, dumb mapping of eeg electrodes into 2d space
 
     Parameters
@@ -80,35 +96,43 @@ def get_simple_mapping_data(split, batch_size, spatialMapping, num_files, max_le
 
     """
     edfData, genders = get_data(split)
-    edfData = edfData[:]
-    edfData.use_mp = False
-    return EdfDataGenerator(edfData, n_classes=2, labels=np.array(genders), batch_size=batch_size, max_length=max_length)
+    return EdfDataGenerator(edfData, precache=True, time_first=False, n_classes=2, labels=np.array(genders), batch_size=batch_size, max_length=max_length)
 
 @ex.capture
-def get_model(dropout, spatialMapping, max_length,lr):
-    model = vp_conv2d(dropout=dropout, input_shape=(max_length + 1, len(spatialMapping), len(spatialMapping[0]), 1))
+def get_model(dropout, max_length,lr):
+    model = vp_conv2d(dropout=dropout, input_shape=(21, max_length, 1))
     adam = optimizers.Adam(lr=lr)
     model.compile(adam, loss="categorical_crossentropy", metrics=["binary_accuracy"])
     return model
 
+@ex.capture
+def get_test_data(test_split, max_length):
+    testData, testGender = get_data(test_split)
+    testData = testData[:]
+    testData = np.stack([datum[0] for datum in testData])
+    testData = testData[:, 0:max_length]
+    testData=testData.reshape(*testData.shape, 1).transpose(0,2,1,3)
+    return testData, testGender
+
 @ex.main
-def main(train_split, test_split, spatialMapping, num_epochs, lr, n_process):
-    trainDataGenerator = get_simple_mapping_data(train_split)
+def main(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length):
+    trainValidationDataGenerator = get_data_generator(train_split)
+    trainDataGenerator, validationDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size=validation_size)
     model = get_model()
     x, y  = trainDataGenerator[0]
     y_pred = model.predict(x)
-    model.fit_generator(trainDataGenerator, epochs=num_epochs, use_multiprocessing=True, workers=n_process)
-    testData, testGender = get_data(test_split)
-    testData = testData[:]
-    testData = BasicSpatialDataset(testData, spatialMapping=spatialMapping)[:]
-    testData = np.stack([datum[0] for datum in testData])
-    testData=testData.reshape(*testData.shape, 1)
+
+    history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator)
+
+    testData, testGender = get_test_data()
     y_pred = model.predict(testData)
-    auc = roc_auc_score(testGender, y_pred.argmax())
-    f1_score = f1_score(testGender, y_pred.argmax())
-    accuracy = accuracy_score(testGender, y_pred.argmax())
+
+    auc = roc_auc_score(testGender, y_pred.argmax(axis=1))
+    f1 = f1_score(testGender, y_pred.argmax(axis=1))
+    accuracy = accuracy_score(testGender, y_pred.argmax(axis=1))
+
     return {'test_scores': {
-        'f1': f1_score,
+        'f1': f1,
         'acc': accuracy,
         'auc': auc
     }}
