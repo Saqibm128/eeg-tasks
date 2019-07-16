@@ -147,7 +147,7 @@ def get_common_channel_names():
     if cached_channel_names is None:
         cached_channel_names = list(
             pd.read_csv(
-                "/home/ms994/dbmi_eeg_clustering/channel_names.csv",
+                "/home/ms994/dbmi_eeg_clustering/assets/channel_names.csv",
                 header=None)[1])
     return cached_channel_names
 
@@ -159,7 +159,7 @@ def get_annotation_csv():
     global cached_annotation_csv
     if cached_annotation_csv is None:
         cached_annotation_csv = pd.read_csv(
-            "/home/ms994/dbmi_eeg_clustering/data_labels.csv",
+            "/home/ms994/dbmi_eeg_clustering/assets/data_labels.csv",
             header=0,
             dtype=str,
             keep_default_na=False,
