@@ -15,30 +15,6 @@ from scipy.signal import butter, lfilter
 import pywt
 from wf_analysis import filters
 
-#TODO: Move appropriate code from here into wf_analysis
-
-class Seq2SeqFFTDataset(util_funcs.MultiProcessingDataset):
-    # ndim = None
-    # shape = None
-    def __init__(self, edfFFTData, n_process=None):
-        self.edfFFTData = edfFFTData
-        self.n_process = n_process
-        if n_process is None:
-            self.n_process = mp.cpu_count()
-        # self.shape = np.asarray(self[0][0]).shape
-        # self.ndim = len(self.shape)
-        # self.shape = (len(self), *self.shape)
-
-    def __len__(self):
-        return len(self.edfFFTData)
-
-    def __getitem__(self, i):
-        if self.should_use_mp(i):
-            return self.getItemSlice(i)
-        fftData, ann = self.edfFFTData[i]
-        fftData = (fftData).transpose((1, 0, 2)).reshape(fftData.shape[1], -1)
-        return fftData
-
 
 class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
     freq_bins = [0.2 * i for i in range(50)] + list(range(10, 80, 1))
