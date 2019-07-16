@@ -65,6 +65,7 @@ def config():
     num_epochs = 500
     lr = 0.0001
     validation_size = 0.2
+    use_cached_pkl = True
     use_vp = True
     #for custom architectures
     num_conv_spatial_layers=1
@@ -91,13 +92,13 @@ def get_cb_list(use_early_stopping):
     else:
         return [get_model_checkpoint()]
 @ex.capture
-def get_data(split, ref, n_process, num_files, max_length, precached_pkl):
+def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl):
     genderDict = cta.getGenderAndFileNames(split, ref)
     edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
     edfData = read.EdfDataset(split, ref, n_process=n_process, max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA), use_numpy=True)
     edfData.edf_tokens = edfTokenPaths[:num_files]
-    if path.exists(precached_pkl):
-        edfData = pkl.load(open(precached_pkl, 'rb'))
+    if path.exists(precached_pkl) and use_cached_pkl:
+        edfData = pkl.load(open(precached_pkl, 'rb'))[:num_files]
     else:
         edfData = edfData[:]
         pkl.dump(edfData, open(precached_pkl, 'wb'))
@@ -168,13 +169,8 @@ def get_custom_model(
 
 
 @ex.capture
-def get_test_data(test_split, max_length, precached_test_pkl):
-    testData, testGender = get_data(test_split)
-    if path.exists(precached_test_pkl):
-        testData = pkl.load(open(precached_test_pkl, 'rb'))
-    else:
-        testData = testData[:]
-        pkl.dump(testData, open(precached_test_pkl, 'wb'))
+def get_test_data(test_split, max_length, precached_test_pkl, use_cached_pkl):
+    testData, testGender = get_data(test_split, precached_pkl=precached_test_pkl)
     testData = np.stack([datum[0] for datum in testData])
     testData = testData[:, 0:max_length]
     testData=testData.reshape(*testData.shape, 1).transpose(0,2,1,3)
@@ -188,6 +184,7 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
     x, y  = trainDataGenerator[0]
     y_pred = model.predict(x)
 
+
     history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator)
 
     testData, testGender = get_test_data()
@@ -197,7 +194,12 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
     f1 = f1_score(testGender, y_pred.argmax(axis=1))
     accuracy = accuracy_score(testGender, y_pred.argmax(axis=1))
 
-    return {'test_scores': {
+    return {
+        'val_scores': {
+            'val_loss': min(history.history['val_loss']),
+            'val_acc': max(history.history['val_binary_accuracy']),
+        },
+        'test_scores': {
         'f1': f1,
         'acc': accuracy,
         'auc': auc

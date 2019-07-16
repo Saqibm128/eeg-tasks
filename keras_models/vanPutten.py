@@ -69,8 +69,9 @@ def conv2d_gridsearch(
         ]
 
 
+    # final conv layer to match VP arch, then flatten and run through dense output
     layers += [
-        Conv2D(num_temporal_filter, (1,3), name="conv6"),
+        Conv2D(num_temporal_filter, (1,3), name="conv6", padding="same"),
         Flatten(),
         Dense(activation='softmax', units=2)
     ]
