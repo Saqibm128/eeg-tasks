@@ -43,7 +43,8 @@ def conv2d_gridsearch(
     num_spatial_filter=100,
     conv_temporal_filter=(2,5),
     num_temporal_filter=300,
-    max_pool_size=(2,2)
+    max_pool_size=(2,2),
+    max_pool_stride=(1,2)
     ):
     max_temporal_filter=max(num_temporal_filter, num_spatial_filter*3)
     layers = [
@@ -56,14 +57,14 @@ def conv2d_gridsearch(
         layers += [
             Conv2D(num_spatial_filter, conv_spatial_filter, input_shape=input_shape, padding='valid'),
             Activation('relu'),
-            MaxPool2D(pool_size=max_pool_size),
+            MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride),
             Dropout(dropout),
         ]
     for i in range(num_conv_temporal_layers):
         layers += [
             Conv2D(num_temporal_filter, conv_temporal_filter, input_shape=input_shape, padding='valid'),
             Activation('relu'),
-            MaxPool2D(pool_size=max_pool_size),
+            MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride),
             Dropout(dropout),
         ]
 

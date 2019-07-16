@@ -23,7 +23,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv")
 
 from sacred.observers import MongoObserver
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 @ex.named_config
@@ -49,7 +49,7 @@ def config():
     use_early_stopping = True
     patience = 50
     model_name = "best_cnn_model.h5"
-    num_epochs = 1000
+    num_epochs = 500
     lr = 0.0001
     validation_size = 0.2
     use_vp = True
@@ -61,6 +61,7 @@ def config():
     conv_temporal_filter=(2,5)
     num_temporal_filter=300
     max_pool_size=(2,2)
+    max_pool_stride=(1,2)
 
 
 @ex.capture
@@ -128,7 +129,8 @@ def get_custom_model(
     num_spatial_filter=100,
     conv_temporal_filter=(2,5),
     num_temporal_filter=300,
-    max_pool_size=(2,2)
+    max_pool_size=(2,2),
+    max_pool_stride=(1,2)
     ):
     model = conv2d_gridsearch(
         dropout=dropout,
@@ -139,7 +141,8 @@ def get_custom_model(
         num_spatial_filter=num_spatial_filter,
         conv_temporal_filter=conv_temporal_filter,
         num_temporal_filter=num_temporal_filter,
-        max_pool_size=max_pool_size
+        max_pool_size=max_pool_size,
+        max_pool_stride=max_pool_stride
         )
     adam = optimizers.Adam(lr=lr)
     model.compile(adam, loss="categorical_crossentropy", metrics=["binary_accuracy"])
