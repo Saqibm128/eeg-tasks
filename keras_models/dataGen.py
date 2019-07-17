@@ -168,10 +168,7 @@ class EdfDataGenerator(DataGenerator):
         x = three_dim_pad(x, self.mask_value, max_length=self.max_length)
         if not self.time_first: # we want batch by feature by time
             x = x.transpose((0, 2,1, *[i + 3 for i in range(x.ndim - 3)]))
-        if self.labels is None:
-            return x, y
-        else:
-            return x,  keras.utils.to_categorical(y, num_classes=self.n_classes)
+        return x,  keras.utils.to_categorical(y, num_classes=self.n_classes)
 
 
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes)

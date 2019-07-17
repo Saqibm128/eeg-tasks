@@ -14,6 +14,126 @@ import re
 from scipy.signal import butter, lfilter
 import pywt
 from wf_analysis import filters
+from addict import Dict
+
+
+class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
+    """
+    Similar to EdfDataset but allows for multiple sampling from the same dataset (i.e. make multiple instances from the same edf token file)
+    """
+
+    RANDOM_SAMPLE_ENSEMBLE = 'RANDOM_SAMPLE_ENSEMBLE'
+
+    def __init__(
+            self,
+            data_split,
+            ref,
+            num_files=None,
+            resample=pd.Timedelta(
+                seconds=constants.COMMON_DELTA),
+            max_length=pd.Timedelta(seconds=4),
+            expand_tse=False, #Save memory, don't try to make time by annotation df
+            dtype=np.float32,
+            n_process=None,
+            use_average_ref_names=True,
+            filter=False,
+            lp_cutoff=30,
+            hp_cutoff=(constants.COMMON_FREQ/2-2), #get close to nyq without actually hitting it
+            order_filt=5,
+            columns_to_use=util_funcs.get_common_channel_names(),
+            use_numpy=True,
+            ensemble_mode=RANDOM_SAMPLE_ENSEMBLE,
+            max_num_samples=20,
+            file_lengths=None, #automatically populated if not given
+            edf_tokens=None,
+            labels=None # labels that map to edf token level
+            ):
+        self.data_split = data_split
+        if n_process is None:
+            n_process = mp.cpu_count()
+        self.n_process = n_process
+        self.ref = ref
+        self.resample = resample
+        self.dtype = dtype
+        if (type(max_length) == int):
+            max_length = max_length * pd.Timedelta(seconds=pd.Timedelta(constants.COMMON_DELTA))
+        self.max_length = max_length
+        self.manager = mp.Manager()
+        if edf_tokens is None:
+            self.edf_tokens = get_all_token_file_names(data_split, ref)
+        else:
+            self.edf_tokens = edf_tokens
+        self.expand_tse = expand_tse
+        self.use_average_ref_names = use_average_ref_names
+        if num_files is not None:
+            self.edf_tokens = self.edf_tokens[0:num_files]
+        self.filter = filter
+        self.hp_cutoff = hp_cutoff
+        self.lp_cutoff = lp_cutoff
+        self.order_filt = order_filt
+        self.columns_to_use = columns_to_use
+        self.use_numpy = use_numpy
+        self.ensemble_mode = ensemble_mode
+        self.max_num_samples = max_num_samples
+        if file_lengths is None:
+            file_lengths = util_funcs.get_file_sizes(data_split, ref)
+        self.file_lengths=file_lengths
+        self.labels = labels
+
+
+        self.index=Dict()
+        currentIndex = 0
+        if self.ensemble_mode == EdfDatasetEnsembler.RANDOM_SAMPLE_ENSEMBLE:
+            for i, token_file in enumerate(self.edf_tokens):
+                totalNumExtractable = int(np.floor(self.file_lengths.loc[token_file] * pd.Timedelta(seconds=1) /max_length))
+                max_num_samples = min(self.max_num_samples, totalNumExtractable) #if file is smaller than max_num_samples * max_length, then we can't extract as many samples
+                chosen_samples = np.random.choice(totalNumExtractable, size=max_num_samples, replace=False)
+                for j, sample_in_token in enumerate(chosen_samples):
+                    self.index[currentIndex].token_file_path = token_file
+                    self.index[currentIndex].sample_num = sample_in_token
+                    self.index[currentIndex].within_token_num = j
+                    if self.labels is not None:
+                        self.index[currentIndex].label = self.labels[i]
+
+
+                    currentIndex+=1
+        else:
+            raise Exception("ensemble_mode {} not implemented".format(self.ensemble_mode))
+
+
+    def __len__(self):
+        return len(self.index)
+
+    def __getitem__(self, i):
+        if self.should_use_mp(i):
+            return self.getItemSlice(i)
+        indexData = self.index[i]
+        data = edf_eeg_2_df(indexData.token_file_path, resample=self.resample, start=pd.Timedelta(indexData.sample_num * self.max_length), max_length=self.max_length)
+        if (self.max_length != None and max(data.index) > self.max_length):
+            if type(self.max_length) == pd.Timedelta:
+                data = data.loc[pd.Timedelta(seconds=0):self.max_length].iloc[0:-1]
+            else:
+                data = data.iloc[0:self.max_length]
+        if self.use_average_ref_names:
+            data = data[self.columns_to_use]
+        if self.filter:
+            data = data.apply(
+                lambda col: filters.butter_bandgap_filter(
+                    col,
+                    lowcut=self.lp_cutoff,
+                    highcut=self.hp_cutoff,
+                    fs=pd.Timedelta(
+                        seconds=1) /
+                    self.resample,
+                    order=self.order_filt),
+                axis=0)
+        data = data.fillna(method="ffill").fillna(method="bfill")
+        if self.use_numpy:
+            data = data.values
+        if self.labels is None:
+            return data
+        else:
+            return data, indexData.label
 
 
 class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
@@ -367,7 +487,7 @@ def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None
         used to reduce memory consumption (np.float64 can be expensive)
 
     start : int or pd.Timedelta
-        which place to start at.
+        which place to start at
 
     Returns
     -------
@@ -380,16 +500,18 @@ def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None
                          for headerDict in reader.getSignalHeaders()]
         sample_rates = [headerDict['sample_rate']
                         for headerDict in reader.getSignalHeaders()]
-        start_time = reader.getStartdatetime()
+        start_time = pd.Timestamp(reader.getStartdatetime())
         all_channels = []
         for i, channel_name in enumerate(channel_names):
-            if type(start) != int: #we ask for time t=1 s, then we take into account sample rate
-                start = start/pd.Timedelta(seconds=1/sample_rates[i])
+            if type(start) == pd.Timedelta: #we ask for time t=1 s, then we take into account sample rate
+                start_temp = start/pd.Timedelta(seconds=1/sample_rates[i])
+            else:
+                start_temp = start
             if max_length is None: #read everything
                 signal_data = reader.readSignal(i, start=start)
             else:
                 numStepsToRead = int(np.ceil(max_length / pd.Timedelta(seconds=1/sample_rates[i]))) + 5 #adding a fudge factor of 5 cuz y not.
-                signal_data = reader.readSignal(i, start=start, n=numStepsToRead)
+                signal_data = reader.readSignal(i, start=start_temp, n=numStepsToRead)
 
             signal_data = pd.Series(
                 signal_data,
