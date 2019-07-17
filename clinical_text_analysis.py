@@ -35,7 +35,7 @@ def demux_to_tokens(dataDictItems):
     return tokenFiles, labels
 
 
-def getGenderAndFileNames(split, ref):
+def getGenderAndFileNames(split, ref, convert_gender_to_num=False):
     all_token_fns = get_all_token_file_names(split, ref)
     num_hits = []
     genders = {}
@@ -65,6 +65,8 @@ def getGenderAndFileNames(split, ref):
     for key, val in genders.items():
         if val is None:
             toDels.append(key)
+        if convert_gender_to_num:
+            genders[key] = 1 if val == 'm' else 0
     for toDel in toDels:
         del genders[toDel]
     return list(genders.items())
