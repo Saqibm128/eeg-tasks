@@ -90,8 +90,10 @@ class MultiProcessingDataset():
 
     def helper_process(self, in_q, out_q):
         for i in iter(in_q.get, None):
-            if i % 10 == 0:
-                if not hasattr(self, "verbose") or self.verbose == True:
+            if not hasattr(self, "verbose") or self.verbose == True:
+                if not hasattr(self, "verbosity"):
+                    self.verbosity = 10
+                if i % self.verbosity == 0:
                     print("retrieving: {}".format(i))
             try:
                 out_q.put((i, self[i]))
@@ -152,7 +154,7 @@ def get_common_channel_names(): #21 channels in all edf datafiles
 def get_file_sizes(split, ref):
     assert split in get_data_split()
     assert ref in get_reference_node_types()
-    return pd.read_csv("../assets/{}_{}_file_lengths.csv".format(split, ref), header=None, index_col=[0])
+    return pd.read_csv("/home/ms994/dbmi_eeg_clustering/assets/{}_{}_file_lengths.csv".format(split, ref), header=None, index_col=[0])
 
 
 @lru_cache(10)
@@ -218,6 +220,7 @@ def get_mongo_client(path="/home/ms994/dbmi_eeg_clustering/config.json"):
         return pymongo.MongoClient(mongo_uri)
 
 
+@lru_cache(10)
 def read_config(path="/home/ms994/dbmi_eeg_clustering/config.json"):
     return json.load(open(path, "rb"))
 

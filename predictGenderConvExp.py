@@ -47,6 +47,16 @@ def debug():
     batch_size=16
     num_epochs=20
 
+@ex.named_config
+def simple_ensemble_samples():
+    '''
+    Not really an ensemble, instead tries to make a series of
+    '''
+    use_random_ensemble=True
+    precached_pkl = "simple_ensemble_train_data.pkl"
+    precached_test_pkl = "simple_ensemble_test_data.pkl"
+    batch_size = 256 #because we have a ton more data if we use random samples like this
+
 @ex.config
 def config():
     train_split = "train"
@@ -76,6 +86,8 @@ def config():
     num_temporal_filter=300
     max_pool_size=(2,2)
     max_pool_stride=(1,2)
+    use_random_ensemble = False
+    max_num_samples=10
 
 
 @ex.capture
@@ -91,22 +103,42 @@ def get_cb_list(use_early_stopping):
         return [get_early_stopping(), get_model_checkpoint()]
     else:
         return [get_model_checkpoint()]
+
+@ex.capture
+def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths):
+    if not use_random_ensemble:
+        edfData = read.EdfDataset(split, ref, n_process=n_process, max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA), use_numpy=True)
+        edfData.edf_tokens = edfTokenPaths[:num_files]
+        return edfData
+    else:
+        edfData = read.EdfDatasetEnsembler(
+            split,
+            ref,
+            n_process=n_process,
+            max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA),
+            use_numpy=True,
+            edf_tokens=edfTokenPaths[:num_files],
+            labels=labels[:num_files],
+            max_num_samples=max_num_samples,
+            )
+        edfData.verbosity = 50
+        return edfData
+
 @ex.capture
 def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl):
-    genderDict = cta.getGenderAndFileNames(split, ref)
+    genderDict = cta.getGenderAndFileNames(split, ref, convert_gender_to_num=True)
     edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
-    edfData = read.EdfDataset(split, ref, n_process=n_process, max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA), use_numpy=True)
-    edfData.edf_tokens = edfTokenPaths[:num_files]
+    edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths)
     if path.exists(precached_pkl) and use_cached_pkl:
         edfData = pkl.load(open(precached_pkl, 'rb'))[:num_files]
     else:
         edfData = edfData[:]
         pkl.dump(edfData, open(precached_pkl, 'wb'))
-    genders = [1 if item=='m' else 0 for item in genders][:num_files]
+    genders = genders[:num_files]
     return edfData, genders
 
 @ex.capture
-def get_data_generator(split, batch_size, num_files, max_length):
+def get_data_generator(split, batch_size, num_files, max_length, use_random_ensemble):
     """Based on a really naive, dumb mapping of eeg electrodes into 2d space
 
     Parameters
@@ -125,7 +157,14 @@ def get_data_generator(split, batch_size, num_files, max_length):
 
     """
     edfData, genders = get_data(split)
-    return EdfDataGenerator(edfData, precache=True, time_first=False, n_classes=2, labels=np.array(genders), batch_size=batch_size, max_length=max_length)
+    return EdfDataGenerator(
+        edfData,
+        precache=True,
+        time_first=False,
+        n_classes=2,
+        labels=np.array(genders) if use_random_ensemble else None,
+        batch_size=batch_size,
+        max_length=max_length)
 
 @ex.capture
 def get_model(dropout, max_length,lr, use_vp):
