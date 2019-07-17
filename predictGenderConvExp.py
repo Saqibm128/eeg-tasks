@@ -128,10 +128,10 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
 def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl):
     genderDict = cta.getGenderAndFileNames(split, ref, convert_gender_to_num=True)
     edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
-    edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths)
     if path.exists(precached_pkl) and use_cached_pkl:
         edfData = pkl.load(open(precached_pkl, 'rb'))[:num_files]
     else:
+        edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths)
         edfData = edfData[:]
         pkl.dump(edfData, open(precached_pkl, 'wb'))
     genders = genders[:num_files]
