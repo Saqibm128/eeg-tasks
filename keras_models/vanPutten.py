@@ -79,30 +79,30 @@ def conv2d_gridsearch(
 
     return Sequential(layers)
 
-def vp_conv2d(dropout=0.25, input_shape=(None)):
+def vp_conv2d(dropout=0.25, input_shape=(None), filter_size=100):
     layers = [
-        Conv2D(100, (3,3), input_shape=input_shape, padding='valid', name="conv1"),
+        Conv2D(filter_size, (3,3), input_shape=input_shape, padding='valid', name="conv1"),
         Activation('relu'),
         MaxPool2D(pool_size=(2, 2), name="maxpool1"),
         Dropout(dropout),
 
-        Conv2D(100, (3,3), name="conv2"),
+        Conv2D(filter_size, (3,3), name="conv2"),
         Activation('relu'),
         MaxPool2D(pool_size=(2, 2), name="maxpool2"),
         Dropout(dropout),
 
-        Conv2D(300, (2,3), name="conv3"),
+        Conv2D(filter_size*3, (2,3), name="conv3"),
         Activation('relu'),
         MaxPool2D(pool_size=(2, 2), name="maxpool3"),
         Dropout(dropout),
 
-        Conv2D(300, (1,7), name="conv4"),
+        Conv2D(filter_size*3, (1,7), name="conv4"),
         Activation('relu'),
         MaxPool2D(pool_size=(1, 2), name="maxpool4"),
         Dropout(dropout),
 
-        Conv2D(300, (1,3), name="conv5"),
-        Conv2D(300, (1,3), name="conv6"),
+        Conv2D(filter_size*3, (1,3), name="conv5"),
+        Conv2D(filter_size*3, (1,3), name="conv6"),
         Flatten(),
         Dense(activation='softmax', units=2)
     ]
