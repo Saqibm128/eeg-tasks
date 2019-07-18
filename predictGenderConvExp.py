@@ -23,7 +23,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
 
 from sacred.observers import MongoObserver
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # trainEdfEnsembler = None
 # testEdfEnsembler = None
@@ -60,6 +60,8 @@ def extra_data_simple_ensemble_samples():
     use_random_ensemble=True
     precached_pkl = "simple_ensemble_train_data_20_segs_max_length_4.pkl"
     precached_test_pkl = "simple_ensemble_test_data_20_segs_max_length_4.pkl"
+    max_num_samples=20 #number of samples of eeg data segments per eeg.edf file
+
 
 
 @ex.named_config
@@ -70,6 +72,8 @@ def simple_ensemble_samples():
     use_random_ensemble=True
     precached_pkl = "simple_ensemble_train_data_max_length_4.pkl"
     precached_test_pkl = "simple_ensemble_test_data_max_length_4.pkl"
+    max_num_samples=10 #number of samples of eeg data segments per eeg.edf file
+
 
 @ex.config
 def config():
@@ -251,6 +255,7 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
         assert len(testGender) == len(_testGendersCopy)
         testEdfEnsembler = get_base_dataset(test_split, labels=testGender, edfTokenPaths=edfTokenPaths)
         testGender = testEdfEnsembler.getEnsembledLabels()
+        assert len(testData) == len(testGender)
     y_pred = model.predict(testData)
 
 
