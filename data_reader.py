@@ -48,6 +48,8 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
             edf_tokens=None,
             labels=None # labels that map to edf token level
             ):
+        if labels is not None:
+            assert len(labels) == len(edf_tokens)
         self.data_split = data_split
         if n_process is None:
             n_process = mp.cpu_count()
@@ -81,7 +83,7 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
         self.labels = labels
 
 
-        self.index=Dict()
+        self.sampleInfo=Dict()
         currentIndex = 0
         if self.ensemble_mode == EdfDatasetEnsembler.RANDOM_SAMPLE_ENSEMBLE:
             for i, token_file in enumerate(self.edf_tokens):
@@ -89,25 +91,53 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
                 max_num_samples = min(self.max_num_samples, totalNumExtractable) #if file is smaller than max_num_samples * max_length, then we can't extract as many samples
                 chosen_samples = np.random.choice(totalNumExtractable, size=max_num_samples, replace=False)
                 for j, sample_in_token in enumerate(chosen_samples):
-                    self.index[currentIndex].token_file_path = token_file
-                    self.index[currentIndex].sample_num = sample_in_token
-                    self.index[currentIndex].within_token_num = j
+                    self.sampleInfo[currentIndex].token_file_path = token_file
+                    self.sampleInfo[currentIndex].sample_num = sample_in_token
+                    self.sampleInfo[currentIndex].within_token_num = j
                     if self.labels is not None:
-                        self.index[currentIndex].label = self.labels[i]
+                        self.sampleInfo[currentIndex].label = self.labels[i]
 
 
                     currentIndex+=1
         else:
             raise Exception("ensemble_mode {} not implemented".format(self.ensemble_mode))
 
+    def getEnsemblePrediction(self, pred_labels):
+        '''
+        Given an n by len(self.sampleInfo) array of predicted labels, get an average
+        of all predictions for a given edf token file, such that it can be compared
+        to self.label.
+
+        Returns an ndarray of 2 by n (if applicable) by len(self.edf_tokens), first index is True, second is average prediction
+        '''
+        assert self.labels is not None
+        pred_vs_true = Dict()
+        for i in range(len(self)):
+            tokenFile = self.sampleInfo[i].token_file_path
+            if tokenFile not in pred_vs_true.keys():
+                pred_vs_true[tokenFile].trueLabel = []
+                pred_vs_true[tokenFile].predLabel = []
+            pred_vs_true[tokenFile].trueLabel.append(self.sampleInfo[i].label)
+            pred_vs_true[tokenFile].predLabel.append(pred_labels[i])
+        toReturn = []
+        for tokenFile in self.edf_tokens:
+            toReturn.append((np.mean(pred_vs_true[tokenFile].trueLabel),np.mean(pred_vs_true[tokenFile].predLabel)))
+        return np.array(toReturn).transpose()
+
+    def getEnsembledLabels(self):
+        labels = []
+        for i in range(len(self)):
+            labels.append(self.sampleInfo[i].label)
+        return np.array(labels)
+
 
     def __len__(self):
-        return len(self.index)
+        return len(self.sampleInfo)
 
     def __getitem__(self, i):
         if self.should_use_mp(i):
             return self.getItemSlice(i)
-        indexData = self.index[i]
+        indexData = self.sampleInfo[i]
         data = edf_eeg_2_df(indexData.token_file_path, resample=self.resample, start=pd.Timedelta(indexData.sample_num * self.max_length), max_length=self.max_length)
         if (self.max_length != None and max(data.index) > self.max_length):
             if type(self.max_length) == pd.Timedelta:

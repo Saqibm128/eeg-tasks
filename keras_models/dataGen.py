@@ -109,8 +109,10 @@ class EdfDataGenerator(DataGenerator):
         self.max_length=max_length
         self.time_first = time_first
 
-        if precache:
+        if precache: #just populate self.labels too if we are precaching anyways
             self.dataset = dataset[:]
+            if self.labels is None:
+                self.labels = np.array([datum[1] for datum in self.dataset])
         self.precache = precache
         if type(self.labels) == list:
             self.labels = np.array(self.labels)

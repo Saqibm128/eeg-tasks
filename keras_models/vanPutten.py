@@ -62,16 +62,16 @@ def conv2d_gridsearch(
         ]
     for i in range(num_conv_temporal_layers):
         layers += [
-            Conv2D(num_temporal_filter, conv_temporal_filter, input_shape=input_shape, padding='same'),
+            Conv2D(num_temporal_filter, conv_temporal_filter),
             Activation('relu'),
-            MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride, padding='same'),
+            MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride),
             Dropout(dropout),
         ]
 
 
     # final conv layer to match VP arch, then flatten and run through dense output
     layers += [
-        Conv2D(num_temporal_filter, (1,3), name="conv6", padding="same"),
+        Conv2D(num_temporal_filter, (1,3)),
         Flatten(),
         Dense(activation='softmax', units=2)
     ]
