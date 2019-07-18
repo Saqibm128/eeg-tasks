@@ -53,6 +53,16 @@ def debug():
     max_num_samples=2
 
 @ex.named_config
+def extra_data_simple_ensemble_samples():
+    '''
+    Not really training as an ensemble, except for the test phase, when we try to see our stats as an ensemble
+    '''
+    use_random_ensemble=True
+    precached_pkl = "simple_ensemble_train_data_20_segs_max_length_4.pkl"
+    precached_test_pkl = "simple_ensemble_test_data_20_segs_max_length_4.pkl"
+
+
+@ex.named_config
 def simple_ensemble_samples():
     '''
     Not really training as an ensemble, except for the test phase, when we try to see our stats as an ensemble
@@ -60,7 +70,6 @@ def simple_ensemble_samples():
     use_random_ensemble=True
     precached_pkl = "simple_ensemble_train_data_max_length_4.pkl"
     precached_test_pkl = "simple_ensemble_test_data_max_length_4.pkl"
-    batch_size = 256 #because we have a ton more data if we use random samples like this
 
 @ex.config
 def config():
