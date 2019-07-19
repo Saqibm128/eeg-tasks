@@ -19,6 +19,8 @@ from keras_models.vanPutten import vp_conv2d, conv2d_gridsearch
 from keras import optimizers
 import pickle as pkl
 import sacred
+
+import random, string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
 
@@ -94,7 +96,7 @@ def config():
     dropout = 0.25
     use_early_stopping = True
     patience = 50
-    model_name = "best_cnn_model.h5"
+    model_name = randomString() + ".h5"
     precached_pkl = "train_data.pkl"
     precached_test_pkl = "test_data.pkl"
     num_epochs = 1000
@@ -117,6 +119,11 @@ def config():
     use_combined=False
     combined_split = "combined"
 
+#https://pynative.com/python-generate-random-string/
+def randomString(stringLength=16):
+    """Generate a random string of fixed length """
+    letters = string.ascii_uppercase
+    return ''.join(random.choice(letters) for i in range(stringLength))
 
 @ex.capture
 def get_model_checkpoint(model_name):
