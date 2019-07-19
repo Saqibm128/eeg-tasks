@@ -81,28 +81,29 @@ def conv2d_gridsearch(
 
 def vp_conv2d(dropout=0.25, input_shape=(None), filter_size=100):
     layers = [
-        Conv2D(filter_size, (3,3), input_shape=input_shape, padding='valid', name="conv1"),
-        Activation('relu'),
+        # Input(shape=input_shape),
+        Conv2D(filter_size, (3,3), input_shape=input_shape, name="conv1", activation="relu", padding="same"),
+        # Activation('relu'),
         MaxPool2D(pool_size=(2, 2), name="maxpool1"),
         Dropout(dropout),
 
-        Conv2D(filter_size, (3,3), name="conv2"),
-        Activation('relu'),
+        Conv2D(filter_size, (3,3), name="conv2", activation="relu", padding="same"),
+        # Activation('relu'),
         MaxPool2D(pool_size=(2, 2), name="maxpool2"),
         Dropout(dropout),
 
-        Conv2D(filter_size*3, (2,3), name="conv3"),
-        Activation('relu'),
+        Conv2D(filter_size*3, (2,3), name="conv3", activation="relu", padding="same"),
+        # Activation('relu'),
         MaxPool2D(pool_size=(2, 2), name="maxpool3"),
         Dropout(dropout),
 
-        Conv2D(filter_size*3, (1,7), name="conv4"),
-        Activation('relu'),
+        Conv2D(filter_size*3, (1,7), name="conv4", activation="relu", padding="same"),
+        # Activation('relu'),
         MaxPool2D(pool_size=(1, 2), name="maxpool4"),
         Dropout(dropout),
 
-        Conv2D(filter_size*3, (1,3), name="conv5"),
-        Conv2D(filter_size*3, (1,3), name="conv6"),
+        Conv2D(filter_size*3, (1,3), name="conv5", activation="relu", padding="same"),
+        Conv2D(filter_size*3, (1,3), name="conv6", activation="relu", padding="same"),
         Flatten(),
         Dense(activation='softmax', units=2)
     ]
