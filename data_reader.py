@@ -17,6 +17,7 @@ from wf_analysis import filters
 from addict import Dict
 
 
+
 class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
     """
     Similar to EdfDataset but allows for multiple sampling from the same dataset (i.e. make multiple instances from the same edf token file)
@@ -403,11 +404,15 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         if self.use_numpy:
             data = data.values
         return data, ann
-    #
-    # def get_data_runner(to_get_queue, to_return_queue):
-    #     for edf_path in iter(to_get_queue.get, None):
-    #         to_return_queue = ()
-    # def get_data_multiprocess():
+
+def parse_edf_token_path_structure(edf_token_path):
+    remaining, token = path.split(edf_token_path)
+    remaining, session = path.split(remaining)
+    remaining, patient = path.split(remaining)
+    remaining, patient_prefix = path.split(remaining) #first 3 digits of patient id
+    remaining, split = path.split(remaining) #first 3 digits of patient id
+    return data_split, patient, session, token
+
 
 
 def get_edf_data_and_label_ts_format(

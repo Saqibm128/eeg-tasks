@@ -1,3 +1,6 @@
+'''
+Used to create a new combined split that we use to create test, train splits, since dev_test split is imbalanced (75% males!).
+'''
 import os, sys
 import util_funcs
 import data_reader as read
@@ -31,7 +34,7 @@ if __name__ == "__main__":
     for patient in allPatients:
         filesDict[patient] = {}
 
-        newPatientDir = os.path.join(config["data_dir_root"], args.new_split_directory,patient[0:3], patient)
+        newPatientDir = os.path.join(config["data_dir_root"],  args.new_split_directory, args.ref,patient[0:3], patient)
         print("Making directory: ", newPatientDir)
         if args.apply:
             os.makedirs(newPatientDir)
@@ -39,7 +42,7 @@ if __name__ == "__main__":
     for patientDir in allPatientsFullPath:
         patient = os.path.basename(patientDir)
         sessionPaths = os.listdir(patientDir)
-        newPatientDir = os.path.join(config["data_dir_root"], args.new_split_directory,patient[0:3], patient)
+        newPatientDir = os.path.join(config["data_dir_root"],  args.new_split_directory, args.ref, patient[0:3], patient)
 
         for sessionPath in sessionPaths:
             sessionPath = os.path.join(patientDir, sessionPath)

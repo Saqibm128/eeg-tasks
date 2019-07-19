@@ -1,8 +1,42 @@
 import re
 from data_reader import convert_edf_path_to_txt, get_all_clinical_notes, get_all_token_file_names, get_token_file_names
+import data_reader as read
+from sklearn.model_selection import train_test_split
 from os import path
 import argparse
 import pandas as pd
+from addict import Dict
+
+
+def train_test_split_on_combined(edfTokens, labels, test_split=0.2):
+    patients = Dict()
+    for i, token in enumerate(edfTokens):
+        data_split, patient, session, token = read.parse_edf_token_path_structure(token)
+        if patient in patients.keys() and patients[patient].label != labels[i]:
+            print("WARNING! Patient has conflicting labels! ", patient, session, token)
+        if patient not in patients.keys():
+            patients[patient].tokens = []
+        patients[patient].label = labels[i]
+        patients[patient].tokens.append(token)
+    patientlabels = []
+    patientId = []
+    for p in patients.keys():
+        patientlabels.append(patients[p].label)
+        patientId.append(p)
+    patientIdsTrain, patientIdsTest = train_test_split(patientId, test_size=0.2, stratify=patientlabels)
+    edfTokenTrain = []
+    labelTrain = []
+    edfTokenTest = []
+    labelTest = []
+    for trainId in patientIdsTrain:
+        for edfToken in patients[trainId].tokens:
+            edfTokenTrain.append(edfToken)
+            labelTrain.append(patients[trainId].label)
+    for testId in patientIdsTest:
+        for edfToken in patients[testId].tokens:
+            edfTokenTest.append(edfToken)
+            labelTest.append(patients[testId].label)
+    return edfTokenTrain, edfTokenTest, labelTrain, labelTest
 
 
 

@@ -188,7 +188,7 @@ def get_annotation_types():
 
 
 def get_data_split():
-    return ["train", "dev_test"]
+    return ["train", "dev_test", "combined"]
 
 
 def get_reference_node_types():
