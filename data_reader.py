@@ -341,6 +341,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             num_files=None,
             resample=pd.Timedelta(
                 seconds=constants.COMMON_DELTA),
+            start_offset=pd.Timedelta(seconds=0), #start at 0 unless if we want something different
             max_length=None,
             expand_tse=False, #Save memory, don't try to make time by annotation df
             dtype=np.float32,
@@ -360,6 +361,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         self.ref = ref
         self.resample = resample
         self.dtype = dtype
+        self.start_offset = start_offset
         self.max_length = max_length
         self.manager = mp.Manager()
         self.edf_tokens = get_all_token_file_names(data_split, ref)
@@ -381,7 +383,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         if self.should_use_mp(i):
             return self.getItemSlice(i)
         data, ann = get_edf_data_and_label_ts_format(
-            self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse, dtype=self.dtype, max_length=self.max_length)
+            self.edf_tokens[i], resample=self.resample, expand_tse=self.expand_tse, dtype=self.dtype, start=self.start_offset, max_length=self.max_length)
         if (self.max_length != None and max(data.index) > self.max_length):
             if type(self.max_length) == pd.Timedelta:
                 data = data.loc[pd.Timedelta(seconds=0):self.max_length]
@@ -417,9 +419,9 @@ def parse_edf_token_path_structure(edf_token_path):
 
 def get_edf_data_and_label_ts_format(
     edf_path, expand_tse=True, resample=pd.Timedelta(
-        seconds=constants.COMMON_DELTA), dtype=np.float32, max_length=None):
+        seconds=constants.COMMON_DELTA), start=pd.Timedelta(seconds=0), dtype=np.float32, max_length=None):
     try:
-        edf_data = edf_eeg_2_df(edf_path, resample, dtype=dtype, max_length=max_length)
+        edf_data = edf_eeg_2_df(edf_path, resample, dtype=dtype, start=start, max_length=max_length)
         tse_data_path = convert_edf_path_to_tse(edf_path)
         if expand_tse:
             tse_data_ts = read_tse_file_and_return_ts(

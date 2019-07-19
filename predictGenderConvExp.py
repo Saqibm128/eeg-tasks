@@ -23,7 +23,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
 
 from sacred.observers import MongoObserver
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # trainEdfEnsembler = None
 # testEdfEnsembler = None
@@ -75,24 +75,32 @@ def simple_ensemble_samples():
     max_num_samples=10 #number of samples of eeg data segments per eeg.edf file
 
 
+@ex.named_config
+def combined():
+    use_combined=True
+    precached_pkl = "combined_train_data.pkl"
+    precached_test_pkl = "combined_test_data.pkl"
+
 @ex.config
 def config():
     train_split = "train"
     test_split = "dev_test"
     ref = "01_tcp_ar"
-    n_process = 7
+    n_process = 8
     num_files = None
     max_length = 4 * constants.COMMON_FREQ
-    batch_size = 64
+    batch_size = 32
+    start_offset_seconds = 0 #matters if we aren't doing random ensemble sampling
     dropout = 0.25
     use_early_stopping = True
-    patience = 20
+    patience = 50
     model_name = "best_cnn_model.h5"
     precached_pkl = "train_data.pkl"
     precached_test_pkl = "test_data.pkl"
-    num_epochs = 500
-    lr = 0.0001
+    num_epochs = 1000
+    lr = 0.00005
     validation_size = 0.2
+    test_size=0.2
     use_cached_pkl = True
     use_vp = True
     #for custom architectures
@@ -106,6 +114,8 @@ def config():
     max_pool_stride=(1,2)
     use_random_ensemble = False
     max_num_samples=10 #number of samples of eeg data segments per eeg.edf file
+    use_combined=False
+    combined_split = "combined"
 
 
 @ex.capture
@@ -123,10 +133,18 @@ def get_cb_list(use_early_stopping):
         return [get_model_checkpoint()]
 
 @ex.capture
-def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths):
+def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths, start_offset_seconds):
     if not use_random_ensemble:
-        edfData = read.EdfDataset(split, ref, n_process=n_process, max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA), use_numpy=True)
+        edfData = read.EdfDataset(
+            split,
+            ref,
+            n_process=n_process,
+            max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA),
+            use_numpy=True,
+            start_offset=pd.Timedelta(seconds=start_offset_seconds)
+            )
         edfData.edf_tokens = edfTokenPaths[:num_files]
+        assert len(edfData) == len(labels)
         return edfData
     else:
         edfData = read.EdfDatasetEnsembler(
@@ -149,17 +167,38 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
         edfData.verbosity = 50
         return edfData
 
+cached_test_train_split_info = None
 @ex.capture
-def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl):
-    genderDict = cta.getGenderAndFileNames(split, ref, convert_gender_to_num=True)
-    edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
+def get_test_train_split_from_combined(combined_split, ref, test_size):
+    global cached_test_train_split_info
+    if cached_test_train_split_info is None:
+        edfTokens, genders = cta.demux_to_tokens(cta.getGenderAndFileNames(combined_split, ref, convert_gender_to_num=True))
+        cached_test_train_split_info = cta.train_test_split(edfTokens, genders, test_size=test_size)
+        pkl.dump(cached_test_train_split_info, open("train_test_split_info.pkl", 'wb'))
+        ex.add_artifact("train_test_split_info.pkl")
+    return cached_test_train_split_info
+
+
+@ex.capture
+def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl, use_combined=False, train_split="", test_split=""):
+    if use_combined:
+        edfTokensTrain, edfTokensTest, gendersTrain, gendersTest = get_test_train_split_from_combined()
+        if split==train_split:
+            edfTokenPaths = edfTokensTrain[:num_files]
+            genders = np.array(gendersTrain[:num_files])
+            assert len(edfTokenPaths) == len(genders)
+        elif split == test_split:
+            edfTokenPaths = edfTokensTest[:num_files]
+            genders = np.array(gendersTest[:num_files])
+    else:
+        genderDict = cta.getGenderAndFileNames(split, ref, convert_gender_to_num=True)
+        edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
     if path.exists(precached_pkl) and use_cached_pkl:
         edfData = pkl.load(open(precached_pkl, 'rb'))
     else:
         edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths)
         edfData = edfData[:]
         pkl.dump(edfData, open(precached_pkl, 'wb'))
-    genders = genders
     return edfData, genders
 
 @ex.capture
@@ -182,6 +221,7 @@ def get_data_generator(split, batch_size, num_files, max_length, use_random_ense
 
     """
     edfData, genders = get_data(split)
+    assert len(edfData) == len(genders)
     return EdfDataGenerator(
         edfData,
         precache=True,
