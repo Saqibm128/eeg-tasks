@@ -60,21 +60,32 @@ def extra_data_simple_ensemble_samples():
     Not really training as an ensemble, except for the test phase, when we try to see our stats as an ensemble
     '''
     use_random_ensemble=True
-    precached_pkl = "simple_ensemble_train_data_20_segs_max_length_4.pkl"
-    precached_test_pkl = "simple_ensemble_test_data_20_segs_max_length_4.pkl"
-    max_num_samples=20 #number of samples of eeg data segments per eeg.edf file
+    precached_pkl = "simple_ensemble_train_data_40_segs_max_length_4.pkl"
+    precached_test_pkl = "simple_ensemble_test_data_40_segs_max_length_4.pkl"
+    max_num_samples=40 #number of samples of eeg data segments per eeg.edf file
 
 
 
 @ex.named_config
-def simple_ensemble_samples():
+def simple_ensemble():
     '''
     Not really training as an ensemble, except for the test phase, when we try to see our stats as an ensemble
     '''
     use_random_ensemble=True
     precached_pkl = "simple_ensemble_train_data_max_length_4.pkl"
     precached_test_pkl = "simple_ensemble_test_data_max_length_4.pkl"
-    max_num_samples=10 #number of samples of eeg data segments per eeg.edf file
+    max_num_samples=40 #number of samples of eeg data segments per eeg.edf file
+
+@ex.named_config
+def combined_simple_ensemble():
+    use_combined=True
+    use_random_ensemble=True
+    train_split="combined"
+    test_split="combined"
+    precached_pkl = "combined_simple_ensemble_train_data.pkl"
+    precached_test_pkl = "combined_simple_ensemble_test_data.pkl"
+    max_num_samples=40 #number of samples of eeg data segments per eeg.edf file
+
 
 
 @ex.named_config
@@ -82,6 +93,10 @@ def combined():
     use_combined=True
     precached_pkl = "combined_train_data.pkl"
     precached_test_pkl = "combined_test_data.pkl"
+
+@ex.named_config
+def run_on_training_loss():
+    early_stopping_on = "loss"
 
 @ex.config
 def config():
@@ -91,7 +106,7 @@ def config():
     n_process = 8
     num_files = None
     max_length = 4 * constants.COMMON_FREQ
-    batch_size = 32
+    batch_size = 64
     start_offset_seconds = 0 #matters if we aren't doing random ensemble sampling
     dropout = 0.25
     use_early_stopping = True
@@ -105,6 +120,7 @@ def config():
     test_size=0.2
     use_cached_pkl = True
     use_vp = True
+    normalize_inputs = False
     #for custom architectures
     num_conv_spatial_layers=1
     num_conv_temporal_layers=1
@@ -118,6 +134,7 @@ def config():
     max_num_samples=10 #number of samples of eeg data segments per eeg.edf file
     use_combined=False
     combined_split = "combined"
+    early_stopping_on = "val_loss"
 
 #https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -130,7 +147,7 @@ def get_model_checkpoint(model_name):
     return ModelCheckpoint(model_name, monitor='val_loss', save_best_only=True, verbose=1)
 
 @ex.capture
-def get_early_stopping(patience):
+def get_early_stopping(patience, early_stopping_on):
     return EarlyStopping(patience=patience, verbose=1)
 @ex.capture
 def get_cb_list(use_early_stopping):
@@ -187,14 +204,14 @@ def get_test_train_split_from_combined(combined_split, ref, test_size):
 
 
 @ex.capture
-def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl, use_combined=False, train_split="", test_split=""):
+def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl, use_combined=False, train_split="", test_split="",  is_test=False):
     if use_combined:
         edfTokensTrain, edfTokensTest, gendersTrain, gendersTest = get_test_train_split_from_combined()
-        if split==train_split:
+        if split==train_split and not is_test:
             edfTokenPaths = edfTokensTrain[:num_files]
             genders = np.array(gendersTrain[:num_files])
             assert len(edfTokenPaths) == len(genders)
-        elif split == test_split:
+        elif split == test_split or is_test:
             edfTokenPaths = edfTokensTest[:num_files]
             genders = np.array(gendersTest[:num_files])
     else:
@@ -228,13 +245,12 @@ def get_data_generator(split, batch_size, num_files, max_length, use_random_ense
 
     """
     edfData, genders = get_data(split)
-    assert len(edfData) == len(genders)
     return EdfDataGenerator(
         edfData,
         precache=True,
         time_first=False,
         n_classes=2,
-        labels=np.array(genders) if not use_random_ensemble else None,
+        labels=np.array(genders) if not use_random_ensemble else None, #properly duplicated genders inside edfData if using use_random_ensemble
         batch_size=batch_size,
         max_length=max_length)
 
@@ -281,29 +297,40 @@ def get_custom_model(
 
 @ex.capture
 def get_test_data(test_split, max_length, precached_test_pkl, use_cached_pkl):
-    testData, testGender = get_data(test_split, precached_pkl=precached_test_pkl)
+    testData, testGender = get_data(test_split, precached_pkl=precached_test_pkl, is_test=True)
     testData = np.stack([datum[0] for datum in testData])
     testData = testData[:, 0:max_length]
     testData=testData.reshape(*testData.shape, 1).transpose(0,2,1,3)
     return testData, testGender
 
 @ex.main
-def main(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files):
+def main(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined):
     trainValidationDataGenerator = get_data_generator(train_split)
     trainDataGenerator, validationDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size=validation_size)
     model = get_model()
+    print(model.summary())
 
-
+    print("x batch shape", len(trainDataGenerator))
     history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator)
 
-    testData, testGender = get_test_data()
+    if use_combined:
+        testData, testGender = get_test_data()
+    else:
+        testData, testGender = get_test_data()
     if use_random_ensemble: #regenerate the dictionary structure to get correct labeling back and access to mapping back to original edfToken space
-        edfTokenPaths, _testGendersCopy = cta.demux_to_tokens(cta.getGenderAndFileNames(test_split, ref))
-        assert len(testGender) == len(_testGendersCopy)
-        testEdfEnsembler = get_base_dataset(test_split, labels=testGender, edfTokenPaths=edfTokenPaths)
+        if not use_combined:
+            edfTokenPaths, testGender = cta.demux_to_tokens(cta.getGenderAndFileNames(test_split, ref))
+            testEdfEnsembler = get_base_dataset(test_split, labels=testGender, edfTokenPaths=edfTokenPaths)
+
+        else:
+            trainEdfTokens, edfTokenPaths, trainGenders, _testGendersCopy = get_test_train_split_from_combined()
+            testEdfEnsembler = get_base_dataset(test_split, labels=_testGendersCopy, edfTokenPaths=edfTokenPaths)
+
         testGender = testEdfEnsembler.getEnsembledLabels()
         assert len(testData) == len(testGender)
+
     y_pred = model.predict(testData)
+    # print("pred shape", y_pred.shape)
 
 
 
