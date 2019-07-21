@@ -75,6 +75,7 @@ def simple_ensemble():
     use_random_ensemble=True
     precached_pkl = "simple_ensemble_train_data_max_length_4.pkl"
     precached_test_pkl = "simple_ensemble_test_data_max_length_4.pkl"
+    ensemble_sample_info_path = "native_edf_ensemble_path.pkl"
     max_num_samples=40 #number of samples of eeg data segments per eeg.edf file
 
 @ex.named_config
@@ -85,6 +86,7 @@ def combined_simple_ensemble():
     test_split="combined"
     precached_pkl = "combined_simple_ensemble_train_data.pkl"
     precached_test_pkl = "combined_simple_ensemble_test_data.pkl"
+
     max_num_samples=40 #number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
 
@@ -331,13 +333,16 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
 
     print("x batch shape", len(trainDataGenerator))
     if not regenerate_data:
-        history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process)
+        #had issues where logs get too long, so onlye one line per epoch
+        #also was trying to use multiprocessing for data analysis
+        history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process, verbose=2)
+
 
 
     testData, testGender = get_test_data()
     if use_random_ensemble: #regenerate the dictionary structure to get correct labeling back and access to mapping back to original edfToken space
         if not use_combined:
-            edfTokenPaths, testGender = cta.demux_to_tokens(cta.getGenderAndFileNames(test_split, ref))
+            edfTokenPaths, testGender = cta.demux_to_tokens(cta.getGenderAndFileNames(test_split, ref, convert_gender_to_num=True))
             testEdfEnsembler = get_base_dataset(test_split, labels=testGender, edfTokenPaths=edfTokenPaths, is_test=True)
         else:
             trainEdfTokens, edfTokenPaths, trainGenders, _testGendersCopy = get_test_train_split_from_combined()
