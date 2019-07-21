@@ -541,14 +541,14 @@ def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None
         all_channels = []
         for i, channel_name in enumerate(channel_names):
             if type(start) == pd.Timedelta: #we ask for time t=1 s, then we take into account sample rate
-                start_temp = start/pd.Timedelta(seconds=1/sample_rates[i])
+                start_count_native_freq = start/pd.Timedelta(seconds=1/sample_rates[i])
             else:
-                start_temp = start
+                start_count_native_freq = start
             if max_length is None: #read everything
-                signal_data = reader.readSignal(i, start=start)
+                signal_data = reader.readSignal(i, start=start_count_native_freq)
             else:
                 numStepsToRead = int(np.ceil(max_length / pd.Timedelta(seconds=1/sample_rates[i]))) + 5 #adding a fudge factor of 5 cuz y not.
-                signal_data = reader.readSignal(i, start=start_temp, n=numStepsToRead)
+                signal_data = reader.readSignal(i, start=start_count_native_freq, n=numStepsToRead)
 
             signal_data = pd.Series(
                 signal_data,
