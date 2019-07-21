@@ -198,13 +198,6 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
         else:
             pkl.dump(samplingInfo, open(ensemble_sample_info_path, 'wb'))
             ex.add_artifact(ensemble_sample_info_path)
-
-        # if split == "train":
-        #     global trainEdfEnsembler
-        #     trainEdfEnsembler = edfData
-        # else:
-        #     global testEdfEnsembler
-        #     testEdfEnsembler = edfData
         edfData.verbosity = 50
         return edfData
 
