@@ -19,13 +19,14 @@ from keras_models.vanPutten import vp_conv2d, conv2d_gridsearch
 from keras import optimizers
 import pickle as pkl
 import sacred
+import keras
 
 import random, string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
 
 from sacred.observers import MongoObserver
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # trainEdfEnsembler = None
 # testEdfEnsembler = None
@@ -135,6 +136,8 @@ def config():
     use_combined=False
     combined_split = "combined"
     early_stopping_on = "val_loss"
+    test_train_split_pkl_path = "train_test_split_info.pkl"
+    regenerate_data = False #if use_cached_pkl is false and this is true, just generates pickle files, doesn't make models or anything
 
 #https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -143,18 +146,18 @@ def randomString(stringLength=16):
     return ''.join(random.choice(letters) for i in range(stringLength))
 
 @ex.capture
-def get_model_checkpoint(model_name):
-    return ModelCheckpoint(model_name, monitor='val_loss', save_best_only=True, verbose=1)
+def get_model_checkpoint(model_name, monitor='val_loss'):
+    return ModelCheckpoint(model_name, monitor=monitor, save_best_only=True, verbose=1)
 
 @ex.capture
 def get_early_stopping(patience, early_stopping_on):
     return EarlyStopping(patience=patience, verbose=1)
 @ex.capture
-def get_cb_list(use_early_stopping):
+def get_cb_list(use_early_stopping, model_name):
     if use_early_stopping:
-        return [get_early_stopping(), get_model_checkpoint()]
+        return [get_early_stopping(), get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
     else:
-        return [get_model_checkpoint()]
+        return [get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
 
 @ex.capture
 def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths, start_offset_seconds):
@@ -193,19 +196,22 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
 
 cached_test_train_split_info = None
 @ex.capture
-def get_test_train_split_from_combined(combined_split, ref, test_size):
+def get_test_train_split_from_combined(combined_split, ref, test_size, use_cached_pkl, test_train_split_pkl_path):
     global cached_test_train_split_info
-    if cached_test_train_split_info is None:
+    if use_cached_pkl and path.exists(test_train_split_pkl_path):
+        cached_test_train_split_info = pkl.load(open(test_train_split_pkl_path, 'rb'))
+        ex.add_resource(test_train_split_pkl_path)
+    elif cached_test_train_split_info is None:
         edfTokens, genders = cta.demux_to_tokens(cta.getGenderAndFileNames(combined_split, ref, convert_gender_to_num=True))
         cached_test_train_split_info = cta.train_test_split(edfTokens, genders, test_size=test_size)
-        pkl.dump(cached_test_train_split_info, open("train_test_split_info.pkl", 'wb'))
-        ex.add_artifact("train_test_split_info.pkl")
+        pkl.dump(cached_test_train_split_info, open(test_train_split_pkl_path, 'wb'))
+        ex.add_artifact(test_train_split_pkl_path)
     return cached_test_train_split_info
 
 
 @ex.capture
 def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl, use_combined=False, train_split="", test_split="",  is_test=False):
-    if use_combined:
+    if use_combined:  #use the previous test train split, since we are sharing a split instead of enforcing it with a different directory
         edfTokensTrain, edfTokensTest, gendersTrain, gendersTest = get_test_train_split_from_combined()
         if split==train_split and not is_test:
             edfTokenPaths = edfTokensTrain[:num_files]
@@ -222,7 +228,7 @@ def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_ca
     else:
         edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths)
         edfData = edfData[:]
-        pkl.dump(edfData, open(precached_pkl, 'wb'))
+        pkl.dump(edfData, open(precached_pkl, 'wb')) #don't add these as artifacts or resources or else mongodb will try to store giant file copies of these
     return edfData, genders
 
 @ex.capture
@@ -304,24 +310,22 @@ def get_test_data(test_split, max_length, precached_test_pkl, use_cached_pkl):
     return testData, testGender
 
 @ex.main
-def main(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined):
+def main(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name):
     trainValidationDataGenerator = get_data_generator(train_split)
     trainDataGenerator, validationDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size=validation_size)
     model = get_model()
     print(model.summary())
 
     print("x batch shape", len(trainDataGenerator))
-    history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator)
+    if not regenerate_data:
+        history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator)
 
-    if use_combined:
-        testData, testGender = get_test_data()
-    else:
-        testData, testGender = get_test_data()
+
+    testData, testGender = get_test_data()
     if use_random_ensemble: #regenerate the dictionary structure to get correct labeling back and access to mapping back to original edfToken space
         if not use_combined:
             edfTokenPaths, testGender = cta.demux_to_tokens(cta.getGenderAndFileNames(test_split, ref))
             testEdfEnsembler = get_base_dataset(test_split, labels=testGender, edfTokenPaths=edfTokenPaths)
-
         else:
             trainEdfTokens, edfTokenPaths, trainGenders, _testGendersCopy = get_test_train_split_from_combined()
             testEdfEnsembler = get_base_dataset(test_split, labels=_testGendersCopy, edfTokenPaths=edfTokenPaths)
@@ -329,8 +333,14 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
         testGender = testEdfEnsembler.getEnsembledLabels()
         assert len(testData) == len(testGender)
 
+    if regenerate_data:
+        return
+    model = keras.models.load_model(model_name)
+    bin_acc_model = keras.models.load_model("bin_acc_" + model_name)
+
     y_pred = model.predict(testData)
-    # print("pred shape", y_pred.shape)
+    print("pred shape", y_pred.shape)
+    print("test data shape", testData.shape)
 
 
 
@@ -340,6 +350,17 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
     accuracy = accuracy_score(testGender, y_pred.argmax(axis=1))
 
 
+
+    y_pred_bin_acc = bin_acc_model.predict(testData)
+    print("pred shape", y_pred_bin_acc.shape)
+    print("test data shape", testData.shape)
+
+
+
+
+    bin_acc_auc = roc_auc_score(testGender, y_pred_bin_acc.argmax(axis=1))
+    bin_acc_f1 = f1_score(testGender, y_pred_bin_acc.argmax(axis=1))
+    bin_acc_accuracy = accuracy_score(testGender, y_pred_bin_acc.argmax(axis=1))
 
 
     toReturn = {
@@ -352,6 +373,11 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
         'f1': f1,
         'acc': accuracy,
         'auc': auc
+    },
+        'best_bin_acc_test_scores':  {
+        'f1': bin_acc_f1,
+        'acc': bin_acc_accuracy,
+        'auc': bin_acc_auc
     }}
     if use_random_ensemble:
         label, average_pred = testEdfEnsembler.getEnsemblePrediction(y_pred.argmax(axis=1))
