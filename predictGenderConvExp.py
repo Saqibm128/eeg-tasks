@@ -26,7 +26,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
 
 from sacred.observers import MongoObserver
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # trainEdfEnsembler = None
 # testEdfEnsembler = None
@@ -86,7 +86,7 @@ def combined_simple_ensemble():
     precached_pkl = "combined_simple_ensemble_train_data.pkl"
     precached_test_pkl = "combined_simple_ensemble_test_data.pkl"
     max_num_samples=40 #number of samples of eeg data segments per eeg.edf file
-
+    use_standard_scaler = True
 
 
 @ex.named_config
@@ -138,6 +138,8 @@ def config():
     early_stopping_on = "val_loss"
     test_train_split_pkl_path = "train_test_split_info.pkl"
     regenerate_data = False #if use_cached_pkl is false and this is true, just generates pickle files, doesn't make models or anything
+    use_standard_scaler = False
+    ensemble_sample_info_path = "edf_ensemble_path.pkl"
 
 #https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -160,7 +162,7 @@ def get_cb_list(use_early_stopping, model_name):
         return [get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
 
 @ex.capture
-def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths, start_offset_seconds):
+def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths, start_offset_seconds, use_cached_pkl, ensemble_sample_info_path, is_test=False):
     if not use_random_ensemble:
         edfData = read.EdfDataset(
             split,
@@ -184,6 +186,16 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
             labels=labels[:num_files],
             max_num_samples=max_num_samples,
             )
+
+        samplingInfo = edfData.sampleInfo
+        ensemble_sample_info_path = "test_" + ensemble_sample_info_path if is_test else ensemble_sample_info_path
+        print(ensemble_sample_info_path)
+        if use_cached_pkl and path.exists(ensemble_sample_info_path):
+            edfData.sampleInfo = pkl.load(open(ensemble_sample_info_path, 'rb'))
+            ex.add_resource(ensemble_sample_info_path)
+        else:
+            pkl.dump(samplingInfo, open(ensemble_sample_info_path, 'wb'))
+            ex.add_artifact(ensemble_sample_info_path)
 
         # if split == "train":
         #     global trainEdfEnsembler
@@ -226,7 +238,7 @@ def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_ca
     if path.exists(precached_pkl) and use_cached_pkl:
         edfData = pkl.load(open(precached_pkl, 'rb'))
     else:
-        edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths)
+        edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths, is_test=is_test)
         edfData = edfData[:]
         pkl.dump(edfData, open(precached_pkl, 'wb')) #don't add these as artifacts or resources or else mongodb will try to store giant file copies of these
     return edfData, genders
@@ -258,7 +270,8 @@ def get_data_generator(split, batch_size, num_files, max_length, use_random_ense
         n_classes=2,
         labels=np.array(genders) if not use_random_ensemble else None, #properly duplicated genders inside edfData if using use_random_ensemble
         batch_size=batch_size,
-        max_length=max_length)
+        max_length=max_length,
+        )
 
 @ex.capture
 def get_model(dropout, max_length,lr, use_vp, num_spatial_filter):
@@ -318,17 +331,17 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
 
     print("x batch shape", len(trainDataGenerator))
     if not regenerate_data:
-        history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator)
+        history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process)
 
 
     testData, testGender = get_test_data()
     if use_random_ensemble: #regenerate the dictionary structure to get correct labeling back and access to mapping back to original edfToken space
         if not use_combined:
             edfTokenPaths, testGender = cta.demux_to_tokens(cta.getGenderAndFileNames(test_split, ref))
-            testEdfEnsembler = get_base_dataset(test_split, labels=testGender, edfTokenPaths=edfTokenPaths)
+            testEdfEnsembler = get_base_dataset(test_split, labels=testGender, edfTokenPaths=edfTokenPaths, is_test=True)
         else:
             trainEdfTokens, edfTokenPaths, trainGenders, _testGendersCopy = get_test_train_split_from_combined()
-            testEdfEnsembler = get_base_dataset(test_split, labels=_testGendersCopy, edfTokenPaths=edfTokenPaths)
+            testEdfEnsembler = get_base_dataset(test_split, labels=_testGendersCopy, edfTokenPaths=edfTokenPaths, is_test=True)
 
         testGender = testEdfEnsembler.getEnsembledLabels()
         assert len(testData) == len(testGender)
