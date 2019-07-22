@@ -37,7 +37,7 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
             dtype=np.float32,
             n_process=None,
             use_average_ref_names=True,
-            filter=False,
+            filter=True,
             lp_cutoff=30,
             hp_cutoff=(constants.COMMON_FREQ/2-2), #get close to nyq without actually hitting it
             order_filt=5,
@@ -347,7 +347,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             dtype=np.float32,
             n_process=None,
             use_average_ref_names=True,
-            filter=False,
+            filter=True,
             lp_cutoff=30,
             hp_cutoff=(constants.COMMON_FREQ/2-2), #get close to nyq without actually hitting it
             order_filt=5,
