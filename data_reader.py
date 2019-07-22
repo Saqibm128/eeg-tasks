@@ -413,7 +413,7 @@ def parse_edf_token_path_structure(edf_token_path):
     remaining, patient = path.split(remaining)
     remaining, patient_prefix = path.split(remaining) #first 3 digits of patient id
     remaining, split = path.split(remaining) #first 3 digits of patient id
-    return data_split, patient, session, token
+    return split, patient, session, token
 
 
 

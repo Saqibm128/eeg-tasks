@@ -2,7 +2,7 @@
 import keras
 import numpy as np
 from keras.models import Model, Sequential
-from keras.layers import Input, LSTM, Dense, Activation, Conv2D, Dropout, MaxPool2D, Conv3D, Flatten, LeakyReLU
+from keras.layers import Input, LSTM, Dense, Activation, Conv2D, Dropout, MaxPool2D, Conv3D, Flatten, LeakyReLU, BatchNormalization
 
 def simplified_vp_conv2d(dropout=0.25, input_shape=(None)):
     layers = [
@@ -44,8 +44,11 @@ def conv2d_gridsearch(
     conv_temporal_filter=(2,5),
     num_temporal_filter=300,
     max_pool_size=(2,2),
-    max_pool_stride=(1,2)
+    max_pool_stride=(1,2),
+    use_batch_normalization=False
     ):
+    if use_batch_normalization:
+        raise NotImplemented()
     max_temporal_filter=max(num_temporal_filter, num_spatial_filter*3)
     layers = [
     ]
@@ -79,32 +82,34 @@ def conv2d_gridsearch(
 
     return Sequential(layers)
 
-def vp_conv2d(dropout=0.25, input_shape=(None), filter_size=100):
-    layers = [
-        # Input(shape=input_shape),
-        Conv2D(filter_size, (3,3), input_shape=input_shape, name="conv1", activation="relu", padding="same"),
-        # Activation('relu'),
-        MaxPool2D(pool_size=(2, 2), name="maxpool1"),
-        Dropout(dropout),
+def vp_conv2d(dropout=0.25, input_shape=(None), filter_size=100, use_batch_normalization=False):
+    inputs = Input(shape=input_shape)
+    x = Conv2D(filter_size, (3,3), input_shape=input_shape, name="conv1", activation="relu", padding="same")(inputs)
+    x = MaxPool2D(pool_size=(2, 2), name="maxpool1")(x)
+    x = Dropout(dropout)(x)
+    if use_batch_normalization:
+        x = BatchNormalization()(x)
+    x = Conv2D(filter_size, (3,3), name="conv2", activation="relu", padding="same")(x)
+    x = MaxPool2D(pool_size=(2, 2), name="maxpool2")(x)
+    x = Dropout(dropout)(x)
+    if use_batch_normalization:
+        x = BatchNormalization()(x)
+    x = Conv2D(filter_size*3, (2,3), name="conv3", activation="relu", padding="same")(x)
+    x = MaxPool2D(pool_size=(2, 2), name="maxpool3")(x)
+    x = Dropout(dropout)(x)
+    if use_batch_normalization:
+        x = BatchNormalization()(x)
+    x = Conv2D(filter_size*3, (1,7), name="conv4", activation="relu", padding="same")(x)
+    x = MaxPool2D(pool_size=(1, 2), name="maxpool4")(x)
+    if use_batch_normalization:
+        x = BatchNormalization()(x)
+    x = Conv2D(filter_size*3, (1,3), name="conv5", activation="relu", padding="same")(x)
+    if use_batch_normalization:
+        x = BatchNormalization()(x)
+    x = Conv2D(filter_size*3, (1,3), name="conv6", activation="relu", padding="same")(x)
+    if use_batch_normalization:
+        x = BatchNormalization()(x)
+    x = Flatten()(x)
+    x = Dense(activation='softmax', units=2)(x)
 
-        Conv2D(filter_size, (3,3), name="conv2", activation="relu", padding="same"),
-        # Activation('relu'),
-        MaxPool2D(pool_size=(2, 2), name="maxpool2"),
-        Dropout(dropout),
-
-        Conv2D(filter_size*3, (2,3), name="conv3", activation="relu", padding="same"),
-        # Activation('relu'),
-        MaxPool2D(pool_size=(2, 2), name="maxpool3"),
-        Dropout(dropout),
-
-        Conv2D(filter_size*3, (1,7), name="conv4", activation="relu", padding="same"),
-        # Activation('relu'),
-        MaxPool2D(pool_size=(1, 2), name="maxpool4"),
-        Dropout(dropout),
-
-        Conv2D(filter_size*3, (1,3), name="conv5", activation="relu", padding="same"),
-        Conv2D(filter_size*3, (1,3), name="conv6", activation="relu", padding="same"),
-        Flatten(),
-        Dense(activation='softmax', units=2)
-    ]
-    return Sequential(layers)
+    return Model(input=inputs, outputs=x)

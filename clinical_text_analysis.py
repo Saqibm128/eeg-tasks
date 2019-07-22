@@ -8,10 +8,10 @@ import pandas as pd
 from addict import Dict
 
 
-def train_test_split_on_combined(edfTokens, labels, test_split=0.2):
+def train_test_split_on_combined(edfTokens, labels, test_size=0.2):
     patients = Dict()
     for i, token in enumerate(edfTokens):
-        data_split, patient, session, token = read.parse_edf_token_path_structure(token)
+        data_split, patient, session, tokenName = read.parse_edf_token_path_structure(token)
         if patient in patients.keys() and patients[patient].label != labels[i]:
             print("WARNING! Patient has conflicting labels! ", patient, session, token)
         if patient not in patients.keys():

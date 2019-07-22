@@ -26,7 +26,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
 
 from sacred.observers import MongoObserver
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # trainEdfEnsembler = None
 # testEdfEnsembler = None
@@ -164,7 +164,7 @@ def get_cb_list(use_early_stopping, model_name):
         return [get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
 
 @ex.capture
-def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths, start_offset_seconds, use_cached_pkl, ensemble_sample_info_path, is_test=False):
+def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths, start_offset_seconds, use_cached_pkl, ensemble_sample_info_path, is_test=False, is_valid=False):
     if not use_random_ensemble:
         edfData = read.EdfDataset(
             split,
@@ -177,7 +177,7 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
         edfData.edf_tokens = edfTokenPaths[:num_files]
         assert len(edfData) == len(labels)
         return edfData
-    else:
+    else: #store the ensemble data and the info on how stuff was sampled out
         edfData = read.EdfDatasetEnsembler(
             split,
             ref,
@@ -191,6 +191,7 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
 
         samplingInfo = edfData.sampleInfo
         ensemble_sample_info_path = "test_" + ensemble_sample_info_path if is_test else ensemble_sample_info_path
+        ensemble_sample_info_path = "valid_" + ensemble_sample_info_path if is_valid else ensemble_sample_info_path
         print(ensemble_sample_info_path)
         if use_cached_pkl and path.exists(ensemble_sample_info_path):
             edfData.sampleInfo = pkl.load(open(ensemble_sample_info_path, 'rb'))
@@ -203,43 +204,51 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
 
 cached_test_train_split_info = None
 @ex.capture
-def get_test_train_split_from_combined(combined_split, ref, test_size, use_cached_pkl, test_train_split_pkl_path):
+def get_test_train_split_from_combined(combined_split, ref, test_size, use_cached_pkl, test_train_split_pkl_path, validation_size):
     global cached_test_train_split_info
     if use_cached_pkl and path.exists(test_train_split_pkl_path):
         cached_test_train_split_info = pkl.load(open(test_train_split_pkl_path, 'rb'))
         ex.add_resource(test_train_split_pkl_path)
     elif cached_test_train_split_info is None:
         edfTokens, genders = cta.demux_to_tokens(cta.getGenderAndFileNames(combined_split, ref, convert_gender_to_num=True))
-        cached_test_train_split_info = cta.train_test_split(edfTokens, genders, test_size=test_size)
+        trainTokens, testTokens, trainGenders, testGenders = cta.train_test_split_on_combined(edfTokens, genders, test_size=test_size)
+        trainTokens, validationTokens, trainGenders, validationGenders = cta.train_test_split_on_combined(trainTokens, trainGenders, test_size=validation_size)
+        assert len(set(trainTokens).intersection(validationTokens)) == 0
+        assert len(set(trainTokens).intersection(testTokens)) == 0
+
+        cached_test_train_split_info = trainTokens, validationTokens, testTokens, trainGenders, validationGenders, testTokens
         pkl.dump(cached_test_train_split_info, open(test_train_split_pkl_path, 'wb'))
         ex.add_artifact(test_train_split_pkl_path)
-    return cached_test_train_split_info
+    return cached_test_train_split_info #trainData, testData, trainGender, testGender
 
 
 @ex.capture
-def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl, use_combined=False, train_split="", test_split="",  is_test=False):
+def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False):
     if use_combined:  #use the previous test train split, since we are sharing a split instead of enforcing it with a different directory
-        edfTokensTrain, edfTokensTest, gendersTrain, gendersTest = get_test_train_split_from_combined()
-        if split==train_split and not is_test:
+        edfTokensTrain, edfTokensValidation, edfTokensTest, gendersTrain, gendersValidation, gendersTest = get_test_train_split_from_combined()
+        if split==train_split and not is_test and not is_valid:
             edfTokenPaths = edfTokensTrain[:num_files]
             genders = np.array(gendersTrain[:num_files])
             assert len(edfTokenPaths) == len(genders)
-        elif split == test_split or is_test:
+        elif is_test:
             edfTokenPaths = edfTokensTest[:num_files]
             genders = np.array(gendersTest[:num_files])
+        elif is_valid:
+            edfTokenPaths = edfTokensValidation[:num_files]
+            genders = np.array(gendersValidation[:num_files])
     else:
         genderDict = cta.getGenderAndFileNames(split, ref, convert_gender_to_num=True)
         edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
     if path.exists(precached_pkl) and use_cached_pkl:
         edfData = pkl.load(open(precached_pkl, 'rb'))
     else:
-        edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths, is_test=is_test)
+        edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths, is_test=is_test, is_valid=False)
         edfData = edfData[:]
         pkl.dump(edfData, open(precached_pkl, 'wb')) #don't add these as artifacts or resources or else mongodb will try to store giant file copies of these
     return edfData, genders
 
 @ex.capture
-def get_data_generator(split, batch_size, num_files, max_length, use_random_ensemble):
+def get_data_generator(split, batch_size, num_files, max_length, use_random_ensemble, split_type=""):
     """Based on a really naive, dumb mapping of eeg electrodes into 2d space
 
     Parameters
@@ -257,7 +266,7 @@ def get_data_generator(split, batch_size, num_files, max_length, use_random_ense
         Description of returned object.
 
     """
-    edfData, genders = get_data(split)
+    edfData, genders = get_data(split, is_test=split_type=="test", is_valid=(split_type=="validation" or split_type=="valid"))
     return EdfDataGenerator(
         edfData,
         precache=True,
@@ -320,7 +329,11 @@ def get_test_data(test_split, max_length, precached_test_pkl, use_cached_pkl):
 @ex.main
 def main(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name):
     trainValidationDataGenerator = get_data_generator(train_split)
-    trainDataGenerator, validationDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size=validation_size)
+    if use_combined:
+        trainDataGenerator = trainValidationDataGenerator
+        validationDataGenerator = get_data_generator(train_split, split_type="validation")
+    else: #if not combined, just split on edf token level.. TODO: figure out how to use correct flow
+        trainDataGenerator, validationDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size=validation_size)
     model = get_model()
     print(model.summary())
 
@@ -338,8 +351,8 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
             edfTokenPaths, testGender = cta.demux_to_tokens(cta.getGenderAndFileNames(test_split, ref, convert_gender_to_num=True))
             testEdfEnsembler = get_base_dataset(test_split, labels=testGender, edfTokenPaths=edfTokenPaths, is_test=True)
         else:
-            trainEdfTokens, edfTokenPaths, trainGenders, _testGendersCopy = get_test_train_split_from_combined()
-            testEdfEnsembler = get_base_dataset(test_split, labels=_testGendersCopy, edfTokenPaths=edfTokenPaths, is_test=True)
+            trainEdfTokens, validEdfTokens, testEdfTokens, trainGenders, validGenders, _testGendersCopy = get_test_train_split_from_combined()
+            testEdfEnsembler = get_base_dataset(test_split, labels=_testGendersCopy, edfTokenPaths=testEdfTokens, is_test=True)
 
         testGender = testEdfEnsembler.getEnsembledLabels()
         assert len(testData) == len(testGender)
