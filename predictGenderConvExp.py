@@ -26,7 +26,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
 
 from sacred.observers import MongoObserver
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # trainEdfEnsembler = None
 # testEdfEnsembler = None
@@ -133,6 +133,7 @@ def config():
     num_temporal_filter=300
     max_pool_size=(2,2)
     max_pool_stride=(1,2)
+    use_batch_normalization=False
     use_random_ensemble = False
     max_num_samples=10 #number of samples of eeg data segments per eeg.edf file
     use_combined=False
@@ -278,9 +279,9 @@ def get_data_generator(split, batch_size, num_files, max_length, use_random_ense
         )
 
 @ex.capture
-def get_model(dropout, max_length,lr, use_vp, num_spatial_filter):
+def get_model(dropout, max_length,lr, use_vp, num_spatial_filter, use_batch_normalization):
     if use_vp:
-        model = vp_conv2d(dropout=dropout, input_shape=(21, max_length, 1), filter_size=num_spatial_filter)
+        model = vp_conv2d(dropout=dropout, input_shape=(21, max_length, 1), filter_size=num_spatial_filter, use_batch_normalization=use_batch_normalization)
         adam = optimizers.Adam(lr=lr)
         model.compile(adam, loss="categorical_crossentropy", metrics=["binary_accuracy"])
         return model
@@ -292,6 +293,7 @@ def get_custom_model(
     dropout,
     max_length,
     lr,
+    use_batch_normalization,
     num_conv_spatial_layers=1,
     num_conv_temporal_layers=1,
     conv_spatial_filter=(3,3),
@@ -299,7 +301,7 @@ def get_custom_model(
     conv_temporal_filter=(2,5),
     num_temporal_filter=300,
     max_pool_size=(2,2),
-    max_pool_stride=(1,2)
+    max_pool_stride=(1,2),
     ):
     model = conv2d_gridsearch(
         dropout=dropout,
@@ -311,7 +313,8 @@ def get_custom_model(
         conv_temporal_filter=conv_temporal_filter,
         num_temporal_filter=num_temporal_filter,
         max_pool_size=max_pool_size,
-        max_pool_stride=max_pool_stride
+        max_pool_stride=max_pool_stride,
+        use_batch_normalization=use_batch_normalization
         )
     adam = optimizers.Adam(lr=lr)
     model.compile(adam, loss="categorical_crossentropy", metrics=["binary_accuracy"])
