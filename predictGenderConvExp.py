@@ -56,13 +56,12 @@ def debug():
     max_num_samples=2
 
 @ex.named_config
-def extra_data_simple_ensemble_samples():
-    '''
-    Not really training as an ensemble, except for the test phase, when we try to see our stats as an ensemble
-    '''
+def combined_less_data_simple_ensemble_samples():
     use_random_ensemble=True
-    precached_pkl = "simple_ensemble_train_data_40_segs_max_length_4.pkl"
-    precached_test_pkl = "simple_ensemble_test_data_40_segs_max_length_4.pkl"
+    precached_pkl = "combined_simple_ensemble_train_data_40_segs_max_length_2.pkl"
+    precached_test_pkl = "combined_simple_ensemble_test_data_40_segs_max_length_2.pkl"
+    ensemble_sample_info_path = "2s_edf_ensemble_path.pkl"
+    max_length = 2 * constants.COMMON_FREQ
     max_num_samples=40 #number of samples of eeg data segments per eeg.edf file
 
 
@@ -88,7 +87,7 @@ def combined_simple_ensemble():
     precached_test_pkl = "combined_simple_ensemble_test_data.pkl"
 
     max_num_samples=40 #number of samples of eeg data segments per eeg.edf file
-    use_standard_scaler = True
+    use_standard_scaler = False
 
 
 @ex.named_config
@@ -118,7 +117,7 @@ def config():
     precached_pkl = "train_data.pkl"
     precached_test_pkl = "test_data.pkl"
     num_epochs = 1000
-    lr = 0.00005
+    lr = 0.0002
     validation_size = 0.2
     test_size=0.2
     use_cached_pkl = True
@@ -133,7 +132,7 @@ def config():
     num_temporal_filter=300
     max_pool_size=(2,2)
     max_pool_stride=(1,2)
-    use_batch_normalization=False
+    use_batch_normalization = True
     use_random_ensemble = False
     max_num_samples=10 #number of samples of eeg data segments per eeg.edf file
     use_combined=False
@@ -217,14 +216,16 @@ def get_test_train_split_from_combined(combined_split, ref, test_size, use_cache
         assert len(set(trainTokens).intersection(validationTokens)) == 0
         assert len(set(trainTokens).intersection(testTokens)) == 0
 
-        cached_test_train_split_info = trainTokens, validationTokens, testTokens, trainGenders, validationGenders, testTokens
+        cached_test_train_split_info = trainTokens, validationTokens, testTokens, trainGenders, validationGenders, testGenders
         pkl.dump(cached_test_train_split_info, open(test_train_split_pkl_path, 'wb'))
         ex.add_artifact(test_train_split_pkl_path)
     return cached_test_train_split_info #trainData, testData, trainGender, testGender
 
 
 @ex.capture
-def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False):
+def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False, use_standard_scaler=False):
+    if use_standard_scaler:
+        raise NotImplemented()
     if use_combined:  #use the previous test train split, since we are sharing a split instead of enforcing it with a different directory
         edfTokensTrain, edfTokensValidation, edfTokensTest, gendersTrain, gendersValidation, gendersTest = get_test_train_split_from_combined()
         if split==train_split and not is_test and not is_valid:
@@ -240,10 +241,12 @@ def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_ca
     else:
         genderDict = cta.getGenderAndFileNames(split, ref, convert_gender_to_num=True)
         edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
+    if is_valid:
+        precached_pkl = "valid_" + precached_pkl
     if path.exists(precached_pkl) and use_cached_pkl:
         edfData = pkl.load(open(precached_pkl, 'rb'))
     else:
-        edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths, is_test=is_test, is_valid=False)
+        edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths, is_test=is_test, is_valid=is_valid)
         edfData = edfData[:]
         pkl.dump(edfData, open(precached_pkl, 'wb')) #don't add these as artifacts or resources or else mongodb will try to store giant file copies of these
     return edfData, genders
