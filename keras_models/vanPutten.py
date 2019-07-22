@@ -41,46 +41,41 @@ def conv2d_gridsearch(
     num_conv_temporal_layers=1,
     conv_spatial_filter=(3,3),
     num_spatial_filter=100,
-    conv_temporal_filter=(2,5),
+    conv_temporal_filter=(1,3),
     num_temporal_filter=300,
     max_pool_size=(2,2),
-    max_pool_stride=(1,2),
+    max_pool_stride=(2,2),
     use_batch_normalization=False
     ):
-    if use_batch_normalization:
-        raise NotImplemented()
     max_temporal_filter=max(num_temporal_filter, num_spatial_filter*3)
-    layers = [
-    ]
+    input = Input(shape=input_shape)
+    x = input
 
     #should act to primarily convolve space, with some convolving of time
     for i in range(num_conv_spatial_layers):
         if i == 2:
             num_spatial_filter *= 3 #match van_putten magic
-        layers += [
-            Conv2D(num_spatial_filter, conv_spatial_filter, input_shape=input_shape, padding='same'),
-            Activation('relu'),
-            MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride, padding='same'),
-            Dropout(dropout),
-        ]
+        x = Conv2D(num_spatial_filter, conv_spatial_filter, input_shape=input_shape, padding='same', activation='relu')(x)
+        x = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(x)
+        x = Dropout(dropout)(x)
+        if use_batch_normalization:
+            x = BatchNormalization()(x)
     for i in range(num_conv_temporal_layers):
-        layers += [
-        Conv2D(num_temporal_filter, conv_temporal_filter, padding='same'),
-            Activation('relu'),
-            MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride, padding='same'),
-            Dropout(dropout),
-        ]
-
+        x = Conv2D(num_temporal_filter, conv_temporal_filter, padding='same', activation='relu')(x)
+        x = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(x)
+        x = Dropout(dropout)(x)
+        if use_batch_normalization:
+            x = BatchNormalization()(x)
 
     # final conv layer to match VP arch, then flatten and run through dense output
-    layers += [
-        Conv2D(num_temporal_filter, (1,3), padding='same'),
-        Flatten(),
-        Dense(activation='softmax', units=2)
-    ]
+    x = Conv2D(num_temporal_filter, (1,3), padding='same', activation='relu')(x)
+    if use_batch_normalization:
+        x = BatchNormalization()(x)
+    x = Flatten()(x)
+    x = Dense(activation='softmax', units=2)(x)
 
 
-    return Sequential(layers)
+    return Model(input=input, outputs=x)
 
 def vp_conv2d(dropout=0.25, input_shape=(None), filter_size=100, use_batch_normalization=False):
     inputs = Input(shape=input_shape)
