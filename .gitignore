@@ -11,3 +11,4 @@ configLinux.json
 run.sh
 *.h5
 out/
+out

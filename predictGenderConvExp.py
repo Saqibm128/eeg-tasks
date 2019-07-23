@@ -26,7 +26,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
 
 from sacred.observers import MongoObserver
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # trainEdfEnsembler = None
 # testEdfEnsembler = None
@@ -161,6 +161,8 @@ def config():
     fit_generator_verbosity=2
     steps_per_epoch=None
     shuffle_generator=True
+    use_dl=True
+
 
 #https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -356,7 +358,34 @@ def get_test_data(test_split, max_length, precached_test_pkl, use_cached_pkl):
     return testData, testGender
 
 @ex.main
-def main(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, steps_per_epoch):
+def main(use_dl):
+    if use_dl:
+        return dl() #deep learning branch
+    else:
+        return rf()
+
+def split_data_gender(dataGender):
+    #did data in n by 2 data (I HATE MYSELF), this returns neat and correct arrays of data.
+    data = np.stack([datum[0] for datum in dataGender])
+    gender = np.array([datum[1] for datum in dataGender])
+    return data, gender
+
+
+@ex.capture
+def rf(use_combined, use_random_ensemble, combined_split, a):
+    if not use_combined or not use_random_ensemble:
+        raise NotImplemented("Have not completed this flow yet")
+    else:
+        trainEdfDataGender, _ = split_data_gender(get_data(combined_split, is_test=False, is_valid=False)[0])
+        validEdfDataGender, _ = split_data_gender(get_data(combined_split, is_test=False, is_valid=True)[0])
+        testEdfDataGender, _ = split_data_gender(get_data(combined_split, is_test=True, is_valid=False)[0])
+        raise Exception(a)
+
+
+
+
+@ex.capture
+def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, steps_per_epoch):
     trainValidationDataGenerator = get_data_generator(train_split)
     if use_combined:
         trainDataGenerator = trainValidationDataGenerator

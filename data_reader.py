@@ -206,7 +206,6 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
         else:
             return data, indexData.label
 
-
 class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
     freq_bins = [0.2 * i for i in range(50)] + list(range(10, 80, 1))
     """Implements an indexable dataset applying fft to entire timeseries,
@@ -215,7 +214,7 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
     Parameters
     ----------
     edf_dataset : EdfDataset
-        an array-like returning the raw channel data and the output as a tuple
+        an array-like returning the raw channel data and the output as a tuple or a single result
     freq_bins : type
         Description of parameter `freq_bins`.
     n_process : type
@@ -232,12 +231,15 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
     def __init__(
         self,
         edf_dataset,
+        is_tuple_data=True,
+        is_pandas_data=True,
         freq_bins=freq_bins,
         n_process=None,
         precache=False,
         window_size=None,
         non_overlapping=True,
-        return_ann=True
+        return_ann=True,
+        return_numpy=False #return pandas.dataframe if possible (if windows_size is false)
     ):
         """Used to read the raw data in
 
@@ -262,6 +264,11 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
         None
 
         """
+        self.return_numpy = return_numpy
+        if not is_tuple_data:
+            return_ann = False #you can't return annotation data if annotation isn't included
+        self.is_tuple_data = is_tuple_data
+        self.is_pandas_data = is_pandas_data
         self.edf_dataset = edf_dataset
         if n_process is None:
             n_process = mp.cpu_count()
@@ -287,29 +294,45 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
         if self.should_use_mp(i):
             return self.getItemSlice(i)
         if self.window_size is None:
-            original_data = self.edf_dataset[i]
+            original_data_label = self.edf_dataset[i]
+            if self.is_tuple_data:
+                original_data, label = original_data_label
+            else:
+                original_data = original_data_label
+            if self.is_pandas_data:
+                columns = original_data.column
+                original_data = original_data.values
+            else:
+                columns = list(range(original_data.shape[1]))
             fft_data = np.nan_to_num(
                 np.abs(
                     np.fft.fft(
-                        original_data[0].values,
+                        original_data,
                         axis=0)))
             fft_freq = np.fft.fftfreq(fft_data.shape[0], d=constants.COMMON_DELTA)
             fft_freq_bins = self.freq_bins
             new_fft_hist = pd.DataFrame(
-                index=fft_freq_bins[:-1], columns=original_data[0].columns)
-            for i, name in enumerate(original_data[0].columns):
+                index=fft_freq_bins[:-1], columns=columns)
+            for i, name in enumerate(columns):
                 new_fft_hist[name] = np.histogram(
                     fft_freq, bins=fft_freq_bins, weights=fft_data[:, i])[0]
+            if self.return_numpy:
+                new_fft_hist = new_fft_hist.values
             if not self.return_ann:
                 return new_fft_hist
-            return new_fft_hist, original_data[1]
+            return new_fft_hist, label
         else:
             window_count_size = int(
                 self.window_size /
                 pd.Timedelta(
                     seconds=constants.COMMON_DELTA))
-            original_data = self.edf_dataset[i]
-            fft_data = original_data[0].values
+
+            original_data_label = self.edf_dataset[i]
+            if self.is_tuple_data:
+                original_data, label = original_data_label
+            else:
+                original_data = original_data_label
+            fft_data = original_data.values
             fft_data_windows = np_rolling_window(
                 np.array(fft_data.T), window_count_size)
             if self.non_overlapping:
