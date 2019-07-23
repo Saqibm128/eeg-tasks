@@ -159,6 +159,8 @@ def config():
     use_standard_scaler = False
     ensemble_sample_info_path = "edf_ensemble_path.pkl"
     fit_generator_verbosity=2
+    steps_per_epoch=None
+    shuffle_generator=True
 
 #https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -272,7 +274,7 @@ def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_ca
     return edfData, genders
 
 @ex.capture
-def get_data_generator(split, batch_size, num_files, max_length, use_random_ensemble, split_type=""):
+def get_data_generator(split, batch_size, num_files, max_length, use_random_ensemble, shuffle_generator, split_type="", ):
     """Based on a really naive, dumb mapping of eeg electrodes into 2d space
 
     Parameters
@@ -299,6 +301,7 @@ def get_data_generator(split, batch_size, num_files, max_length, use_random_ense
         labels=np.array(genders) if not use_random_ensemble else None, #properly duplicated genders inside edfData if using use_random_ensemble
         batch_size=batch_size,
         max_length=max_length,
+        shuffle=shuffle_generator
         )
 
 @ex.capture
@@ -353,7 +356,7 @@ def get_test_data(test_split, max_length, precached_test_pkl, use_cached_pkl):
     return testData, testGender
 
 @ex.main
-def main(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity):
+def main(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, steps_per_epoch):
     trainValidationDataGenerator = get_data_generator(train_split)
     if use_combined:
         trainDataGenerator = trainValidationDataGenerator
@@ -367,7 +370,11 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
     if not regenerate_data:
         #had issues where logs get too long, so onlye one line per epoch
         #also was trying to use multiprocessing for data analysis
-        history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process, verbose=fit_generator_verbosity)
+        if steps_per_epoch is None:
+            history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process, verbose=fit_generator_verbosity)
+        else:
+            history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process, verbose=fit_generator_verbosity, steps_per_epoch=steps_per_epoch)
+
 
 
 
