@@ -77,6 +77,21 @@ def simple_ensemble():
     ensemble_sample_info_path = "native_edf_ensemble_path.pkl"
     max_num_samples=40 #number of samples of eeg data segments per eeg.edf file
 
+
+@ex.named_config
+def standardized_combined_simple_ensemble():
+    use_combined=True
+    use_random_ensemble=True
+    train_split="combined"
+    test_split="combined"
+    precached_pkl = "standardized_combined_simple_ensemble_train_data.pkl"
+    precached_test_pkl = "standardized_combined_simple_ensemble_test_data.pkl"
+    ensemble_sample_info_path = "standardized_edf_ensemble_sample_info.pkl"
+
+    max_num_samples=40 #number of samples of eeg data segments per eeg.edf file
+    use_standard_scaler = True
+    use_filtering=True
+
 @ex.named_config
 def combined_simple_ensemble():
     use_combined=True
@@ -130,6 +145,7 @@ def config():
     num_spatial_filter=100
     conv_temporal_filter=(2,5)
     num_temporal_filter=300
+    use_filtering=True
     max_pool_size=(2,2)
     max_pool_stride=(1,2)
     use_batch_normalization = True
@@ -142,6 +158,7 @@ def config():
     regenerate_data = False #if use_cached_pkl is false and this is true, just generates pickle files, doesn't make models or anything
     use_standard_scaler = False
     ensemble_sample_info_path = "edf_ensemble_path.pkl"
+    fit_generator_verbosity=2
 
 #https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -164,7 +181,7 @@ def get_cb_list(use_early_stopping, model_name):
         return [get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
 
 @ex.capture
-def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths, start_offset_seconds, use_cached_pkl, ensemble_sample_info_path, is_test=False, is_valid=False):
+def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths, start_offset_seconds, use_cached_pkl, ensemble_sample_info_path, use_standard_scaler, use_filtering, is_test=False, is_valid=False):
     if not use_random_ensemble:
         edfData = read.EdfDataset(
             split,
@@ -172,9 +189,12 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
             n_process=n_process,
             max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA),
             use_numpy=True,
-            start_offset=pd.Timedelta(seconds=start_offset_seconds)
+            start_offset=pd.Timedelta(seconds=start_offset_seconds),
+            filter=use_filtering
             )
         edfData.edf_tokens = edfTokenPaths[:num_files]
+        if use_standard_scaler:
+            edfData = read.EdfStandardScaler(edfData, dataset_includes_label=True)
         assert len(edfData) == len(labels)
         return edfData
     else: #store the ensemble data and the info on how stuff was sampled out
@@ -187,9 +207,11 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
             edf_tokens=edfTokenPaths[:num_files],
             labels=labels[:num_files],
             max_num_samples=max_num_samples,
+            filter=use_filtering
             )
-
         samplingInfo = edfData.sampleInfo
+        if use_standard_scaler:
+            edfData = read.EdfStandardScaler(edfData, dataset_includes_label=True, n_process=n_process)
         ensemble_sample_info_path = "test_" + ensemble_sample_info_path if is_test else ensemble_sample_info_path
         ensemble_sample_info_path = "valid_" + ensemble_sample_info_path if is_valid else ensemble_sample_info_path
         print(ensemble_sample_info_path)
@@ -223,9 +245,7 @@ def get_test_train_split_from_combined(combined_split, ref, test_size, use_cache
 
 
 @ex.capture
-def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False, use_standard_scaler=False):
-    if use_standard_scaler:
-        raise NotImplemented()
+def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False):
     if use_combined:  #use the previous test train split, since we are sharing a split instead of enforcing it with a different directory
         edfTokensTrain, edfTokensValidation, edfTokensTest, gendersTrain, gendersValidation, gendersTest = get_test_train_split_from_combined()
         if split==train_split and not is_test and not is_valid:
@@ -333,7 +353,7 @@ def get_test_data(test_split, max_length, precached_test_pkl, use_cached_pkl):
     return testData, testGender
 
 @ex.main
-def main(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name):
+def main(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity):
     trainValidationDataGenerator = get_data_generator(train_split)
     if use_combined:
         trainDataGenerator = trainValidationDataGenerator
@@ -347,7 +367,7 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
     if not regenerate_data:
         #had issues where logs get too long, so onlye one line per epoch
         #also was trying to use multiprocessing for data analysis
-        history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process, verbose=2)
+        history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process, verbose=fit_generator_verbosity)
 
 
 
@@ -360,13 +380,20 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
             trainEdfTokens, validEdfTokens, testEdfTokens, trainGenders, validGenders, _testGendersCopy = get_test_train_split_from_combined()
             testEdfEnsembler = get_base_dataset(test_split, labels=_testGendersCopy, edfTokenPaths=testEdfTokens, is_test=True)
 
-        testGender = testEdfEnsembler.getEnsembledLabels()
+        if use_standard_scaler:
+            testGender = testEdfEnsembler.dataset.getEnsembledLabels()
+        else:
+            testGender = testEdfEnsembler.getEnsembledLabels()
         assert len(testData) == len(testGender)
 
     if regenerate_data:
         return
     model = keras.models.load_model(model_name)
     bin_acc_model = keras.models.load_model("bin_acc_" + model_name)
+
+    # free memory so i can request less mem from 02 and get faster allocations
+    del trainDataGenerator
+    del validationDataGenerator
 
     y_pred = model.predict(testData)
     print("pred shape", y_pred.shape)
@@ -410,7 +437,10 @@ def main(train_split, test_split, num_epochs, lr, n_process, validation_size, ma
         'auc': bin_acc_auc
     }}
     if use_random_ensemble:
-        label, average_pred = testEdfEnsembler.getEnsemblePrediction(y_pred.argmax(axis=1))
+        if use_standard_scaler:
+            label, average_pred = testEdfEnsembler.dataset.getEnsemblePrediction(y_pred.argmax(axis=1))
+        else:
+            label, average_pred = testEdfEnsembler.getEnsemblePrediction(y_pred.argmax(axis=1))
         pred = np.round(average_pred)
         toReturn["ensemble_score"] = {}
         toReturn["ensemble_score"]["auc"] = roc_auc_score(label, pred)

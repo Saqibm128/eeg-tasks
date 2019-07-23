@@ -16,7 +16,47 @@ import pywt
 from wf_analysis import filters
 from addict import Dict
 
+class EdfStandardScaler(util_funcs.MultiProcessingDataset):
+    """
+    Standardizes using the z-score among all the data
+    """
+    def __init__(self, dataset, use_only_instance_axis=True, dataset_includes_label=True, n_process=8):
+        """ creates an EdfStandardScaler transformer
 
+        Parameters
+        ----------
+        dataset : keras.util.Sequence-like
+            that returns np.array or pd.DataFrame of some shape
+        use_only_instance_axis : bool
+            to standardize along all axis of each instance data, but NOT BETWEEN
+        dataset_includes_label : bool
+            if dataset[i] returns data, label or just data
+
+        """
+        self.dataset = dataset
+        if not use_only_instance_axis:
+            raise NotImplemented()
+        self.use_only_instance_axis = use_only_instance_axis
+        self.n_process = n_process
+        self.dataset_includes_label = dataset_includes_label
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, i):
+        if self.should_use_mp(i):
+            return self.getItemSlice(i)
+        if self.dataset_includes_label:
+            data, label = self.dataset[i]
+        else:
+            data = self.dataset[i]
+
+        if self.use_only_instance_axis:
+            data = (data - data.mean())/data.std()
+
+        if self.dataset_includes_label:
+            return data, label
+        else:
+            return data
 
 class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
     """
