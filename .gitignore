@@ -10,3 +10,4 @@ configLinux.json
 *.png
 run.sh
 *.h5
+out/
