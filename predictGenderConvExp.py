@@ -142,7 +142,7 @@ def config():
     start_offset_seconds = 0  # matters if we aren't doing random ensemble sampling
     dropout = 0.25
     use_early_stopping = True
-    patience = 50
+    patience = 10
     model_name = randomString() + ".h5"
     precached_pkl = "train_data.pkl"
     precached_test_pkl = "test_data.pkl"
@@ -159,7 +159,7 @@ def config():
     conv_spatial_filter = (3, 3)
     num_spatial_filter = 100
     conv_temporal_filter = (2, 5)
-    num_temporal_filter = 300
+    num_temporal_filter = 1
     use_filtering = True
     max_pool_size = (2, 2)
     max_pool_stride = (1, 2)
