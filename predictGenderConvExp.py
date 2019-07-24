@@ -26,7 +26,7 @@ import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
 
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # trainEdfEnsembler = None
 # testEdfEnsembler = None
@@ -206,7 +206,22 @@ def get_cb_list(use_early_stopping, model_name):
 
 
 @ex.capture
-def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths, start_offset_seconds, ensemble_sample_info_path, use_standard_scaler, use_filtering,  use_cached_pkl_dataset=True, is_test=False, is_valid=False):
+def get_base_dataset(split,
+                     ref,
+                     n_process,
+                     num_files,
+                     use_random_ensemble,
+                     labels,
+                     max_num_samples,
+                     max_length,
+                     edfTokenPaths,
+                     start_offset_seconds,
+                     ensemble_sample_info_path,
+                     use_standard_scaler,
+                     use_filtering,
+                     use_cached_pkl_dataset=True,
+                     is_test=False,
+                     is_valid=False):
     if not use_random_ensemble:
         edfData = read.EdfDataset(
             split,
@@ -284,7 +299,9 @@ def get_test_train_split_from_combined(combined_split, ref, test_size,  test_tra
 
 
 @ex.capture
-def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl_dont_reload_data=True, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False):
+def get_data(split, ref, n_process, num_files, max_length, precached_pkl, precached_test_pkl, use_cached_pkl_dont_reload_data=True, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False):
+    if is_test:
+        precached_pkl = precached_test_pkl
     if use_combined:  # use the previous test train split, since we are sharing a split instead of enforcing it with a different directory
         edfTokensTrain, edfTokensValidation, edfTokensTest, gendersTrain, gendersValidation, gendersTest = get_test_train_split_from_combined()
         if split == train_split and not is_test and not is_valid:
@@ -414,6 +431,20 @@ def main(use_dl):
 
 
 def split_data_gender(dataGender):
+    """ For rearranging data in the form of [(datum, gender),...,(datum, gender)]
+    into np.arrays (list of tuples is hard to use)
+
+    Parameters
+    ----------
+    dataGender : list
+        List of tuples
+
+    Returns
+    -------
+    type
+        Description of returned object.
+
+    """
     # did data in n by 2 data (I HATE MYSELF), this returns neat and correct arrays of data.
     data = np.stack([datum[0] for datum in dataGender])
     gender = np.array([datum[1] for datum in dataGender])
@@ -461,20 +492,17 @@ def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_tra
             [0 for i in range(trainSize)] + [-1 for i in range(validSize)])
         rf_parameters = {
             'criterion': ["gini", "entropy"],
-            'n_estimators': [50, 100, 200, 400, 600, 1000],
-            'max_features': ['auto', 'log2', .1, .4, .6, .8],
-            'max_depth': [None, 2, 4, 6, 8, 10, 12],
+            'n_estimators': [50, 100, 200, 400],
+            'max_features': ['auto', 'log2', .1, .4],
+            'max_depth': [None,  4, 8, 12],
             'min_samples_split': [2, 4, 8],
             'n_jobs': [1],
-            'min_weight_fraction_leaf': [0, 0.2, 0.5]
-        }
-        rf_parameters = {
-            'n_estimators': [50, ],
-            'n_jobs': [10],
+            'min_weight_fraction_leaf': [0, 0.2]
         }
         gridsearch = GridSearchCV(rf, rf_parameters, scoring=make_scorer(
             f1_score), cv=preSplit, n_jobs=n_process)
         gridsearch.fit(trainValidData, trainValidGender)
+
 
         if not use_cached_pkl or not path.exists("test_" + rf_data_pickle):
             testEdfData, testGender = split_data_gender(
@@ -493,15 +521,12 @@ def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_tra
             np.stack(testEdfData).reshape(len(testEdfData), -1))
         toReturn = {
             'f1_score': f1_score(testGender, y_pred),
-            # 'auc': roc_auc_score(testGender, y_pred),
+            'auc': roc_auc_score(testGender, y_pred),
             'mcc': matthews_corrcoef(testGender, y_pred),
             'accuracy': accuracy_score(testGender, y_pred)
         }
 
         trainEdfTokens, validEdfTokens, testEdfTokens, trainGenders, validGenders, _testGendersCopy = get_test_train_split_from_combined()
-        assert len(testEdfTokens) == len(y_pred)
-        assert len(trainEdfData) == len(trainSize)
-        assert len(validEdfData) == len(validSize)
 
         testEdfEnsembler = get_base_dataset(
             "combined", labels=_testGendersCopy, edfTokenPaths=testEdfTokens, is_test=True)
