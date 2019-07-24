@@ -9,7 +9,7 @@ from os import path
 import data_reader as read
 import constants
 import util_funcs
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import PredefinedSplit, GridSearchCV
 from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -31,6 +31,12 @@ from sacred.observers import MongoObserver
 # trainEdfEnsembler = None
 # testEdfEnsembler = None
 
+@ex.named_config
+def rf():
+     use_dl=False
+     max_train_rf_samps=None
+     freq_bins=[0,10,20,25,27.5,30]
+     rf_data_pickle="rf_fft_data.pkl"
 
 @ex.named_config
 def conv_spatial_filter_2_2():
@@ -185,7 +191,7 @@ def get_cb_list(use_early_stopping, model_name):
         return [get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
 
 @ex.capture
-def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths, start_offset_seconds, use_cached_pkl, ensemble_sample_info_path, use_standard_scaler, use_filtering, is_test=False, is_valid=False):
+def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labels, max_num_samples, max_length, edfTokenPaths, start_offset_seconds, ensemble_sample_info_path, use_standard_scaler, use_filtering,  use_cached_pkl_dataset=True, is_test=False, is_valid=False):
     if not use_random_ensemble:
         edfData = read.EdfDataset(
             split,
@@ -219,7 +225,7 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
         ensemble_sample_info_path = "test_" + ensemble_sample_info_path if is_test else ensemble_sample_info_path
         ensemble_sample_info_path = "valid_" + ensemble_sample_info_path if is_valid else ensemble_sample_info_path
         print(ensemble_sample_info_path)
-        if use_cached_pkl and path.exists(ensemble_sample_info_path):
+        if use_cached_pkl_dataset and path.exists(ensemble_sample_info_path):
             edfData.sampleInfo = pkl.load(open(ensemble_sample_info_path, 'rb'))
             ex.add_resource(ensemble_sample_info_path)
         else:
@@ -230,9 +236,9 @@ def get_base_dataset(split, ref, n_process, num_files, use_random_ensemble, labe
 
 cached_test_train_split_info = None
 @ex.capture
-def get_test_train_split_from_combined(combined_split, ref, test_size, use_cached_pkl, test_train_split_pkl_path, validation_size):
+def get_test_train_split_from_combined(combined_split, ref, test_size,  test_train_split_pkl_path, validation_size, use_cached_pkl_test_train_split=True,):
     global cached_test_train_split_info
-    if use_cached_pkl and path.exists(test_train_split_pkl_path):
+    if use_cached_pkl_test_train_split and path.exists(test_train_split_pkl_path):
         cached_test_train_split_info = pkl.load(open(test_train_split_pkl_path, 'rb'))
         ex.add_resource(test_train_split_pkl_path)
     elif cached_test_train_split_info is None:
@@ -249,7 +255,7 @@ def get_test_train_split_from_combined(combined_split, ref, test_size, use_cache
 
 
 @ex.capture
-def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False):
+def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_cached_pkl_dont_reload_data=True, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False):
     if use_combined:  #use the previous test train split, since we are sharing a split instead of enforcing it with a different directory
         edfTokensTrain, edfTokensValidation, edfTokensTest, gendersTrain, gendersValidation, gendersTest = get_test_train_split_from_combined()
         if split==train_split and not is_test and not is_valid:
@@ -267,7 +273,7 @@ def get_data(split, ref, n_process, num_files, max_length, precached_pkl, use_ca
         edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
     if is_valid:
         precached_pkl = "valid_" + precached_pkl
-    if path.exists(precached_pkl) and use_cached_pkl:
+    if path.exists(precached_pkl) and use_cached_pkl_dont_reload_data:
         edfData = pkl.load(open(precached_pkl, 'rb'))
     else:
         edfData = get_base_dataset(split, labels=genders, edfTokenPaths=edfTokenPaths, is_test=is_test, is_valid=is_valid)
@@ -362,7 +368,7 @@ def main(use_dl):
     if use_dl:
         return dl() #deep learning branch
     else:
-        return rf()
+        return run_rf()
 
 def split_data_gender(dataGender):
     #did data in n by 2 data (I HATE MYSELF), this returns neat and correct arrays of data.
@@ -372,14 +378,88 @@ def split_data_gender(dataGender):
 
 
 @ex.capture
-def rf(use_combined, use_random_ensemble, combined_split, a):
+def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_train_rf_samps, n_process, rf_data_pickle, use_cached_pkl):
     if not use_combined or not use_random_ensemble:
         raise NotImplemented("Have not completed this flow yet")
     else:
-        trainEdfDataGender, _ = split_data_gender(get_data(combined_split, is_test=False, is_valid=False)[0])
-        validEdfDataGender, _ = split_data_gender(get_data(combined_split, is_test=False, is_valid=True)[0])
-        testEdfDataGender, _ = split_data_gender(get_data(combined_split, is_test=True, is_valid=False)[0])
-        raise Exception(a)
+        if not use_cached_pkl or not path.exists(rf_data_pickle):
+            trainEdfData, trainGender = split_data_gender(get_data(combined_split, is_test=False, is_valid=False)[0][:max_train_rf_samps])
+            trainEdfData = read.EdfFFTDatasetTransformer(trainEdfData, return_numpy=True, is_tuple_data=False, is_pandas_data=False, freq_bins=freq_bins, n_process=n_process)
+            trainEdfData.verbosity = 200
+            trainEdfData = trainEdfData[:]
+            validEdfData, validGender = split_data_gender(get_data(combined_split, is_test=False, is_valid=True)[0][:max_train_rf_samps])
+            validEdfData = read.EdfFFTDatasetTransformer(validEdfData, return_numpy=True, is_tuple_data=False, is_pandas_data=False, freq_bins=freq_bins, n_process=n_process)
+            validEdfData.verbosity = 200
+            validEdfData = validEdfData[:]
+
+            trainSize = len(trainEdfData)
+            validSize = len(validEdfData)
+            trainValidData = np.vstack([np.stack(trainEdfData), np.stack(validEdfData)])
+            trainValidData = trainValidData.reshape(trainValidData.shape[0], -1)
+            trainValidGender = np.hstack([np.array(trainGender), np.array(validGender)]).reshape(-1, 1)
+            #deallocate memory so o2 doesn't kick this out
+            del trainEdfData
+            del validEdfData
+            pkl.dump((trainSize, validSize, trainValidData, trainValidGender), open(rf_data_pickle, 'wb'))
+        else:
+            trainSize, validSize, trainValidData, trainValidGender = pkl.load(open(rf_data_pickle, 'rb'))
+
+
+        rf = RandomForestClassifier()
+        preSplit = PredefinedSplit([0 for i in range(trainSize)] + [-1 for i in range(validSize)])
+        rf_parameters = {
+            'criterion': ["gini", "entropy"],
+            'n_estimators': [50, 100, 200, 400, 600, 1000],
+            'max_features': ['auto', 'log2', .1, .4, .6, .8],
+            'max_depth': [None, 2, 4, 6, 8, 10, 12],
+            'min_samples_split': [2, 4, 8],
+            'n_jobs': [1],
+            'min_weight_fraction_leaf': [0, 0.2, 0.5]
+        }
+        rf_parameters = {
+            'n_estimators': [50,],
+            'n_jobs': [10],
+        }
+        gridsearch = GridSearchCV(rf, rf_parameters, scoring=make_scorer(f1_score), cv=preSplit, n_jobs=n_process)
+        gridsearch.fit(trainValidData, trainValidGender)
+
+        if not use_cached_pkl or not path.exists("test_" + rf_data_pickle):
+            testEdfData, testGender = split_data_gender(get_data(combined_split, is_test=True, is_valid=False)[0][:max_train_rf_samps])
+            testEdfData = read.EdfFFTDatasetTransformer(testEdfData, return_numpy=True, is_tuple_data=False, is_pandas_data=False, freq_bins=freq_bins, n_process=n_process)
+            testEdfData.verbosity = 200
+            testEdfData = testEdfData[:]
+            pkl.dump((testEdfData, testGender), open("test_" + rf_data_pickle, 'wb'))
+        else:
+            testEdfData, testGender = pkl.load(open("test_" + rf_data_pickle, 'rb'))
+
+
+
+
+
+        y_pred = gridsearch.predict(np.stack(testEdfData).reshape(len(testEdfData), -1))
+        toReturn = {
+            'f1_score': f1_score(testGender, y_pred),
+            # 'auc': roc_auc_score(testGender, y_pred),
+            'mcc': matthews_corrcoef(testGender, y_pred),
+            'accuracy': accuracy_score(testGender, y_pred)
+        }
+
+        trainEdfTokens, validEdfTokens, testEdfTokens, trainGenders, validGenders, _testGendersCopy = get_test_train_split_from_combined()
+        assert len(testEdfTokens) == len(y_pred)
+        assert len(trainEdfData) == len(trainSize)
+        assert len(validEdfData) == len(validSize)
+
+        testEdfEnsembler = get_base_dataset("combined", labels=_testGendersCopy, edfTokenPaths=testEdfTokens, is_test=True)
+        label, average_pred = testEdfEnsembler.dataset.getEnsemblePrediction(y_pred)
+
+        pred = np.round(average_pred)
+        toReturn["ensemble_score"] = {}
+        toReturn["ensemble_score"]["auc"] = roc_auc_score(label, pred)
+        toReturn["ensemble_score"]["acc"] = accuracy_score(label, pred)
+        toReturn["ensemble_score"]["f1_score"] = f1_score(label, pred)
+        toReturn["ensemble_score"]["discordance"] = np.abs(pred - average_pred).mean()
+
+        return toReturn
 
 
 
