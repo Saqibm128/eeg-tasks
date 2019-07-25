@@ -44,7 +44,7 @@ def conv2d_gridsearch(
     conv_temporal_filter=(1,3),
     num_temporal_filter=300,
     max_pool_size=(2,2),
-    max_pool_stride=(2,2),
+    max_pool_stride=(1,2),
     use_batch_normalization=False
     ):
     max_temporal_filter=max(num_temporal_filter, num_spatial_filter*3)
@@ -56,7 +56,7 @@ def conv2d_gridsearch(
         if i == 2:
             num_spatial_filter *= 3 #match van_putten magic
         x = Conv2D(num_spatial_filter, conv_spatial_filter, input_shape=input_shape, padding='same', activation='relu')(x)
-        x = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(x)
+        x = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(x) #don't break! 2^4 = 16
         x = Dropout(dropout)(x)
         if use_batch_normalization:
             x = BatchNormalization()(x)
