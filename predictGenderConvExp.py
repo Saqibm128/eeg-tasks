@@ -54,6 +54,10 @@ def conv_spatial_filter_3_3():
 def conv_temporal_filter_1_7():
     conv_temporal_filter = (1, 7)
 
+@ex.named_config
+def conv_temporal_filter_1_3():
+    conv_temporal_filter = (1, 3)
+
 
 @ex.named_config
 def conv_temporal_filter_2_3():
@@ -126,7 +130,7 @@ def combined():
 
 
 @ex.named_config
-def run_on_training_loss():
+def stop_on_training_loss():
     early_stopping_on = "loss"
 
 
@@ -478,7 +482,7 @@ def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_tra
                 trainValidData.shape[0], -1)
             trainValidGender = np.hstack(
                 [np.array(trainGender), np.array(validGender)]).reshape(-1, 1)
-            # deallocate memory so o2 doesn't kick this out
+            # deallocate memory so o2 doesn't kick this out when we try to start training, etc.
             del trainEdfData
             del validEdfData
             pkl.dump((trainSize, validSize, trainValidData,

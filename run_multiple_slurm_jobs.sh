@@ -61,15 +61,56 @@
 #   done
 # done
 
-for num_conv_spatial_layers in 1 2 3 4
+# for num_conv_spatial_layers in 1 2 3
+# do
+#   for num_conv_temporal_layers in 1
+#   do
+#     for num_spatial_filter in 20 40 60 100
+#     do
+#       for num_steps_per_epoch in 30 50 100
+#       do
+#         for dropout in 0.25 0.4 0.5 0.6
+#         do
+#       sbatch -n 1 --mem-per-cpu 32G -t 6:00:00 -p gpu --gres=gpu:1 run.sh stop_on_training_loss steps_per_epoch=$num_steps_per_epoch standardized_combined_simple_ensemble n_process=1 lr=0.002 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers num_temporal_filter=1 num_epochs=1000 shuffle_generator=False num_spatial_filter=$num_spatial_filter dropout=$dropout
+#     done
+#     done
+#   done
+#   done
+# done
+
+
+# for num_conv_spatial_layers in 1 2 3
+# do
+#   for num_conv_temporal_layers in 1
+#   do
+#     for num_spatial_filter in 20 40 60 100
+#     do
+#       for num_steps_per_epoch in 30 50 100
+#       do
+#         for dropout in 0.25 0.4 0.5 0.6
+#         do
+#       sbatch -n 1 --mem-per-cpu 32G -t 6:00:00 -p gpu --gres=gpu:1 run.sh patience=50 stop_on_training_loss steps_per_epoch=$num_steps_per_epoch standardized_combined_simple_ensemble n_process=1 lr=0.002 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers num_temporal_filter=1 num_epochs=1000 shuffle_generator=False num_spatial_filter=$num_spatial_filter dropout=$dropout
+#     done
+#     done
+#   done
+#   done
+# done
+
+for num_conv_spatial_layers in 3 4 5
 do
-  for num_conv_temporal_layers in 1 2 3 4
+  for num_conv_temporal_layers in 4 5
   do
-    for num_spatial_filter in 1 2 3 4
+    for num_spatial_filter in 60 100
     do
-      for num_steps_per_epoch in 30 50 100
+      for num_steps_per_epoch in 50 100 200
       do
-      sbatch -n 1 --mem-per-cpu 32G -t 4:00:00 -p gpu --gres=gpu:1 run.sh steps_per_epoch=$num_steps_per_epoch standardized_combined_simple_ensemble batch_size=32 n_process=1 lr=0.0002 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers $conv_spatial_filter num_temporal_filter=1 num_epochs=300 shuffle_generator=False num_spatial_filter=$num_spatial_filter
+        for conv_temporal_filter in "conv_temporal_filter_1_7" "conv_temporal_filter_2_3" "conv_temporal_filter_1_3"
+          do
+        for dropout in  0.5 0.75
+        do
+      sbatch -n 1 --mem-per-cpu 24G -t 6:00:00 -p gpu --gres=gpu:1 run.sh  conv_temporal_filter steps_per_epoch=$num_steps_per_epoch standardized_combined_simple_ensemble n_process=1 lr=0.002 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers num_temporal_filter=1 num_epochs=1000 $conv_temporal_filter num_spatial_filter=$num_spatial_filter use_early_stopping=False dropout=$dropout
+    done
+  done
     done
   done
   done
