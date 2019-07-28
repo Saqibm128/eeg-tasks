@@ -592,6 +592,9 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
 
     if regenerate_data:
         return
+    ex.add_artifact(model_name)
+    ex.add_artifact("bin_acc_" + model_name)
+
     model = keras.models.load_model(model_name)
     bin_acc_model = keras.models.load_model("bin_acc_" + model_name)
 

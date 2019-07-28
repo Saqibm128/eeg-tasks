@@ -101,13 +101,14 @@ class DataGenerator(keras.utils.Sequence):
 class EdfDataGenerator(DataGenerator):
     'Can accept EdfDataset and any of its intermediates to make data (i.e. sftft)'
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=10, shuffle=True, max_length=None, time_first=True, precache=False):
+                 n_classes=10, shuffle=True, max_length=None, time_first=True, precache=False, instance_order_first=True):
         super().__init__(list_IDs=list(range(len(dataset))), labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
                      n_classes=n_classes, shuffle=shuffle)
         self.dataset = dataset
         self.mask_value=mask_value
         self.max_length=max_length
         self.time_first = time_first
+        self.instance_order_first = instance_order_first
 
         if precache: #just populate self.labels too if we are precaching anyways
             self.dataset = dataset[:]
@@ -140,11 +141,15 @@ class EdfDataGenerator(DataGenerator):
             data = [self.dataset[j] for j in i]
         else:
             data = self.dataset[i]
-        x = [datum[0] for datum in data]
-        if self.labels is not None:
-            y = self.labels[i]
+        if self.instance_order_first:
+            x = [datum[0] for datum in data]
+            if self.labels is not None:
+                y = self.labels[i]
+            else:
+                y = [datum[1] for datum in data]
         else:
-            y = [datum[1] for datum in data]
+            x = data[0]
+            y = data[1]
 
 
         return x, y
