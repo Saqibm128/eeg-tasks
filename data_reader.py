@@ -6,7 +6,6 @@ from os import path
 import util_funcs
 from util_funcs import read_config, get_abs_files, get_annotation_types, get_data_split, get_reference_node_types, np_rolling_window
 import multiprocessing as mp
-from pathos.multiprocessing import Pool
 import argparse
 import pickle as pkl
 import constants

@@ -60,6 +60,10 @@ def conv_temporal_filter_1_3():
 
 
 @ex.named_config
+def conv_temporal_filter_2_4():
+    conv_temporal_filter = (2,7)
+
+@ex.named_config
 def conv_temporal_filter_2_3():
     conv_temporal_filter = (2, 3)
 
