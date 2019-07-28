@@ -104,6 +104,8 @@ class EdfDataGenerator(DataGenerator):
                  n_classes=10, shuffle=True, max_length=None, time_first=True, precache=False, instance_order_first=True):
         super().__init__(list_IDs=list(range(len(dataset))), labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
                      n_classes=n_classes, shuffle=shuffle)
+        if not instance_order_first:
+            self.list_IDs = list(range(len(dataset[0])))
         self.dataset = dataset
         self.mask_value=mask_value
         self.max_length=max_length
@@ -139,7 +141,7 @@ class EdfDataGenerator(DataGenerator):
     def get_x_y(self, i):
         if self.precache:
             data = [self.dataset[j] for j in i]
-        else:
+        elif self.instance_order_first:
             data = self.dataset[i]
         if self.instance_order_first:
             x = [datum[0] for datum in data]
@@ -148,8 +150,8 @@ class EdfDataGenerator(DataGenerator):
             else:
                 y = [datum[1] for datum in data]
         else:
-            x = data[0]
-            y = data[1]
+            x = self.dataset[0][i]
+            y = self.dataset[1][i]
 
 
         return x, y

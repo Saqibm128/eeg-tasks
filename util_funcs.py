@@ -19,7 +19,7 @@ from functools import lru_cache
 # to allow us to load data in without dealing with resource issues
 # https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 
-home_dir = "/home/ms994"
+home_dir = "/src"
 
 class MultiProcessingDataset():
     """Class to help improve speed of looking up multiple records at once using multiple processes.
