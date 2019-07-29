@@ -206,7 +206,7 @@ def get_model_checkpoint(model_name, monitor='val_loss'):
 
 @ex.capture
 def get_early_stopping(patience, early_stopping_on):
-    return EarlyStopping(patience=patience, verbose=1)
+    return EarlyStopping(patience=patience, verbose=1, monitor=early_stopping_on)
 
 
 @ex.capture
