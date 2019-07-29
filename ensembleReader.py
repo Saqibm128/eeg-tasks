@@ -195,5 +195,31 @@ class AdditionalLabelEndpoints():
         self.sampleInfo = sampleInfo
         if self.sampleInfo is None:
             self.sampleInfo = ensembler.sampleInfo
-    def get_genders():
-        genderDict = cta.getGenderAndFileNames(self.split, self.ref)
+    def get_genders(self):
+        genderDictItems = cta.demux_to_tokens(cta.getGenderAndFileNames(self.split, self.ref, convert_gender_to_num=True))
+        genderDict = {}
+        for index in range(len(genderDictItems)):
+            key = genderDictItems[0][index]
+            val = genderDictItems[1][index]
+
+            genderDict[key] = val
+        genders = []
+        for i in range(len(self.sampleInfo)):
+            tokenFile = self.sampleInfo[i].token_file_path
+            genders.append(genderDict[tokenFile])
+            self.sampleInfo[i].label = genderDict[tokenFile]
+        return genders
+    def get_ages(self):
+        agesDictItems = cta.demux_to_tokens(cta.getAgesAndFileNames(self.split, self.ref))
+        agesDict = {}
+        for index in range(len(agesDictItems)):
+            key = agesDictItems[0][index]
+            val = agesDictItems[1][index]
+
+            agesDict[key] = val
+        ages = []
+        for i in range(len(self.sampleInfo)):
+            tokenFile = self.sampleInfo[i].token_file_path
+            genders.append(agesDict[tokenFile])
+            self.sampleInfo[i].label = agesDict[tokenFile]
+        return ages

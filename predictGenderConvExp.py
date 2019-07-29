@@ -21,6 +21,7 @@ import pickle as pkl
 import sacred
 import keras
 import ensembleReader as er
+from keras.utils import multi_gpu_model
 
 import random
 import string
@@ -177,6 +178,7 @@ def config():
     max_num_samples = 10  # number of samples of eeg data segments per eeg.edf file
     use_combined = False
     combined_split = "combined"
+    num_gpus = 1
     early_stopping_on = "val_loss"
     test_train_split_pkl_path = "train_test_split_info.pkl"
     # if use_cached_pkl is false and this is true, just generates pickle files, doesn't make models or anything
@@ -376,29 +378,32 @@ def get_data_generator(split, batch_size, num_files, max_length, use_random_ense
 
 
 @ex.capture
-def get_model(dropout, max_length, lr, use_vp, num_spatial_filter, use_batch_normalization, max_pool_size, use_inception_like, output_activation="softmax", num_outputs=2):
+def get_model(dropout, max_length, lr, use_vp, num_spatial_filter, use_batch_normalization, max_pool_size, use_inception_like, output_activation="softmax", num_gpus=1, num_outputs=2):
     if use_vp:
         model = vp_conv2d(
             dropout=dropout,
-            input_shape=(max_length, 21, 1),
+            input_shape=(21, max_length, 1),
             filter_size=num_spatial_filter,
             max_pool_size=max_pool_size,
             use_batch_normalization=use_batch_normalization,
             output_activation=output_activation,
             num_outputs=num_outputs
             )
-        adam = optimizers.Adam(lr=lr)
-        model.compile(adam, loss="categorical_crossentropy",
-                      metrics=["binary_accuracy"])
-        return model
+
     elif use_inception_like:
-        return get_inception_like(
+        model = get_inception_like(
             output_activation=output_activation,
             num_outputs=num_outputs)
     else:
-        return get_custom_model(
+        model = get_custom_model(
             output_activation=output_activation,
             num_outputs=num_outputs)
+    if num_gpus != 1:
+        model = multi_gpu_model(model, num_gpus)
+    adam = optimizers.Adam(lr=lr)
+    model.compile(adam, loss="categorical_crossentropy",
+                  metrics=["binary_accuracy"])
+    return model
 
 @ex.capture
 def get_inception_like(max_length, num_conv_spatial_layers, num_spatial_filter, dropout, lr, output_activation='softmax', num_outputs=2):
