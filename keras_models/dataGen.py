@@ -45,10 +45,11 @@ class DataGenerator(keras.utils.Sequence):
     Generates data for Keras, based on code from https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
     Primarily made because I thought data wouldn't fit inside memory
     '''
-    def __init__(self, list_IDs, labels, batch_size=32, dim=(32,32,32), n_channels=1,
+    def __init__(self, list_IDs, labels, data=None, batch_size=32, dim=(32,32,32), n_channels=1,
                  n_classes=10, shuffle=True):
         'Initialization'
         self.dim = dim
+        self.data = data
         self.batch_size = batch_size
         self.labels = labels
         self.list_IDs = list_IDs
@@ -94,8 +95,6 @@ class DataGenerator(keras.utils.Sequence):
         for i, ID in enumerate(list_IDs_temp):
             # Store sample
             X[i,], y[i] = self.get_x_y(ID)
-
-
 
 
 class EdfDataGenerator(DataGenerator):

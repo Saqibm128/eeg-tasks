@@ -109,7 +109,7 @@ do
           do
         for dropout in  0.5 0.75
         do
-          sbatch -n 1 --mem-per-cpu 24G -t 6:00:00 -p gpu --gres=gpu:1 run.sh steps_per_epoch=$num_steps_per_epoch standardized_combined_simple_ensemble n_process=1 lr=0.002 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers num_temporal_filter=1 num_epochs=1000 $conv_temporal_filter num_spatial_filter=$num_spatial_filter use_early_stopping=True patience=75 dropout=$dropout num_epochs=500
+          echo sbatch -n 1 --mem-per-cpu 24G -t 6:00:00 -p gpu --gres=gpu:1 run.sh steps_per_epoch=$num_steps_per_epoch standardized_combined_simple_ensemble n_process=1 lr=0.002 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers num_temporal_filter=1 num_epochs=1000 $conv_temporal_filter num_spatial_filter=$num_spatial_filter use_early_stopping=True patience=75 dropout=$dropout num_epochs=500
     done
   done
     done

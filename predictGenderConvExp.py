@@ -15,7 +15,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator
-from keras_models.vanPutten import vp_conv2d, conv2d_gridsearch
+from keras_models.vanPutten import vp_conv2d, conv2d_gridsearch, inception_like
 from keras import optimizers
 import pickle as pkl
 import sacred
@@ -169,7 +169,7 @@ def config():
     conv_temporal_filter = (2, 5)
     num_temporal_filter = 1
     use_filtering = True
-    max_pool_size = (2, 2)
+    max_pool_size = (1, 3)
     max_pool_stride = (1, 2)
     use_batch_normalization = True
     use_random_ensemble = False
@@ -186,6 +186,7 @@ def config():
     steps_per_epoch = None
     shuffle_generator = True
     use_dl = True
+    use_inception_like=False
 
 
 # https://pynative.com/python-generate-random-string/
@@ -374,16 +375,37 @@ def get_data_generator(split, batch_size, num_files, max_length, use_random_ense
 
 
 @ex.capture
-def get_model(dropout, max_length, lr, use_vp, num_spatial_filter, use_batch_normalization):
+def get_model(dropout, max_length, lr, use_vp, num_spatial_filter, use_batch_normalization, max_pool_size, use_inception_like, output_activation="softmax", num_outputs=2):
     if use_vp:
-        model = vp_conv2d(dropout=dropout, input_shape=(21, max_length, 1),
-                          filter_size=num_spatial_filter, use_batch_normalization=use_batch_normalization)
+        model = vp_conv2d(
+            dropout=dropout,
+            input_shape=(max_length, 21, 1),
+            filter_size=num_spatial_filter,
+            max_pool_size=max_pool_size,
+            use_batch_normalization=use_batch_normalization,
+            output_activation=output_activation,
+            num_outputs=num_outputs
+            )
         adam = optimizers.Adam(lr=lr)
         model.compile(adam, loss="categorical_crossentropy",
                       metrics=["binary_accuracy"])
         return model
+    elif use_inception_like:
+        return get_inception_like(
+            output_activation=output_activation,
+            num_outputs=num_outputs)
     else:
-        return get_custom_model()
+        return get_custom_model(
+            output_activation=output_activation,
+            num_outputs=num_outputs)
+
+@ex.capture
+def get_inception_like(max_length, num_conv_spatial_layers, num_spatial_filter, dropout, lr, output_activation='softmax', num_outputs=2):
+    model = inception_like((21, max_length, 1), num_layers=num_conv_spatial_layers, num_filters=num_spatial_filter, dropout=dropout, output_activation=output_activation, num_outputs=num_outputs)
+    adam = optimizers.Adam(lr=lr)
+    model.compile(adam, loss="categorical_crossentropy",
+                  metrics=["binary_accuracy"])
+    return model
 
 
 @ex.capture
@@ -400,6 +422,8 @@ def get_custom_model(
     num_temporal_filter=300,
     max_pool_size=(2, 2),
     max_pool_stride=(1, 2),
+    output_activation='softmax',
+    num_outputs=2
 ):
     model = conv2d_gridsearch(
         dropout=dropout,
@@ -412,7 +436,9 @@ def get_custom_model(
         num_temporal_filter=num_temporal_filter,
         max_pool_size=max_pool_size,
         max_pool_stride=max_pool_stride,
-        use_batch_normalization=use_batch_normalization
+        use_batch_normalization=use_batch_normalization,
+        output_activation=output_activation,
+        num_outputs=num_outputs
     )
     adam = optimizers.Adam(lr=lr)
     model.compile(adam, loss="categorical_crossentropy",
@@ -538,8 +564,9 @@ def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_tra
 
         testEdfEnsembler = get_base_dataset(
             "combined", labels=_testGendersCopy, edfTokenPaths=testEdfTokens, is_test=True)
+        y_pred = gridsearch.best_estimator_.predict_proba(np.stack(testEdfData).reshape(len(testEdfData), -1))
         label, average_pred = testEdfEnsembler.dataset.getEnsemblePrediction(
-            y_pred)
+            y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
 
         pred = np.round(average_pred)
         toReturn["ensemble_score"] = {}
@@ -547,6 +574,20 @@ def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_tra
         toReturn["ensemble_score"]["acc"] = accuracy_score(label, pred)
         toReturn["ensemble_score"]["f1_score"] = f1_score(label, pred)
         toReturn["ensemble_score"]["discordance"] = np.abs(
+            pred - average_pred).mean()
+        toReturn["ensemble_score"]["equal_vote"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
+        toReturn["ensemble_score"]["equal_vote"]["acc"] = accuracy_score(label, pred)
+        toReturn["ensemble_score"]["equal_vote"]["f1_score"] = f1_score(label, pred)
+        toReturn["ensemble_score"]["equal_vote"]["discordance"] = np.abs(
+            pred - average_pred).mean()
+
+        label, average_over_all_pred = testEdfEnsembler.getEnsemblePrediction(
+            y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
+        pred = np.round(average_over_all_pred)
+        toReturn["ensemble_score"]["over_all"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
+        toReturn["ensemble_score"]["over_all"]["acc"] = accuracy_score(label, pred)
+        toReturn["ensemble_score"]["over_all"]["f1_score"] = f1_score(label, pred)
+        toReturn["ensemble_score"]["over_all"]["discordance"] = np.abs(
             pred - average_pred).mean()
 
         return toReturn
@@ -642,16 +683,35 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     if use_random_ensemble:
         if use_standard_scaler:
             label, average_pred = testEdfEnsembler.dataset.getEnsemblePrediction(
-                y_pred.argmax(axis=1))
+                y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
+            label, average_over_all_pred = testEdfEnsembler.dataset.getEnsemblePrediction(
+                y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
         else:
             label, average_pred = testEdfEnsembler.getEnsemblePrediction(
-                y_pred.argmax(axis=1))
+                y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
+            label, average_over_all_pred = testEdfEnsembler.getEnsemblePrediction(
+                y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
+
         pred = np.round(average_pred)
-        toReturn["ensemble_score"] = {}
-        toReturn["ensemble_score"]["auc"] = roc_auc_score(label, pred)
+        toReturn["ensemble_score"] = {
+            "equal_vote":{},
+            "over_all":{}
+        }
+        toReturn["ensemble_score"]["auc"] = roc_auc_score(label, pred) #keep auc,etc. here as well in top level for compatibility reasons when comparing
         toReturn["ensemble_score"]["acc"] = accuracy_score(label, pred)
         toReturn["ensemble_score"]["f1_score"] = f1_score(label, pred)
         toReturn["ensemble_score"]["discordance"] = np.abs(
+            pred - average_pred).mean()
+        toReturn["ensemble_score"]["equal_vote"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
+        toReturn["ensemble_score"]["equal_vote"]["acc"] = accuracy_score(label, pred)
+        toReturn["ensemble_score"]["equal_vote"]["f1_score"] = f1_score(label, pred)
+        toReturn["ensemble_score"]["equal_vote"]["discordance"] = np.abs(
+            pred - average_pred).mean()
+        pred = np.round(average_over_all_pred)
+        toReturn["ensemble_score"]["over_all"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
+        toReturn["ensemble_score"]["over_all"]["acc"] = accuracy_score(label, pred)
+        toReturn["ensemble_score"]["over_all"]["f1_score"] = f1_score(label, pred)
+        toReturn["ensemble_score"]["over_all"]["discordance"] = np.abs(
             pred - average_pred).mean()
     return toReturn
 

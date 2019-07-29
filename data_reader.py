@@ -61,9 +61,8 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
     """
     Similar to EdfDataset but allows for multiple sampling from the same dataset (i.e. make multiple instances from the same edf token file)
     """
-
+    #currently only mode that is accepted, maybe we can try some kinda complete ensemble (i.e. use all possible non_overlappings)
     RANDOM_SAMPLE_ENSEMBLE = 'RANDOM_SAMPLE_ENSEMBLE'
-
     def __init__(
             self,
             data_split,
@@ -86,7 +85,8 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
             max_num_samples=20,
             file_lengths=None, #automatically populated if not given
             edf_tokens=None,
-            labels=None # labels that map to edf token level
+            labels=None, # labels that map to edf token level
+            generate_sample_info=True
             ):
         if labels is not None:
             assert len(labels) == len(edf_tokens)
@@ -123,34 +123,61 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
         self.labels = labels
 
 
+
+
         self.sampleInfo=Dict()
-        currentIndex = 0
-        if self.ensemble_mode == EdfDatasetEnsembler.RANDOM_SAMPLE_ENSEMBLE:
-            for i, token_file in enumerate(self.edf_tokens):
-                totalNumExtractable = int(np.floor(self.file_lengths.loc[token_file] * pd.Timedelta(seconds=1) /max_length))
-                max_num_samples = min(self.max_num_samples, totalNumExtractable) #if file is smaller than max_num_samples * max_length, then we can't extract as many samples
-                chosen_samples = np.random.choice(totalNumExtractable, size=max_num_samples, replace=False)
-                for j, sample_in_token in enumerate(chosen_samples):
-                    self.sampleInfo[currentIndex].token_file_path = token_file
-                    self.sampleInfo[currentIndex].sample_num = sample_in_token
-                    self.sampleInfo[currentIndex].within_token_num = j
-                    if self.labels is not None:
-                        self.sampleInfo[currentIndex].label = self.labels[i]
+        if generate_sample_info:
+            self.generateSampleInfo()
+
+    def generateSampleInfo(self):
+            currentIndex = 0
+            if self.ensemble_mode == EdfDatasetEnsembler.RANDOM_SAMPLE_ENSEMBLE:
+                for i, token_file in enumerate(self.edf_tokens):
+                    totalNumExtractable = int(np.floor(self.file_lengths.loc[token_file] * pd.Timedelta(seconds=1) /self.max_length))
+                    max_num_samples = min(self.max_num_samples, totalNumExtractable) #if file is smaller than max_num_samples * max_length, then we can't extract as many samples
+                    chosen_samples = np.random.choice(totalNumExtractable, size=max_num_samples, replace=False)
+                    for j, sample_in_token in enumerate(chosen_samples):
+                        self.sampleInfo[currentIndex].token_file_path = token_file
+                        self.sampleInfo[currentIndex].sample_num = sample_in_token
+                        self.sampleInfo[currentIndex].within_token_num = j
+                        if self.labels is not None:
+                            self.sampleInfo[currentIndex].label = self.labels[i]
 
 
-                    currentIndex+=1
-        else:
-            raise Exception("ensemble_mode {} not implemented".format(self.ensemble_mode))
+                        currentIndex+=1
+            else:
+                raise Exception("ensemble_mode {} not implemented".format(self.ensemble_mode))
 
-    def getEnsemblePrediction(self, pred_labels):
-        '''
+
+
+
+    ENSEMBLE_PREDICTION_OVER_EACH_SAMP = "average_over_each_samp"
+    ENSEMBLE_PREDICTION_EQUAL_VOTE = "equal_vote"
+    ENSEMBLE_PREDICTION_MODES = [ENSEMBLE_PREDICTION_EQUAL_VOTE, ENSEMBLE_PREDICTION_OVER_EACH_SAMP]
+    def getEnsemblePrediction(self, pred_labels, mode=ENSEMBLE_PREDICTION_OVER_EACH_SAMP):
+        """
         Given an n by len(self.sampleInfo) array of predicted labels, get an average
         of all predictions for a given edf token file, such that it can be compared
         to self.label.
 
-        Returns an ndarray of 2 by n (if applicable) by len(self.edf_tokens), first index is True, second is average prediction
-        '''
+
+        Parameters
+        ----------
+        pred_labels : ndarray
+            array of dim n_classes by n_instances
+        mode : str
+            describes how prediction should be done
+
+        Returns
+        -------
+        ndarray
+            of 2 by len(self.edf_tokens), first index is True labels, second is average prediction
+
+        """
         assert self.labels is not None
+        assert mode in EdfDatasetEnsembler.ENSEMBLE_PREDICTION_MODES
+        if mode == EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE:
+            pred_labels = pred_labels.argmax(1)
         pred_vs_true = Dict()
         for i in range(len(self)):
             tokenFile = self.sampleInfo[i].token_file_path
@@ -161,8 +188,12 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
             pred_vs_true[tokenFile].predLabel.append(pred_labels[i])
         toReturn = []
         for tokenFile in self.edf_tokens:
-            toReturn.append((np.mean(pred_vs_true[tokenFile].trueLabel),np.mean(pred_vs_true[tokenFile].predLabel)))
-        return np.array(toReturn).transpose()
+            if mode == EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP:
+                toReturn.append((np.mean(pred_vs_true[tokenFile].trueLabel), np.mean(pred_vs_true[tokenFile].predLabel, axis=0).argmax()))
+            elif mode == EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE:
+                toReturn.append((np.mean(pred_vs_true[tokenFile].trueLabel), np.round(np.mean(pred_vs_true[tokenFile].predLabel))))
+
+        return np.array(toReturn).transpose() #becomes 2 by n array, where first array is the true label, the second is the predLabel
 
     def getEnsembledLabels(self):
         labels = []

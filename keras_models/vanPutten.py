@@ -2,7 +2,7 @@
 import keras
 import numpy as np
 from keras.models import Model, Sequential
-from keras.layers import Input, LSTM, Dense, Activation, Conv2D, Dropout, MaxPool2D, Conv3D, Flatten, LeakyReLU, BatchNormalization
+from keras.layers import Input, LSTM, Dense, Activation, Conv2D, Dropout, MaxPool2D, Conv3D, Flatten, LeakyReLU, BatchNormalization, Concatenate
 
 def simplified_vp_conv2d(dropout=0.25, input_shape=(None)):
     layers = [
@@ -34,6 +34,70 @@ def simplified_vp_conv2d(dropout=0.25, input_shape=(None)):
     ]
     return Sequential(layers)
 
+def inception_like(input_shape, num_layers=4, dropout=0.5, num_filters=30, output_activation='softmax',num_outputs=2):
+    x = Input(input_shape)
+
+    y0 = Conv2D(num_filters, (2,2),  activation="relu",)(x)
+    y0 = MaxPool2D(pool_size=(2, 1),)(y0)
+    y0 = Dropout(dropout)(y0)
+    y0 = BatchNormalization()(y0)
+    for i in range(num_layers - 1):
+        y0 = Conv2D(num_filters * 2, (2,2), activation="relu",)(y0)
+        y0 = MaxPool2D(pool_size=(2, 1),)(y0)
+        y0 = Dropout(dropout)(y0)
+        y0 = BatchNormalization()(y0)
+    y0 = Flatten()(y0)
+
+    y1 = Conv2D(num_filters, (3,3),  activation="relu",)(x)
+    y1 = MaxPool2D(pool_size=(2, 1),)(y1)
+    y1 = Dropout(dropout)(y1)
+    y1 = BatchNormalization()(y1)
+    for i in range(num_layers - i):
+        y1 = Conv2D(num_filters * 2, (3,3), activation="relu",)(y1)
+        y1 = MaxPool2D(pool_size=(2, 1),)(y1)
+        y1 = Dropout(dropout)(y1)
+        y1 = BatchNormalization()(y1)
+    y1 = Flatten()(y1)
+
+    y2 = Conv2D(num_filters, (4,4),  activation="relu",)(x)
+    y2 = MaxPool2D(pool_size=(2, 1),)(y2)
+    y2 = Dropout(dropout)(y2)
+    y2 = BatchNormalization()(y2)
+    for i in range(num_layers - 1):
+        y2 = Conv2D(num_filters * 2, (4,4), activation="relu",)(y2)
+        y2 = MaxPool2D(pool_size=(2, 1),)(y2)
+        y2 = Dropout(dropout)(y2)
+        y2 = BatchNormalization()(y2)
+    y2 = Flatten()(y2)
+
+    y3 = Conv2D(num_filters, (5,5),  activation="relu",)(x)
+    y3 = MaxPool2D(pool_size=(2, 1),)(y3)
+    y3 = Dropout(dropout)(y3)
+    y3 = BatchNormalization()(y3)
+    for i in range(num_layers - 1):
+        y3 = Conv2D(num_filters * 2, (5,5), activation="relu",)(y3)
+        y3 = MaxPool2D(pool_size=(2, 1),)(y3)
+        y3 = Dropout(dropout)(y3)
+        y3 = BatchNormalization()(y3)
+    y3 = Flatten()(y3)
+
+    y4 = Conv2D(num_filters, (6,6),  activation="relu",)(x)
+    y4 = MaxPool2D(pool_size=(2, 1),)(y4)
+    y4 = Dropout(dropout)(y4)
+    y4 = BatchNormalization()(y4)
+    for i in range(num_layers - 1):
+        y4 = Conv2D(num_filters * 2, (6,6), activation="relu",)(y4)
+        y4 = MaxPool2D(pool_size=(2, 1),)(y4)
+        y4 = Dropout(dropout)(y4)
+        y4 = BatchNormalization()(y4)
+    y4 = Flatten()(y4)
+
+    y = Concatenate()([y0, y1, y2, y3, y4])
+
+    y = Dense(units=num_outputs, activation=output_activation)(y)
+    model = Model(inputs=x, outputs =y)
+    return model
+
 def conv2d_gridsearch(
     dropout=0.25,
     input_shape=(None),
@@ -45,7 +109,9 @@ def conv2d_gridsearch(
     num_temporal_filter=300,
     max_pool_size=(2,2),
     max_pool_stride=(1,2),
-    use_batch_normalization=False
+    use_batch_normalization=False,
+    output_activation="softmax",
+    num_outputs=2
     ):
     max_temporal_filter=max(num_temporal_filter, num_spatial_filter*3)
     input = Input(shape=input_shape)
@@ -72,30 +138,30 @@ def conv2d_gridsearch(
     if use_batch_normalization:
         x = BatchNormalization()(x)
     x = Flatten()(x)
-    x = Dense(activation='softmax', units=2)(x)
+    x = Dense(activation=output_activation, units=num_outputs)(x)
 
 
     return Model(input=input, outputs=x)
 
-def vp_conv2d(dropout=0.25, input_shape=(None), filter_size=100, use_batch_normalization=False):
+def vp_conv2d(dropout=0.25, input_shape=(None), filter_size=100, use_batch_normalization=False, max_pool_size=(1,2), output_activation="", num_outputs=2):
     inputs = Input(shape=input_shape)
     x = Conv2D(filter_size, (3,3), input_shape=input_shape, name="conv1", activation="relu", padding="same")(inputs)
-    x = MaxPool2D(pool_size=(2, 2), name="maxpool1")(x)
+    x = MaxPool2D(pool_size=max_pool_size, name="maxpool1")(x)
     x = Dropout(dropout)(x)
     if use_batch_normalization:
         x = BatchNormalization()(x)
     x = Conv2D(filter_size, (3,3), name="conv2", activation="relu", padding="same")(x)
-    x = MaxPool2D(pool_size=(2, 2), name="maxpool2")(x)
+    x = MaxPool2D(pool_size=max_pool_size, name="maxpool2")(x)
     x = Dropout(dropout)(x)
     if use_batch_normalization:
         x = BatchNormalization()(x)
     x = Conv2D(filter_size*3, (2,3), name="conv3", activation="relu", padding="same")(x)
-    x = MaxPool2D(pool_size=(2, 2), name="maxpool3")(x)
+    x = MaxPool2D(pool_size=max_pool_size, name="maxpool3")(x)
     x = Dropout(dropout)(x)
     if use_batch_normalization:
         x = BatchNormalization()(x)
     x = Conv2D(filter_size*3, (1,7), name="conv4", activation="relu", padding="same")(x)
-    x = MaxPool2D(pool_size=(1, 2), name="maxpool4")(x)
+    x = MaxPool2D(pool_size=max_pool_size, name="maxpool4")(x)
     if use_batch_normalization:
         x = BatchNormalization()(x)
     x = Conv2D(filter_size*3, (1,3), name="conv5", activation="relu", padding="same")(x)
@@ -105,6 +171,6 @@ def vp_conv2d(dropout=0.25, input_shape=(None), filter_size=100, use_batch_norma
     if use_batch_normalization:
         x = BatchNormalization()(x)
     x = Flatten()(x)
-    x = Dense(activation='softmax', units=2)(x)
+    x = Dense(activation=output_activation, units=num_outputs)(x)
 
     return Model(input=inputs, outputs=x)
