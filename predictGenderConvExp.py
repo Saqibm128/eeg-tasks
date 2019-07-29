@@ -20,6 +20,7 @@ from keras import optimizers
 import pickle as pkl
 import sacred
 import keras
+import ensembleReader as er
 
 import random
 import string
@@ -249,7 +250,7 @@ def get_base_dataset(split,
         assert len(edfData) == len(labels)
         return edfData
     else:  # store the ensemble data and the info on how stuff was sampled out
-        edfData = read.EdfDatasetEnsembler(
+        edfData = er.EdfDatasetEnsembler(
             split,
             ref,
             n_process=n_process,
@@ -566,7 +567,7 @@ def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_tra
             "combined", labels=_testGendersCopy, edfTokenPaths=testEdfTokens, is_test=True)
         y_pred = gridsearch.best_estimator_.predict_proba(np.stack(testEdfData).reshape(len(testEdfData), -1))
         label, average_pred = testEdfEnsembler.dataset.getEnsemblePrediction(
-            y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
+            y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
 
         pred = np.round(average_pred)
         toReturn["ensemble_score"] = {}
@@ -582,7 +583,7 @@ def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_tra
             pred - average_pred).mean()
 
         label, average_over_all_pred = testEdfEnsembler.getEnsemblePrediction(
-            y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
+            y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
         pred = np.round(average_over_all_pred)
         toReturn["ensemble_score"]["over_all"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
         toReturn["ensemble_score"]["over_all"]["acc"] = accuracy_score(label, pred)
@@ -683,14 +684,14 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     if use_random_ensemble:
         if use_standard_scaler:
             label, average_pred = testEdfEnsembler.dataset.getEnsemblePrediction(
-                y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
+                y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
             label, average_over_all_pred = testEdfEnsembler.dataset.getEnsemblePrediction(
-                y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
+                y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
         else:
             label, average_pred = testEdfEnsembler.getEnsemblePrediction(
-                y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
+                y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
             label, average_over_all_pred = testEdfEnsembler.getEnsemblePrediction(
-                y_pred, mode=read.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
+                y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
 
         pred = np.round(average_pred)
         toReturn["ensemble_score"] = {
