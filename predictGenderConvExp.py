@@ -162,9 +162,8 @@ def config():
     test_size = 0.2
     use_cached_pkl = True
     use_vp = True
-    normalize_inputs = False
     # for custom architectures
-    num_conv_spatial_layers = 1
+    num_conv_spatial_layers = 4
     num_conv_temporal_layers = 1
     conv_spatial_filter = (3, 3)
     num_spatial_filter = 100
@@ -187,6 +186,7 @@ def config():
     ensemble_sample_info_path = "edf_ensemble_path.pkl"
     fit_generator_verbosity = 2
     steps_per_epoch = None
+    validation_steps = None
     shuffle_generator = True
     use_dl = True
     use_inception_like=False
@@ -600,7 +600,7 @@ def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_tra
 
 
 @ex.capture
-def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, steps_per_epoch):
+def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch):
     trainValidationDataGenerator = get_data_generator(train_split)
     if use_combined:
         trainDataGenerator = trainValidationDataGenerator
@@ -621,7 +621,7 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
             ), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process, verbose=fit_generator_verbosity)
         else:
             history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(
-            ), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process, verbose=fit_generator_verbosity, steps_per_epoch=steps_per_epoch)
+            ), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process, verbose=fit_generator_verbosity, steps_per_epoch=steps_per_epoch, validation_steps=validation_steps)
 
     testData, testGender = get_test_data()
     if use_random_ensemble:  # regenerate the dictionary structure to get correct labeling back and access to mapping back to original edfToken space
