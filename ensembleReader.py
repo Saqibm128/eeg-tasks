@@ -215,11 +215,10 @@ class AdditionalLabelEndpoints():
         for index in range(len(agesDictItems)):
             key = agesDictItems[0][index]
             val = agesDictItems[1][index]
-
             agesDict[key] = val
         ages = []
         for i in range(len(self.sampleInfo)):
             tokenFile = self.sampleInfo[i].token_file_path
-            genders.append(agesDict[tokenFile])
+            ages.append(agesDict[tokenFile])
             self.sampleInfo[i].label = agesDict[tokenFile]
         return ages

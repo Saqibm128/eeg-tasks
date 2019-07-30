@@ -44,7 +44,7 @@ def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, 
     max_additional_layers = num_layers - 1
     for i in range(max_additional_layers):
         y0 = Conv2D(num_filters * 2, (2,2), activation="relu",)(y0)
-        if i > max_additional_layers - 5:
+        if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
             y0 = MaxPool2D(pool_size=max_pool_size,)(y0)
         y0 = Dropout(dropout)(y0)
         y0 = BatchNormalization()(y0)
@@ -56,7 +56,7 @@ def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, 
     y1 = BatchNormalization()(y1)
     for i in range(max_additional_layers):
         y1 = Conv2D(num_filters * 2, (3,3), activation="relu")(y1)
-        if i > max_additional_layers - 5:
+        if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
             y1 = MaxPool2D(pool_size=max_pool_size,)(y1)
         y1 = Dropout(dropout)(y1)
         y1 = BatchNormalization()(y1)
@@ -68,7 +68,7 @@ def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, 
     y2 = BatchNormalization()(y2)
     for i in range(max_additional_layers):
         y2 = Conv2D(num_filters * 2, (4,4), activation="relu", padding='same')(y2)
-        if i > max_additional_layers - 5:
+        if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
             y2 = MaxPool2D(pool_size=max_pool_size,)(y2)
         y2 = Dropout(dropout)(y2)
         y2 = BatchNormalization()(y2)
@@ -80,7 +80,7 @@ def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, 
     y3 = BatchNormalization()(y3)
     for i in range(max_additional_layers):
         y3 = Conv2D(num_filters * 2, (5,5), activation="relu", padding='same')(y3)
-        if i > max_additional_layers - 5:
+        if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
             y3 = MaxPool2D(pool_size=max_pool_size,)(y3)
         y3 = Dropout(dropout)(y3)
         y3 = BatchNormalization()(y3)
@@ -92,7 +92,7 @@ def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, 
     y4 = BatchNormalization()(y4)
     for i in range(max_additional_layers):
         y4 = Conv2D(num_filters * 2, (6,6), activation="relu", padding='same')(y4)
-        if i > max_additional_layers - 5:
+        if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
             y4 = MaxPool2D(pool_size=max_pool_size,)(y4)
         y4 = Dropout(dropout)(y4)
         y4 = BatchNormalization()(y4)

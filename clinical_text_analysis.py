@@ -6,7 +6,7 @@ from os import path
 import argparse
 import pandas as pd
 from addict import Dict
-
+from functools import lru_cache
 
 def train_test_split_on_combined(edfTokens, labels, test_size=0.2):
     patients = Dict()
@@ -68,7 +68,7 @@ def demux_to_tokens(dataDictItems):
         labels += [singLabels[i] for tkn_file in session_tkn_files]
     return tokenFiles, labels
 
-
+@lru_cache(10)
 def getGenderAndFileNames(split, ref, convert_gender_to_num=False):
     all_token_fns = get_all_token_file_names(split, ref)
     num_hits = []
@@ -105,6 +105,7 @@ def getGenderAndFileNames(split, ref, convert_gender_to_num=False):
         del genders[toDel]
     return list(genders.items())
 
+@lru_cache(10)
 def getBPMAndFileNames(split, ref):
     all_token_fns = get_all_token_file_names(split, ref)
     num_hits = []
@@ -139,7 +140,7 @@ def getBPMAndFileNames(split, ref):
         del bpms[toDel]
     return list(bpms.items())
 
-
+@lru_cache(10)
 def getAgesAndFileNames(split, ref):
     all_token_fns = get_all_token_file_names(split, ref)
     num_hits = []
