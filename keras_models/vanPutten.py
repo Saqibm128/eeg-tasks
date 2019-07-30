@@ -41,53 +41,59 @@ def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, 
     y0 = MaxPool2D(pool_size=max_pool_size,)(y0)
     y0 = Dropout(dropout)(y0)
     y0 = BatchNormalization()(y0)
-    for i in range(num_layers - 1):
+    max_additional_layers = num_layers - 1
+    for i in range(max_additional_layers):
         y0 = Conv2D(num_filters * 2, (2,2), activation="relu",)(y0)
-        y0 = MaxPool2D(pool_size=max_pool_size,)(y0)
+        if i > max_additional_layers - 5:
+            y0 = MaxPool2D(pool_size=max_pool_size,)(y0)
         y0 = Dropout(dropout)(y0)
         y0 = BatchNormalization()(y0)
     y0 = Flatten()(y0)
 
-    y1 = Conv2D(num_filters, (3,3),  activation="relu",)(x)
+    y1 = Conv2D(num_filters, (3,3),  activation="relu")(x)
     y1 = MaxPool2D(pool_size=max_pool_size,)(y1)
     y1 = Dropout(dropout)(y1)
     y1 = BatchNormalization()(y1)
-    for i in range(num_layers):
-        y1 = Conv2D(num_filters * 2, (3,3), activation="relu",)(y1)
-        y1 = MaxPool2D(pool_size=max_pool_size,)(y1)
+    for i in range(max_additional_layers):
+        y1 = Conv2D(num_filters * 2, (3,3), activation="relu")(y1)
+        if i > max_additional_layers - 5:
+            y1 = MaxPool2D(pool_size=max_pool_size,)(y1)
         y1 = Dropout(dropout)(y1)
         y1 = BatchNormalization()(y1)
     y1 = Flatten()(y1)
 
-    y2 = Conv2D(num_filters, (4,4),  activation="relu",)(x)
+    y2 = Conv2D(num_filters, (4,4),  activation="relu")(x)
     y2 = MaxPool2D(pool_size=max_pool_size,)(y2)
     y2 = Dropout(dropout)(y2)
     y2 = BatchNormalization()(y2)
-    for i in range(num_layers - 1):
-        y2 = Conv2D(num_filters * 2, (4,4), activation="relu",)(y2)
-        y2 = MaxPool2D(pool_size=max_pool_size,)(y2)
+    for i in range(max_additional_layers):
+        y2 = Conv2D(num_filters * 2, (4,4), activation="relu", padding='same')(y2)
+        if i > max_additional_layers - 5:
+            y2 = MaxPool2D(pool_size=max_pool_size,)(y2)
         y2 = Dropout(dropout)(y2)
         y2 = BatchNormalization()(y2)
     y2 = Flatten()(y2)
 
-    y3 = Conv2D(num_filters, (5,5),  activation="relu",)(x)
+    y3 = Conv2D(num_filters, (5,5),  activation="relu")(x)
     y3 = MaxPool2D(pool_size=max_pool_size,)(y3)
     y3 = Dropout(dropout)(y3)
     y3 = BatchNormalization()(y3)
-    for i in range(num_layers - 1):
-        y3 = Conv2D(num_filters * 2, (5,5), activation="relu",)(y3)
-        y3 = MaxPool2D(pool_size=max_pool_size,)(y3)
+    for i in range(max_additional_layers):
+        y3 = Conv2D(num_filters * 2, (5,5), activation="relu", padding='same')(y3)
+        if i > max_additional_layers - 5:
+            y3 = MaxPool2D(pool_size=max_pool_size,)(y3)
         y3 = Dropout(dropout)(y3)
         y3 = BatchNormalization()(y3)
     y3 = Flatten()(y3)
 
-    y4 = Conv2D(num_filters, (6,6),  activation="relu",)(x)
+    y4 = Conv2D(num_filters, (6,6),  activation="relu")(x)
     y4 = MaxPool2D(pool_size=max_pool_size,)(y4)
     y4 = Dropout(dropout)(y4)
     y4 = BatchNormalization()(y4)
-    for i in range(num_layers - 1):
-        y4 = Conv2D(num_filters * 2, (6,6), activation="relu",)(y4)
-        y4 = MaxPool2D(pool_size=max_pool_size,)(y4)
+    for i in range(max_additional_layers):
+        y4 = Conv2D(num_filters * 2, (6,6), activation="relu", padding='same')(y4)
+        if i > max_additional_layers - 5:
+            y4 = MaxPool2D(pool_size=max_pool_size,)(y4)
         y4 = Dropout(dropout)(y4)
         y4 = BatchNormalization()(y4)
     y4 = Flatten()(y4)
