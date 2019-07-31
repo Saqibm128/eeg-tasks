@@ -91,7 +91,7 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
                     for j, sample_in_token in enumerate(chosen_samples):
                         self.sampleInfo[currentIndex].token_file_path = token_file
                         self.sampleInfo[currentIndex].sample_num = sample_in_token
-                        self.sampleInfo[currentIndex].within_token_num = j
+                        self.sampleInfo[currentIndex].sample_width = self.max_length
                         if self.labels is not None:
                             self.sampleInfo[currentIndex].label = self.labels[i]
 

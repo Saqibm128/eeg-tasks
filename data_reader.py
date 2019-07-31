@@ -58,19 +58,20 @@ class EdfStandardScaler(util_funcs.MultiProcessingDataset):
             return data
 
 class SeizureLabelReader(util_funcs.MultiProcessingDataset):
-    def __init__(self, is_present_only=True, edf_token_paths=[], samplingInfo=None):
-        """ Provides access to an array-like that can create labels matching samplingInfo
+    def __init__(self, is_present_only=True, edf_token_paths=[], sampleInfo=None, n_process=4, overwrite_sample_info_label=True):
+        """ Provides access to an array-like that can create labels matching sampleInfo
         or if edf_token_paths is available
 
         Parameters
         ----------
         is_present_only : bool
             Whether to use simple task of whether seizure occurred or to use another mode
-        edf_token_paths : list
-            list of file paths matching the edf filename
-        samplingInfo : dict
+        sampleInfo : addict.Dict
             optional dict if using the random ensemble,
             in form of EdfDatasetEnsembler.sampleInfo
+            (has fileTokenPath, sampleNum, max_length)
+        overwrite_sample_info_label : bool
+            Whether to overwrite the label info in the sampleInfo # DEBUG: ict passed in
 
         Returns
         -------
@@ -78,14 +79,42 @@ class SeizureLabelReader(util_funcs.MultiProcessingDataset):
             array-like to access the label info
         """
         if not is_present_only:
-            raise NotImplemented("TODO: maybe allow ways to get labels over time or if seizure is about to occur")
-        if samplingInfo is not None:
-            raise NotImplemented("TODO: Just depend directly on idea of random ensembling")
+            raise NotImplementedError("TODO: maybe allow ways to get labels over time or if seizure is about to occur")
+        if sampleInfo is None:
+            raise NotImplementedError("TODO: Just depend directly on idea of random ensembling")
         self.is_present_only  = is_present_only
-        self.sampleInfo = samplingInfo
+        self.sampleInfo = sampleInfo
+        self.n_process = n_process
+        self.verbosity = 100
+        self.edf_token_paths = edf_token_paths
+        self.overwrite_sample_info_label = overwrite_sample_info_label
 
     def __len__(self):
-        return len(self.edf_token_paths)
+        if self.sampleInfo is not None:
+            return len(self.sampleInfo)
+        else:
+            return len(self.edf_token_paths)
+    def __getitem__(self, i):
+        if self.should_use_mp(i):
+            return self.getItemSlice(i)
+        if self.is_present_only and self.sampleInfo is not None:
+            token_file_path = self.sampleInfo[i].token_file_path
+            sampleNum = self.sampleInfo[i].sample_num
+            sample_width = self.sampleInfo[i].sample_width
+            label_file = convert_edf_path_to_tse(token_file_path)
+            seiz_label = read_tse_file(label_file)
+            startTime = pd.Timedelta(sampleNum * sample_width).seconds
+            endTime = pd.Timedelta(sampleNum*sample_width + sample_width).seconds
+            #look for where the slice lands
+            seizInfoSlice = seiz_label.loc[(seiz_label.end > startTime) & (seiz_label.end <= endTime).shift(1)]
+            label = (seizInfoSlice.label != "bckg").any()
+
+            if self.overwrite_sample_info_label:
+                self.sampleInfo[i].label = label
+
+            return label
+
+
 
 
 

@@ -139,7 +139,6 @@ def get_base_dataset(split,
                      ref,
                      n_process,
                      num_files,
-                     labels,
                      max_num_samples,
                      max_length,
                      edfTokenPaths,
@@ -150,6 +149,7 @@ def get_base_dataset(split,
                      use_cached_pkl_dataset=True,
                      is_test=False,
                      is_valid=False):
+    labels = read.SeizureLabelReader
     edfData = er.EdfDatasetEnsembler(
         split,
         ref,
@@ -157,8 +157,6 @@ def get_base_dataset(split,
         max_length=max_length *
         pd.Timedelta(seconds=constants.COMMON_DELTA),
         use_numpy=True,
-        edf_tokens=edfTokenPaths[:num_files],
-        labels=labels[:num_files],
         max_num_samples=max_num_samples,
         filter=use_filtering
     )
@@ -179,99 +177,6 @@ def get_base_dataset(split,
         ex.add_artifact(ensemble_sample_info_path)
     edfData.verbosity = 50
     return edfData
-
-
-cached_test_train_split_info = None
-@ex.capture
-def get_test_train_split_from_combined(combined_split, ref, test_size,  test_train_split_pkl_path, validation_size, use_cached_pkl_test_train_split=True,):
-    global cached_test_train_split_info
-    if use_cached_pkl_test_train_split and path.exists(test_train_split_pkl_path):
-        cached_test_train_split_info = pkl.load(
-            open(test_train_split_pkl_path, 'rb'))
-        ex.add_resource(test_train_split_pkl_path)
-    elif cached_test_train_split_info is None:
-        edfTokens, genders = cta.demux_to_tokens(cta.getGenderAndFileNames(
-            combined_split, ref, convert_gender_to_num=True))
-        trainTokens, testTokens, trainGenders, testGenders = cta.train_test_split_on_combined(
-            edfTokens, genders, test_size=test_size)
-        trainTokens, validationTokens, trainGenders, validationGenders = cta.train_test_split_on_combined(
-            trainTokens, trainGenders, test_size=validation_size)
-        assert len(set(trainTokens).intersection(validationTokens)) == 0
-        assert len(set(trainTokens).intersection(testTokens)) == 0
-
-        cached_test_train_split_info = trainTokens, validationTokens, testTokens, trainGenders, validationGenders, testGenders
-        pkl.dump(cached_test_train_split_info, open(
-            test_train_split_pkl_path, 'wb'))
-        ex.add_artifact(test_train_split_pkl_path)
-    # trainData, testData, trainGender, testGender
-    return cached_test_train_split_info
-
-
-@ex.capture
-def get_data(split, ref, n_process, num_files, max_length, precached_pkl, precached_test_pkl, use_cached_pkl_dont_reload_data=True, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False):
-    if is_test:
-        precached_pkl = precached_test_pkl
-    if use_combined:  # use the previous test train split, since we are sharing a split instead of enforcing it with a different directory
-        edfTokensTrain, edfTokensValidation, edfTokensTest, gendersTrain, gendersValidation, gendersTest = get_test_train_split_from_combined()
-        if split == train_split and not is_test and not is_valid:
-            edfTokenPaths = edfTokensTrain[:num_files]
-            genders = np.array(gendersTrain[:num_files])
-            assert len(edfTokenPaths) == len(genders)
-        elif is_test:
-            edfTokenPaths = edfTokensTest[:num_files]
-            genders = np.array(gendersTest[:num_files])
-        elif is_valid:
-            edfTokenPaths = edfTokensValidation[:num_files]
-            genders = np.array(gendersValidation[:num_files])
-    else:
-        genderDict = cta.getGenderAndFileNames(
-            split, ref, convert_gender_to_num=True)
-        edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
-    if is_valid:
-        precached_pkl = "valid_" + precached_pkl
-    if path.exists(precached_pkl) and use_cached_pkl_dont_reload_data:
-        edfData = pkl.load(open(precached_pkl, 'rb'))
-    else:
-        edfData = get_base_dataset(
-            split, labels=genders, edfTokenPaths=edfTokenPaths, is_test=is_test, is_valid=is_valid)
-        edfData = edfData[:]
-        # don't add these as artifacts or resources or else mongodb will try to store giant file copies of these
-        pkl.dump(edfData, open(precached_pkl, 'wb'))
-    return edfData, genders
-
-
-@ex.capture
-def get_data_generator(split, batch_size, num_files, max_length, use_random_ensemble, shuffle_generator, split_type="", ):
-    """Based on a really naive, dumb mapping of eeg electrodes into 2d space
-
-    Parameters
-    ----------
-    split : type
-        Description of parameter `split`.
-    ref : type
-        Description of parameter `ref`.
-    n_process : type
-        Description of parameter `n_process`.
-
-    Returns
-    -------
-    type
-        Description of returned object.
-
-    """
-    edfData, genders = get_data(split, is_test=split_type == "test", is_valid=(
-        split_type == "validation" or split_type == "valid"))
-    return EdfDataGenerator(
-        edfData,
-        precache=True,
-        time_first=False,
-        n_classes=2,
-        # properly duplicated genders inside edfData if using use_random_ensemble
-        labels=np.array(genders) if not use_random_ensemble else None,
-        batch_size=batch_size,
-        max_length=max_length,
-        shuffle=shuffle_generator
-    )
 
 
 @ex.capture
@@ -349,278 +254,17 @@ def get_custom_model(
     return model
 
 
-@ex.capture
-def get_test_data(test_split, max_length, precached_test_pkl, use_cached_pkl):
-    testData, testGender = get_data(
-        test_split, precached_pkl=precached_test_pkl, is_test=True)
-    testData = np.stack([datum[0] for datum in testData])
-    testData = testData[:, 0:max_length]
-    testData = testData.reshape(*testData.shape, 1).transpose(0, 2, 1, 3)
-    return testData, testGender
-
 
 @ex.main
 def main(use_dl):
     if use_dl:
         return dl()  # deep learning branch
-    else:
-        return run_rf()
 
-
-def split_data_gender(dataGender):
-    """ For rearranging data in the form of [(datum, gender),...,(datum, gender)]
-    into np.arrays (list of tuples is hard to use)
-
-    Parameters
-    ----------
-    dataGender : list
-        List of tuples
-
-    Returns
-    -------
-    type
-        Description of returned object.
-
-    """
-    # did data in n by 2 data (I HATE MYSELF), this returns neat and correct arrays of data.
-    data = np.stack([datum[0] for datum in dataGender])
-    gender = np.array([datum[1] for datum in dataGender])
-    return data, gender
-
-
-@ex.capture
-def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_train_rf_samps, n_process, rf_data_pickle, use_cached_pkl):
-    if not use_combined or not use_random_ensemble:
-        raise NotImplemented("Have not completed this flow yet")
-    else:
-        if not use_cached_pkl or not path.exists(rf_data_pickle):
-            trainEdfData, trainGender = split_data_gender(get_data(
-                combined_split, is_test=False, is_valid=False)[0][:max_train_rf_samps])
-            trainEdfData = read.EdfFFTDatasetTransformer(
-                trainEdfData, return_numpy=True, is_tuple_data=False, is_pandas_data=False, freq_bins=freq_bins, n_process=n_process)
-            trainEdfData.verbosity = 200
-            trainEdfData = trainEdfData[:]
-            validEdfData, validGender = split_data_gender(
-                get_data(combined_split, is_test=False, is_valid=True)[0][:max_train_rf_samps])
-            validEdfData = read.EdfFFTDatasetTransformer(
-                validEdfData, return_numpy=True, is_tuple_data=False, is_pandas_data=False, freq_bins=freq_bins, n_process=n_process)
-            validEdfData.verbosity = 200
-            validEdfData = validEdfData[:]
-
-            trainSize = len(trainEdfData)
-            validSize = len(validEdfData)
-            trainValidData = np.vstack(
-                [np.stack(trainEdfData), np.stack(validEdfData)])
-            trainValidData = trainValidData.reshape(
-                trainValidData.shape[0], -1)
-            trainValidGender = np.hstack(
-                [np.array(trainGender), np.array(validGender)]).reshape(-1, 1)
-            # deallocate memory so o2 doesn't kick this out when we try to start training, etc.
-            del trainEdfData
-            del validEdfData
-            pkl.dump((trainSize, validSize, trainValidData,
-                      trainValidGender), open(rf_data_pickle, 'wb'))
-        else:
-            trainSize, validSize, trainValidData, trainValidGender = pkl.load(
-                open(rf_data_pickle, 'rb'))
-
-        rf = RandomForestClassifier()
-        preSplit = PredefinedSplit(
-            [0 for i in range(trainSize)] + [-1 for i in range(validSize)])
-        rf_parameters = {
-            'criterion': ["gini", "entropy"],
-            'n_estimators': [50, 100, 200, 400],
-            'max_features': ['auto', 'log2', .1, .4],
-            'max_depth': [None,  4, 8, 12],
-            'min_samples_split': [2, 4, 8],
-            'n_jobs': [1],
-            'min_weight_fraction_leaf': [0, 0.2]
-        }
-        gridsearch = GridSearchCV(rf, rf_parameters, scoring=make_scorer(
-            f1_score), cv=preSplit, n_jobs=n_process)
-        gridsearch.fit(trainValidData, trainValidGender)
-
-
-        if not use_cached_pkl or not path.exists("test_" + rf_data_pickle):
-            testEdfData, testGender = split_data_gender(
-                get_data(combined_split, is_test=True, is_valid=False)[0][:max_train_rf_samps])
-            testEdfData = read.EdfFFTDatasetTransformer(
-                testEdfData, return_numpy=True, is_tuple_data=False, is_pandas_data=False, freq_bins=freq_bins, n_process=n_process)
-            testEdfData.verbosity = 200
-            testEdfData = testEdfData[:]
-            pkl.dump((testEdfData, testGender), open(
-                "test_" + rf_data_pickle, 'wb'))
-        else:
-            testEdfData, testGender = pkl.load(
-                open("test_" + rf_data_pickle, 'rb'))
-
-        y_pred = gridsearch.predict(
-            np.stack(testEdfData).reshape(len(testEdfData), -1))
-        toReturn = {
-            'f1_score': f1_score(testGender, y_pred),
-            'auc': roc_auc_score(testGender, y_pred),
-            'mcc': matthews_corrcoef(testGender, y_pred),
-            'accuracy': accuracy_score(testGender, y_pred)
-        }
-
-        trainEdfTokens, validEdfTokens, testEdfTokens, trainGenders, validGenders, _testGendersCopy = get_test_train_split_from_combined()
-
-        testEdfEnsembler = get_base_dataset(
-            "combined", labels=_testGendersCopy, edfTokenPaths=testEdfTokens, is_test=True)
-        y_pred = gridsearch.best_estimator_.predict_proba(np.stack(testEdfData).reshape(len(testEdfData), -1))
-        label, average_pred = testEdfEnsembler.dataset.getEnsemblePrediction(
-            y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
-
-        pred = np.round(average_pred)
-        toReturn["ensemble_score"] = {}
-        toReturn["ensemble_score"]["auc"] = roc_auc_score(label, pred)
-        toReturn["ensemble_score"]["acc"] = accuracy_score(label, pred)
-        toReturn["ensemble_score"]["f1_score"] = f1_score(label, pred)
-        toReturn["ensemble_score"]["discordance"] = np.abs(
-            pred - average_pred).mean()
-        toReturn["ensemble_score"]["equal_vote"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
-        toReturn["ensemble_score"]["equal_vote"]["acc"] = accuracy_score(label, pred)
-        toReturn["ensemble_score"]["equal_vote"]["f1_score"] = f1_score(label, pred)
-        toReturn["ensemble_score"]["equal_vote"]["discordance"] = np.abs(
-            pred - average_pred).mean()
-
-        label, average_over_all_pred = testEdfEnsembler.getEnsemblePrediction(
-            y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
-        pred = np.round(average_over_all_pred)
-        toReturn["ensemble_score"]["over_all"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
-        toReturn["ensemble_score"]["over_all"]["acc"] = accuracy_score(label, pred)
-        toReturn["ensemble_score"]["over_all"]["f1_score"] = f1_score(label, pred)
-        toReturn["ensemble_score"]["over_all"]["discordance"] = np.abs(
-            pred - average_pred).mean()
-
-        return toReturn
 
 
 @ex.capture
 def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, n_gpu):
     trainValidationDataGenerator = get_data_generator(train_split)
-    if use_combined:
-        trainDataGenerator = trainValidationDataGenerator
-        validationDataGenerator = get_data_generator(
-            train_split, split_type="validation")
-    else:  # if not combined, just split on edf token level.. TODO: figure out how to use correct flow
-        trainDataGenerator, validationDataGenerator = trainValidationDataGenerator.create_validation_train_split(
-            validation_size=validation_size)
-    model = get_model()
-    print(model.summary())
-
-    print("x batch shape", len(trainDataGenerator))
-    if not regenerate_data:
-        # had issues where logs get too long, so onlye one line per epoch
-        # also was trying to use multiprocessing for data analysis
-        if steps_per_epoch is None:
-            history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(
-            ), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process, verbose=fit_generator_verbosity)
-        else:
-            history = model.fit_generator(trainDataGenerator, epochs=num_epochs, callbacks=get_cb_list(
-            ), validation_data=validationDataGenerator, use_multiprocessing=False, workers=n_process, verbose=fit_generator_verbosity, steps_per_epoch=steps_per_epoch, validation_steps=validation_steps)
-
-    testData, testGender = get_test_data()
-    if use_random_ensemble:  # regenerate the dictionary structure to get correct labeling back and access to mapping back to original edfToken space
-        if not use_combined:
-            edfTokenPaths, testGender = cta.demux_to_tokens(
-                cta.getGenderAndFileNames(test_split, ref, convert_gender_to_num=True))
-            testEdfEnsembler = get_base_dataset(
-                test_split, labels=testGender, edfTokenPaths=edfTokenPaths, is_test=True)
-        else:
-            trainEdfTokens, validEdfTokens, testEdfTokens, trainGenders, validGenders, _testGendersCopy = get_test_train_split_from_combined()
-            testEdfEnsembler = get_base_dataset(
-                test_split, labels=_testGendersCopy, edfTokenPaths=testEdfTokens, is_test=True)
-
-        if use_standard_scaler:
-            testGender = testEdfEnsembler.dataset.getEnsembledLabels()
-        else:
-            testGender = testEdfEnsembler.getEnsembledLabels()
-        assert len(testData) == len(testGender)
-
-    if regenerate_data:
-        return
-    ex.add_artifact(model_name)
-    ex.add_artifact("bin_acc_" + model_name)
-
-    model = keras.models.load_model(model_name)
-    if n_gpu > 1:
-        model = multi_gpu_model(model, n_gpu)
-    bin_acc_model = keras.models.load_model("bin_acc_" + model_name)
-    if n_gpu > 1:
-        bin_acc_model = multi_gpu_model(bin_acc_model, n_gpu)
-
-    # free memory so i can request less mem from 02 and get faster allocations
-    del trainDataGenerator
-    del validationDataGenerator
-
-    y_pred = model.predict(testData)
-    print("pred shape", y_pred.shape)
-    print("test data shape", testData.shape)
-
-    auc = roc_auc_score(testGender, y_pred.argmax(axis=1))
-    f1 = f1_score(testGender, y_pred.argmax(axis=1))
-    accuracy = accuracy_score(testGender, y_pred.argmax(axis=1))
-
-    y_pred_bin_acc = bin_acc_model.predict(testData)
-    print("pred shape", y_pred_bin_acc.shape)
-    print("test data shape", testData.shape)
-
-    bin_acc_auc = roc_auc_score(testGender, y_pred_bin_acc.argmax(axis=1))
-    bin_acc_f1 = f1_score(testGender, y_pred_bin_acc.argmax(axis=1))
-    bin_acc_accuracy = accuracy_score(
-        testGender, y_pred_bin_acc.argmax(axis=1))
-
-    toReturn = {
-        'history': history.history,
-        'val_scores': {
-            'min_val_loss': min(history.history['val_loss']),
-            'max_val_acc': max(history.history['val_binary_accuracy']),
-        },
-        'test_scores': {
-            'f1': f1,
-            'acc': accuracy,
-            'auc': auc
-        },
-        'best_bin_acc_test_scores':  {
-            'f1': bin_acc_f1,
-            'acc': bin_acc_accuracy,
-            'auc': bin_acc_auc
-        }}
-    if use_random_ensemble:
-        if use_standard_scaler:
-            label, average_pred = testEdfEnsembler.dataset.getEnsemblePrediction(
-                y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
-            label, average_over_all_pred = testEdfEnsembler.dataset.getEnsemblePrediction(
-                y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
-        else:
-            label, average_pred = testEdfEnsembler.getEnsemblePrediction(
-                y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
-            label, average_over_all_pred = testEdfEnsembler.getEnsemblePrediction(
-                y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
-
-        pred = np.round(average_pred)
-        toReturn["ensemble_score"] = {
-            "equal_vote":{},
-            "over_all":{}
-        }
-        toReturn["ensemble_score"]["auc"] = roc_auc_score(label, pred) #keep auc,etc. here as well in top level for compatibility reasons when comparing
-        toReturn["ensemble_score"]["acc"] = accuracy_score(label, pred)
-        toReturn["ensemble_score"]["f1_score"] = f1_score(label, pred)
-        toReturn["ensemble_score"]["discordance"] = np.abs(
-            pred - average_pred).mean()
-        toReturn["ensemble_score"]["equal_vote"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
-        toReturn["ensemble_score"]["equal_vote"]["acc"] = accuracy_score(label, pred)
-        toReturn["ensemble_score"]["equal_vote"]["f1_score"] = f1_score(label, pred)
-        toReturn["ensemble_score"]["equal_vote"]["discordance"] = np.abs(
-            pred - average_pred).mean()
-        pred = np.round(average_over_all_pred)
-        toReturn["ensemble_score"]["over_all"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
-        toReturn["ensemble_score"]["over_all"]["acc"] = accuracy_score(label, pred)
-        toReturn["ensemble_score"]["over_all"]["f1_score"] = f1_score(label, pred)
-        toReturn["ensemble_score"]["over_all"]["discordance"] = np.abs(
-            pred - average_pred).mean()
-    return toReturn
 
 
 if __name__ == "__main__":
