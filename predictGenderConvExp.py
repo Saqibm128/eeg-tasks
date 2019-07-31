@@ -379,7 +379,6 @@ def get_data_generator(split, batch_size, num_files, max_length, use_random_ense
     return EdfDataGenerator(
         edfData,
         precache=True,
-        time_first=False,
         n_classes=2,
         # properly duplicated genders inside edfData if using use_random_ensemble
         labels=np.array(genders) if not use_random_ensemble else None,

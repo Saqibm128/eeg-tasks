@@ -281,7 +281,9 @@ def get_test_generator(test_split, precached_test_pkl):
 @ex.capture
 def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus):
     trainValidationDataGenerator = get_train_valid_generator()
+    trainValidationDataGenerator.time_first = False
     testDataGenerator = get_test_generator()
+    trainValidationDataGenerator.n_classes=2
     trainDataGenerator, validDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size)
 
     model = get_model()
@@ -291,10 +293,12 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
         steps_per_epoch=steps_per_epoch,
         validation_data = validDataGenerator,
         verbose=fit_generator_verbosity,
-        cb=get_cb_list()
+        callbacks=get_cb_list()
         )
 
-    y_pred = model.predict(np.stack(testData.dataset).reshape(0,2,1,3)) #time second, feature first
+    testData = testDataGenerator.dataset
+    testData = np.stack(np.stack(testData)[:,0])
+    y_pred = model.predict(testData.reshape((*testData.shape, 1)).transpose(0,2,1,3)) #time second, feature first
     print("pred shape", y_pred.shape)
     print("test data shape", testData.shape)
 

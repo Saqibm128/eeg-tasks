@@ -13,7 +13,7 @@ import queue
 import constants
 from functools import lru_cache
 
-root_path = "/home/ms994/" is "EEG_ROOT" not in os.environ.keys() else os.environ["EEG_ROOT"]
+root_path = "/home/ms994/" if "EEG_ROOT" not in os.environ.keys() else os.environ["EEG_ROOT"]
 
 
 class MultiProcessingDataset():
