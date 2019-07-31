@@ -139,7 +139,7 @@ def get_abs_files(root_dir_path):
 def get_common_channel_names(): #21 channels in all edf datafiles
     cached_channel_names = list(
         pd.read_csv(
-            path.join(root_path,"/dbmi_eeg_clustering/assets/channel_names.csv"),
+            path.join(root_path,"dbmi_eeg_clustering/assets/channel_names.csv"),
             header=None)[1])
     return cached_channel_names
 
@@ -147,14 +147,14 @@ def get_common_channel_names(): #21 channels in all edf datafiles
 def get_file_sizes(split, ref):
     assert split in get_data_split()
     assert ref in get_reference_node_types()
-    return pd.read_csv(path.join(root_path, "/dbmi_eeg_clustering/assets/{}_{}_file_lengths.csv".format(split, ref)), header=None, index_col=[0])
+    return pd.read_csv(path.join(root_path, "dbmi_eeg_clustering/assets/{}_{}_file_lengths.csv".format(split, ref)), header=None, index_col=[0])
 
 
 @lru_cache(10)
 def get_annotation_csv():
     cached_annotation_csv = pd.read_csv(
         path.join(
-        root_path,"/dbmi_eeg_clustering/assets/data_labels.csv"),
+        root_path,"dbmi_eeg_clustering/assets/data_labels.csv"),
         header=0,
         dtype=str,
         keep_default_na=False,
@@ -202,7 +202,7 @@ def get_reference_node_types():
     return ["01_tcp_ar", "02_tcp_le", "03_tcp_ar_a"]
 
 
-def get_mongo_client(path=path.join(root_path,"/dbmi_eeg_clustering/config.json")):
+def get_mongo_client(path=path.join(root_path,"dbmi_eeg_clustering/config.json")):
     '''
     Used for Sacred to record results
     '''
