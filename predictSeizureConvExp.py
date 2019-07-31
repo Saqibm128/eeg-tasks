@@ -26,60 +26,12 @@ from keras.utils import multi_gpu_model
 import random
 import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
+ex = sacred.Experiment(name="predict_seizure_in_eeg")
 
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
-# trainEdfEnsembler = None
-# testEdfEnsembler = None
 
 
-@ex.named_config
-def rf():
-    use_dl = False
-    max_train_rf_samps = None
-    freq_bins = [0, 10, 20, 25, 27.5, 30]
-    rf_data_pickle = "rf_fft_data.pkl"
-
-
-@ex.named_config
-def conv_spatial_filter_2_2():
-    conv_spatial_filter = (2, 2)
-
-
-@ex.named_config
-def conv_spatial_filter_3_3():
-    conv_spatial_filter = (3, 3)
-
-@ex.named_config
-def max_pool_size_2_2():
-    max_pool_size = (2,2)
-
-@ex.named_config
-def max_pool_size_1_2():
-    max_pool_size = (1,2)
-
-
-@ex.named_config
-def conv_temporal_filter_1_7():
-    conv_temporal_filter = (1, 7)
-
-@ex.named_config
-def conv_temporal_filter_1_3():
-    conv_temporal_filter = (1, 3)
-
-
-@ex.named_config
-def conv_temporal_filter_2_7():
-    conv_temporal_filter = (2,7)
-
-@ex.named_config
-def conv_temporal_filter_2_5():
-    conv_temporal_filter = (2,5)
-
-@ex.named_config
-def conv_temporal_filter_2_3():
-    conv_temporal_filter = (2, 3)
 
 
 @ex.named_config
@@ -90,37 +42,13 @@ def debug():
     max_num_samples = 2
 
 
-@ex.named_config
-def combined_less_data_simple_ensemble_samples():
-    use_random_ensemble = True
-    precached_pkl = "combined_simple_ensemble_train_data_40_segs_max_length_2.pkl"
-    precached_test_pkl = "combined_simple_ensemble_test_data_40_segs_max_length_2.pkl"
-    ensemble_sample_info_path = "2s_edf_ensemble_path.pkl"
-    max_length = 2 * constants.COMMON_FREQ
-    max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
-
 
 @ex.named_config
-def simple_ensemble():
-    '''
-    Not really training as an ensemble, except for the test phase, when we try to see our stats as an ensemble
-    '''
+def standardized_ensemble():
     use_random_ensemble = True
-    precached_pkl = "simple_ensemble_train_data_max_length_4.pkl"
-    precached_test_pkl = "simple_ensemble_test_data_max_length_4.pkl"
-    ensemble_sample_info_path = "native_edf_ensemble_path.pkl"
-    max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
-
-
-@ex.named_config
-def standardized_combined_simple_ensemble():
-    use_combined = True
-    use_random_ensemble = True
-    train_split = "combined"
-    test_split = "combined"
-    precached_pkl = "standardized_combined_simple_ensemble_train_data.pkl"
-    precached_test_pkl = "standardized_combined_simple_ensemble_test_data.pkl"
-    ensemble_sample_info_path = "standardized_edf_ensemble_sample_info.pkl"
+    precached_pkl = "standardized_simple_ensemble_train_data_seizure.pkl"
+    precached_test_pkl = "standardized_simple_ensemble_test_data_seizure.pkl"
+    ensemble_sample_info_path = "standardized_edf_ensemble_sample_info_seizure.pkl"
 
     max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
@@ -128,29 +56,8 @@ def standardized_combined_simple_ensemble():
 
 
 @ex.named_config
-def combined_simple_ensemble():
-    use_combined = True
-    use_random_ensemble = True
-    train_split = "combined"
-    test_split = "combined"
-    precached_pkl = "combined_simple_ensemble_train_data.pkl"
-    precached_test_pkl = "combined_simple_ensemble_test_data.pkl"
-
-    max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
-    use_standard_scaler = False
-
-
-@ex.named_config
-def combined():
-    use_combined = True
-    precached_pkl = "combined_train_data.pkl"
-    precached_test_pkl = "combined_test_data.pkl"
-
-
-@ex.named_config
 def stop_on_training_loss():
     early_stopping_on = "loss"
-
 
 @ex.config
 def config():
@@ -182,13 +89,11 @@ def config():
     conv_temporal_filter = (2, 5)
     num_temporal_filter = 1
     use_filtering = True
-    max_pool_size = (1, 2)
+    max_pool_size = (1, 3)
     max_pool_stride = (1, 2)
     use_batch_normalization = True
     use_random_ensemble = False
     max_num_samples = 10  # number of samples of eeg data segments per eeg.edf file
-    use_combined = False
-    combined_split = "combined"
     num_gpus = 1
     early_stopping_on = "val_loss"
     test_train_split_pkl_path = "train_test_split_info.pkl"
@@ -234,7 +139,6 @@ def get_base_dataset(split,
                      ref,
                      n_process,
                      num_files,
-                     use_random_ensemble,
                      labels,
                      max_num_samples,
                      max_length,
@@ -246,54 +150,35 @@ def get_base_dataset(split,
                      use_cached_pkl_dataset=True,
                      is_test=False,
                      is_valid=False):
-    if not use_random_ensemble:
-        edfData = read.EdfDataset(
-            split,
-            ref,
-            n_process=n_process,
-            max_length=max_length *
-            pd.Timedelta(seconds=constants.COMMON_DELTA),
-            use_numpy=True,
-            start_offset=pd.Timedelta(seconds=start_offset_seconds),
-            filter=use_filtering
-        )
-        edfData.edf_tokens = edfTokenPaths[:num_files]
-        if use_standard_scaler:
-            edfData = read.EdfStandardScaler(
-                edfData, dataset_includes_label=True)
-        assert len(edfData) == len(labels)
-        return edfData
-    else:  # store the ensemble data and the info on how stuff was sampled out
-        edfData = er.EdfDatasetEnsembler(
-            split,
-            ref,
-            n_process=n_process,
-            max_length=max_length *
-            pd.Timedelta(seconds=constants.COMMON_DELTA),
-            use_numpy=True,
-            edf_tokens=edfTokenPaths[:num_files],
-            labels=labels[:num_files],
-            max_num_samples=max_num_samples,
-            filter=use_filtering
-        )
-        samplingInfo = edfData.sampleInfo
-        if use_standard_scaler:
-            edfData = read.EdfStandardScaler(
-                edfData, dataset_includes_label=True, n_process=n_process)
-        ensemble_sample_info_path = "test_" + \
-            ensemble_sample_info_path if is_test else ensemble_sample_info_path
-        ensemble_sample_info_path = "valid_" + \
-            ensemble_sample_info_path if is_valid else ensemble_sample_info_path
-        print(ensemble_sample_info_path)
-        if use_cached_pkl_dataset and path.exists(ensemble_sample_info_path):
-            edfData.sampleInfo = pkl.load(
-                open(ensemble_sample_info_path, 'rb'))
-            ex.add_resource(ensemble_sample_info_path)
-        else:
-            pkl.dump(samplingInfo, open(ensemble_sample_info_path, 'wb'))
-            ex.add_artifact(ensemble_sample_info_path)
-        edfData.verbosity = 50
-        return edfData
+    edfData = er.EdfDatasetEnsembler(
+        split,
+        ref,
+        n_process=n_process,
+        max_length=max_length *
+        pd.Timedelta(seconds=constants.COMMON_DELTA),
+        use_numpy=True,
+        edf_tokens=edfTokenPaths[:num_files],
+        labels=labels[:num_files],
+        max_num_samples=max_num_samples,
+        filter=use_filtering
+    )
+    samplingInfo = edfData.sampleInfo
+    if use_standard_scaler:
+        edfData = read.EdfStandardScaler(
+            edfData, dataset_includes_label=True, n_process=n_process)
+    ensemble_sample_info_path = "test_" + \
+        ensemble_sample_info_path if is_test else ensemble_sample_info_path
+    ensemble_sample_info_path = "valid_" + \
+        ensemble_sample_info_path if is_valid else ensemble_sample_info_path
+    if use_cached_pkl_dataset and path.exists(ensemble_sample_info_path):
+        edfData.sampleInfo = pkl.load(
+            open(ensemble_sample_info_path, 'rb'))
+        ex.add_resource(ensemble_sample_info_path)
+    else:
+        pkl.dump(samplingInfo, open(ensemble_sample_info_path, 'wb'))
+        ex.add_artifact(ensemble_sample_info_path)
+    edfData.verbosity = 50
+    return edfData
 
 
 cached_test_train_split_info = None
@@ -612,7 +497,7 @@ def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_tra
 
 
 @ex.capture
-def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, num_gpus, validation_steps, steps_per_epoch):
+def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, n_gpu):
     trainValidationDataGenerator = get_data_generator(train_split)
     if use_combined:
         trainDataGenerator = trainValidationDataGenerator
@@ -659,11 +544,11 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     ex.add_artifact("bin_acc_" + model_name)
 
     model = keras.models.load_model(model_name)
-    if num_gpus > 1:
-        model = multi_gpu_model(model, num_gpus)
+    if n_gpu > 1:
+        model = multi_gpu_model(model, n_gpu)
     bin_acc_model = keras.models.load_model("bin_acc_" + model_name)
-    if num_gpus > 1:
-        bin_acc_model = multi_gpu_model(bin_acc_model, num_gpus)
+    if n_gpu > 1:
+        bin_acc_model = multi_gpu_model(bin_acc_model, n_gpu)
 
     # free memory so i can request less mem from 02 and get faster allocations
     del trainDataGenerator

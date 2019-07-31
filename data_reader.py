@@ -57,11 +57,40 @@ class EdfStandardScaler(util_funcs.MultiProcessingDataset):
         else:
             return data
 
+class SeizureLabelReader(util_funcs.MultiProcessingDataset):
+    def __init__(self, is_present_only=True, edf_token_paths=[], samplingInfo=None):
+        """ Provides access to an array-like that can create labels matching samplingInfo
+        or if edf_token_paths is available
+
+        Parameters
+        ----------
+        is_present_only : bool
+            Whether to use simple task of whether seizure occurred or to use another mode
+        edf_token_paths : list
+            list of file paths matching the edf filename
+        samplingInfo : dict
+            optional dict if using the random ensemble,
+            in form of EdfDatasetEnsembler.sampleInfo
+
+        Returns
+        -------
+        SeizureLabelReader
+            array-like to access the label info
+        """
+        if not is_present_only:
+            raise NotImplemented("TODO: maybe allow ways to get labels over time or if seizure is about to occur")
+        if samplingInfo is not None:
+            raise NotImplemented("TODO: Just depend directly on idea of random ensembling")
+        self.is_present_only  = is_present_only
+        self.sampleInfo = samplingInfo
+
+    def __len__(self):
+        return len(self.edf_token_paths)
 
 
 
 class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
-    freq_bins = [0.2 * i for i in range(50)] + list(range(10, 80, 1))
+    freq_bins = [0.2 * i for i in range(50)] + list(range(10, 80, 1)) #default freq bins unless if you override this
     """Implements an indexable dataset applying fft to entire timeseries,
         returning histogram bins of fft frequencies
 

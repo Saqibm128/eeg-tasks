@@ -12,29 +12,25 @@ import multiprocessing as mp
 import queue
 import constants
 from functools import lru_cache
-#http://newbebweb.blogspot.com/2012/02/python-head-ioerror-errno-32-broken.html
-# from signal import signal, SIGPIPE, SIG_DFL
-# signal(SIGPIPE,SIG_DFL)
 
-# to allow us to load data in without dealing with resource issues
-# https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 
-home_dir = "/home/ms994"
+
 
 class MultiProcessingDataset():
     """Class to help improve speed of looking up multiple records at once using multiple processes.
+        Was originally going to be designed around batch loading in, but was just used as a way to more quickly
+        populate an array-like into memory
+        
             Just make this the parent class, then call the getItemSlice method on slice objects
         Issues:
             Doesn't solve original problem of being optimized for keras batches, only solves
                 the fact that I needed some dataset that could quickly use multiple cores to
-                get data. Need to scope this out eventually.
+                get data. Use the models in keras_models.dataGen
             SLURM opaquely kills processes if it consume too much memory, so we gotta
                 double check and see that there are placeholders in the toReturn array left
             The toReturn array uses integer placeholders (representing logical indices of the
                 dataset ). If the returning datatype returned by indexing is also
                 an integer, then this won't work
-            This doesn't work with lists or for slices with increments that aren't 1
-             i.e. slice(0, 10, 2) or slice(10, 0, -1)
             Recovery from OOM is single threaded. Maybe we wanna make this
                 use mp if this becomes a new bottleneck?
 
@@ -147,7 +143,7 @@ def get_abs_files(root_dir_path):
 def get_common_channel_names(): #21 channels in all edf datafiles
     cached_channel_names = list(
         pd.read_csv(
-            home_dir + "/dbmi_eeg_clustering/assets/channel_names.csv",
+            "/home/ms994/dbmi_eeg_clustering/assets/channel_names.csv",
             header=None)[1])
     return cached_channel_names
 
@@ -155,13 +151,13 @@ def get_common_channel_names(): #21 channels in all edf datafiles
 def get_file_sizes(split, ref):
     assert split in get_data_split()
     assert ref in get_reference_node_types()
-    return pd.read_csv(home_dir + "/dbmi_eeg_clustering/assets/{}_{}_file_lengths.csv".format(split, ref), header=None, index_col=[0])
+    return pd.read_csv("/home/ms994/dbmi_eeg_clustering/assets/{}_{}_file_lengths.csv".format(split, ref), header=None, index_col=[0])
 
 
 @lru_cache(10)
 def get_annotation_csv():
     cached_annotation_csv = pd.read_csv(
-        home_dir + "/dbmi_eeg_clustering/assets/data_labels.csv",
+        "/home/ms994/dbmi_eeg_clustering/assets/data_labels.csv",
         header=0,
         dtype=str,
         keep_default_na=False,
@@ -209,7 +205,7 @@ def get_reference_node_types():
     return ["01_tcp_ar", "02_tcp_le", "03_tcp_ar_a"]
 
 
-def get_mongo_client(path=home_dir + "/dbmi_eeg_clustering/config.json"):
+def get_mongo_client(path="/home/ms994/dbmi_eeg_clustering/config.json"):
     '''
     Used for Sacred to record results
     '''
@@ -222,7 +218,7 @@ def get_mongo_client(path=home_dir + "/dbmi_eeg_clustering/config.json"):
 
 
 @lru_cache(10)
-def read_config(path=home_dir + "/dbmi_eeg_clustering/config.json"):
+def read_config(path="/home/ms994/dbmi_eeg_clustering/config.json"):
     return json.load(open(path, "rb"))
 
 
