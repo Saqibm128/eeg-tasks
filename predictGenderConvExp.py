@@ -608,7 +608,7 @@ def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_tra
 
 
 @ex.capture
-def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, num_gpu, validation_steps, steps_per_epoch):
+def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, num_gpus, validation_steps, steps_per_epoch):
     trainValidationDataGenerator = get_data_generator(train_split)
     if use_combined:
         trainDataGenerator = trainValidationDataGenerator
@@ -655,11 +655,11 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     ex.add_artifact("bin_acc_" + model_name)
 
     model = keras.models.load_model(model_name)
-    if num_gpu > 1:
-        model = multi_gpu_model(model, num_gpu)
+    if num_gpus > 1:
+        model = multi_gpu_model(model, num_gpus)
     bin_acc_model = keras.models.load_model("bin_acc_" + model_name)
-    if num_gpu > 1:
-        bin_acc_model = multi_gpu_model(bin_acc_model, num_gpu)
+    if num_gpus > 1:
+        bin_acc_model = multi_gpu_model(bin_acc_model, num_gpus)
 
     # free memory so i can request less mem from 02 and get faster allocations
     del trainDataGenerator
