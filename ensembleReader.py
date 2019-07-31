@@ -182,7 +182,7 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
         data = data.fillna(method="ffill").fillna(method="bfill")
         if self.use_numpy:
             data = data.values
-        if self.labels is None:
+        if "label" not in indexData.keys():
             return data
         else:
             return data, indexData.label

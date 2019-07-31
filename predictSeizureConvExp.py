@@ -28,7 +28,7 @@ import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="predict_seizure_in_eeg")
 
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 
@@ -46,9 +46,9 @@ def debug():
 @ex.named_config
 def standardized_ensemble():
     use_random_ensemble = True
-    precached_pkl = "standardized_simple_ensemble_train_data_seizure.pkl"
-    precached_test_pkl = "standardized_simple_ensemble_test_data_seizure.pkl"
-    ensemble_sample_info_path = "standardized_edf_ensemble_sample_info_seizure.pkl"
+    precached_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_train_data_seizure.pkl"
+    precached_test_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_test_data_seizure.pkl"
+    ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_seizure.pkl"
 
     max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
@@ -133,6 +133,14 @@ def get_cb_list(use_early_stopping, model_name):
     else:
         return [get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
 
+@ex.capture
+def get_data_generator(split, pkl_file, shuffle_generator, use_cached_pkl_dataset=True):
+    if use_cached_pkl_dataset and path.exists(pkl_file):
+        edf = pkl.load(open(pkl_file, 'rb'))
+    else:
+        edf = EdfDataGenerator(get_base_dataset(split=split), precache=True, shuffle=shuffle_generator)
+        pkl.dump(edf, open(pkl_file, 'wb'))
+    return edf
 
 @ex.capture
 def get_base_dataset(split,
@@ -141,7 +149,6 @@ def get_base_dataset(split,
                      num_files,
                      max_num_samples,
                      max_length,
-                     edfTokenPaths,
                      start_offset_seconds,
                      ensemble_sample_info_path,
                      use_standard_scaler,
@@ -149,7 +156,6 @@ def get_base_dataset(split,
                      use_cached_pkl_dataset=True,
                      is_test=False,
                      is_valid=False):
-    labels = read.SeizureLabelReader
     edfData = er.EdfDatasetEnsembler(
         split,
         ref,
@@ -157,9 +163,13 @@ def get_base_dataset(split,
         max_length=max_length *
         pd.Timedelta(seconds=constants.COMMON_DELTA),
         use_numpy=True,
+        num_files=num_files,
         max_num_samples=max_num_samples,
         filter=use_filtering
     )
+    labels = read.SeizureLabelReader(sampleInfo=edfData.sampleInfo, n_process=n_process)
+    labels.self_assign_to_sample_info(convert_to_int=True)
+
     samplingInfo = edfData.sampleInfo
     if use_standard_scaler:
         edfData = read.EdfStandardScaler(
@@ -260,11 +270,92 @@ def main(use_dl):
     if use_dl:
         return dl()  # deep learning branch
 
-
+@ex.capture
+def get_train_valid_generator(train_split, precached_pkl):
+    return get_data_generator(train_split, pkl_file=precached_pkl)
 
 @ex.capture
-def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, n_gpu):
-    trainValidationDataGenerator = get_data_generator(train_split)
+def get_test_generator(test_split, precached_test_pkl):
+    return get_data_generator(test_split, pkl_file=precached_test_pkl, shuffle_generator=False)
+
+@ex.capture
+def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus):
+    trainValidationDataGenerator = get_train_valid_generator()
+    testDataGenerator = get_test_generator()
+    trainDataGenerator, validDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size)
+
+    model = get_model()
+    history = model.fit_generator(
+        trainDataGenerator,
+        validation_steps=validation_steps,
+        steps_per_epoch=steps_per_epoch,
+        validation_data = validDataGenerator,
+        verbose=fit_generator_verbosity,
+        cb=get_cb_list()
+        )
+
+    y_pred = model.predict(np.stack(testData.dataset).reshape(0,2,1,3)) #time second, feature first
+    print("pred shape", y_pred.shape)
+    print("test data shape", testData.shape)
+
+    auc = roc_auc_score(testGender, y_pred.argmax(axis=1))
+    f1 = f1_score(testGender, y_pred.argmax(axis=1))
+    accuracy = accuracy_score(testGender, y_pred.argmax(axis=1))
+
+    y_pred_bin_acc = bin_acc_model.predict(testData)
+    print("pred shape", y_pred_bin_acc.shape)
+    print("test data shape", testData.shape)
+
+    bin_acc_auc = roc_auc_score(testGender, y_pred_bin_acc.argmax(axis=1))
+    bin_acc_f1 = f1_score(testGender, y_pred_bin_acc.argmax(axis=1))
+    bin_acc_accuracy = accuracy_score(
+        testGender, y_pred_bin_acc.argmax(axis=1))
+
+    toReturn = {
+        'history': history.history,
+        'val_scores': {
+            'min_val_loss': min(history.history['val_loss']),
+            'max_val_acc': max(history.history['val_binary_accuracy']),
+        },
+        'test_scores': {
+            'f1': f1,
+            'acc': accuracy,
+            'auc': auc
+        },
+        'best_bin_acc_test_scores':  {
+            'f1': bin_acc_f1,
+            'acc': bin_acc_accuracy,
+            'auc': bin_acc_auc
+        }}
+
+    if use_standard_scaler:
+        testGender = testEdfEnsembler.dataset.getEnsembledLabels()
+    else:
+        testGender = testEdfEnsembler.getEnsembledLabels()
+
+    pred = np.round(average_pred)
+    toReturn["ensemble_score"] = {
+        "equal_vote":{},
+        "over_all":{}
+    }
+    toReturn["ensemble_score"]["auc"] = roc_auc_score(label, pred) #keep auc,etc. here as well in top level for compatibility reasons when comparing
+    toReturn["ensemble_score"]["acc"] = accuracy_score(label, pred)
+    toReturn["ensemble_score"]["f1_score"] = f1_score(label, pred)
+    toReturn["ensemble_score"]["discordance"] = np.abs(
+        pred - average_pred).mean()
+    toReturn["ensemble_score"]["equal_vote"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
+    toReturn["ensemble_score"]["equal_vote"]["acc"] = accuracy_score(label, pred)
+    toReturn["ensemble_score"]["equal_vote"]["f1_score"] = f1_score(label, pred)
+    toReturn["ensemble_score"]["equal_vote"]["discordance"] = np.abs(
+        pred - average_pred).mean()
+    pred = np.round(average_over_all_pred)
+    toReturn["ensemble_score"]["over_all"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
+    toReturn["ensemble_score"]["over_all"]["acc"] = accuracy_score(label, pred)
+    toReturn["ensemble_score"]["over_all"]["f1_score"] = f1_score(label, pred)
+    toReturn["ensemble_score"]["over_all"]["discordance"] = np.abs(
+        pred - average_pred).mean()
+    return toReturn
+
 
 
 if __name__ == "__main__":

@@ -13,14 +13,14 @@ import queue
 import constants
 from functools import lru_cache
 
-
+root_path = "/home/ms994/" is "EEG_ROOT" not in os.environ.keys() else os.environ["EEG_ROOT"]
 
 
 class MultiProcessingDataset():
     """Class to help improve speed of looking up multiple records at once using multiple processes.
         Was originally going to be designed around batch loading in, but was just used as a way to more quickly
         populate an array-like into memory
-        
+
             Just make this the parent class, then call the getItemSlice method on slice objects
         Issues:
             Doesn't solve original problem of being optimized for keras batches, only solves
@@ -57,20 +57,21 @@ class MultiProcessingDataset():
         manager = mp.Manager()
         inQ = manager.Queue()
         outQ = manager.Queue()
-        [inQ.put(j) for j in toReturn]
-        [inQ.put(None) for j in range(self.n_process)]
-        processes = [
-            mp.Process(
-                target=self.helper_process,
-                args=(
-                    inQ,
-                    outQ)) for j in range(
-                self.n_process)]
-        if not hasattr(self, "verbose") or self.verbose == True:
-            print("Starting {} processes".format(self.n_process))
-        [p.start() for p in processes]
-        [p.join() for p in processes]
-        startIndex = toReturn[0]
+        if self.n_process > 1: #otherwise use for loop
+            [inQ.put(j) for j in toReturn]
+            [inQ.put(None) for j in range(self.n_process)]
+            processes = [
+                mp.Process(
+                    target=self.helper_process,
+                    args=(
+                        inQ,
+                        outQ)) for j in range(
+                    self.n_process)]
+            if not hasattr(self, "verbose") or self.verbose == True:
+                print("Starting {} processes".format(self.n_process))
+            [p.start() for p in processes]
+            [p.join() for p in processes]
+            startIndex = toReturn[0]
         while not outQ.empty():
             place, res = outQ.get()
             index = placeholder.index(place)
@@ -92,12 +93,7 @@ class MultiProcessingDataset():
                     self.verbosity = 10
                 if i % self.verbosity == 0:
                     print("retrieving: {}".format(i))
-            try:
-                out_q.put((i, self[i]))
-            except Exception as e:
-                if not hasattr(self, "verbose") or self.verbose == True:
-                    print("Encounter unexpected exception, continuing: ",e) #may be just slurm OOM event
-                continue
+            out_q.put((i, self[i]))
 
 
 
@@ -143,7 +139,7 @@ def get_abs_files(root_dir_path):
 def get_common_channel_names(): #21 channels in all edf datafiles
     cached_channel_names = list(
         pd.read_csv(
-            "/home/ms994/dbmi_eeg_clustering/assets/channel_names.csv",
+            path.join(root_path,"/dbmi_eeg_clustering/assets/channel_names.csv"),
             header=None)[1])
     return cached_channel_names
 
@@ -151,13 +147,14 @@ def get_common_channel_names(): #21 channels in all edf datafiles
 def get_file_sizes(split, ref):
     assert split in get_data_split()
     assert ref in get_reference_node_types()
-    return pd.read_csv("/home/ms994/dbmi_eeg_clustering/assets/{}_{}_file_lengths.csv".format(split, ref), header=None, index_col=[0])
+    return pd.read_csv(path.join(root_path, "/dbmi_eeg_clustering/assets/{}_{}_file_lengths.csv".format(split, ref)), header=None, index_col=[0])
 
 
 @lru_cache(10)
 def get_annotation_csv():
     cached_annotation_csv = pd.read_csv(
-        "/home/ms994/dbmi_eeg_clustering/assets/data_labels.csv",
+        path.join(
+        root_path,"/dbmi_eeg_clustering/assets/data_labels.csv"),
         header=0,
         dtype=str,
         keep_default_na=False,
@@ -205,7 +202,7 @@ def get_reference_node_types():
     return ["01_tcp_ar", "02_tcp_le", "03_tcp_ar_a"]
 
 
-def get_mongo_client(path="/home/ms994/dbmi_eeg_clustering/config.json"):
+def get_mongo_client(path=path.join(root_path,"/dbmi_eeg_clustering/config.json")):
     '''
     Used for Sacred to record results
     '''
@@ -218,7 +215,7 @@ def get_mongo_client(path="/home/ms994/dbmi_eeg_clustering/config.json"):
 
 
 @lru_cache(10)
-def read_config(path="/home/ms994/dbmi_eeg_clustering/config.json"):
+def read_config(path=path.join(root_path,"dbmi_eeg_clustering/config.json")):
     return json.load(open(path, "rb"))
 
 

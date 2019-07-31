@@ -89,6 +89,14 @@ class SeizureLabelReader(util_funcs.MultiProcessingDataset):
         self.edf_token_paths = edf_token_paths
         self.overwrite_sample_info_label = overwrite_sample_info_label
 
+    def self_assign_to_sample_info(self, convert_to_int):
+        labels = self[:]
+        for i in range(len(self.sampleInfo)):
+            self.sampleInfo[i].label = labels[i]
+            if convert_to_int:
+                self.sampleInfo[i].label = int(labels[i])
+
+
     def __len__(self):
         if self.sampleInfo is not None:
             return len(self.sampleInfo)
@@ -109,7 +117,7 @@ class SeizureLabelReader(util_funcs.MultiProcessingDataset):
             seizInfoSlice = seiz_label.loc[(seiz_label.end > startTime) & (seiz_label.end <= endTime).shift(1)]
             label = (seizInfoSlice.label != "bckg").any()
 
-            if self.overwrite_sample_info_label:
+            if self.overwrite_sample_info_label: #only works if n_process is 1???
                 self.sampleInfo[i].label = label
 
             return label
