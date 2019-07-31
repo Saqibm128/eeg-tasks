@@ -51,6 +51,14 @@ def conv_spatial_filter_2_2():
 def conv_spatial_filter_3_3():
     conv_spatial_filter = (3, 3)
 
+@ex.named_config
+def max_pool_size_2_2():
+    max_pool_size = (2,2)
+
+@ex.named_config
+def max_pool_size_1_2():
+    max_pool_size = (1,2)
+
 
 @ex.named_config
 def conv_temporal_filter_1_7():
@@ -170,7 +178,7 @@ def config():
     conv_temporal_filter = (2, 5)
     num_temporal_filter = 1
     use_filtering = True
-    max_pool_size = (1, 3)
+    max_pool_size = (1, 2)
     max_pool_stride = (1, 2)
     use_batch_normalization = True
     use_random_ensemble = False
@@ -600,7 +608,7 @@ def run_rf(use_combined, use_random_ensemble, combined_split, freq_bins, max_tra
 
 
 @ex.capture
-def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, n_gpu, validation_steps, steps_per_epoch):
+def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, use_combined, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, num_gpu, validation_steps, steps_per_epoch):
     trainValidationDataGenerator = get_data_generator(train_split)
     if use_combined:
         trainDataGenerator = trainValidationDataGenerator
@@ -647,11 +655,11 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     ex.add_artifact("bin_acc_" + model_name)
 
     model = keras.models.load_model(model_name)
-    if n_gpu > 1:
-        model = multi_gpu_model(model, n_gpu)
+    if num_gpu > 1:
+        model = multi_gpu_model(model, num_gpu)
     bin_acc_model = keras.models.load_model("bin_acc_" + model_name)
-    if n_gpu > 1:
-        bin_acc_model = multi_gpu_model(bin_acc_model, n_gpu)
+    if num_gpu > 1:
+        bin_acc_model = multi_gpu_model(bin_acc_model, num_gpu)
 
     # free memory so i can request less mem from 02 and get faster allocations
     del trainDataGenerator
