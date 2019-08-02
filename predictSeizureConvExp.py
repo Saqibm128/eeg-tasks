@@ -28,7 +28,7 @@ import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="predict_seizure_in_eeg")
 
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 
@@ -134,11 +134,20 @@ def get_cb_list(use_early_stopping, model_name):
         return [get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
 
 @ex.capture
-def get_data_generator(split, pkl_file, shuffle_generator, use_cached_pkl_dataset=True):
+def get_data_generator(split, pkl_file, shuffle_generator, is_test=False, use_cached_pkl_dataset=True):
     if use_cached_pkl_dataset and path.exists(pkl_file):
         edf = pkl.load(open(pkl_file, 'rb'))
     else:
-        edf = EdfDataGenerator(get_base_dataset(split=split), precache=True, shuffle=shuffle_generator)
+        edf = EdfDataGenerator(
+            get_base_dataset(
+                split=split,
+                is_test=is_test
+                ),
+            precache=True,
+            shuffle=shuffle_generator,
+            n_classes=2,
+            time_first=False
+            )
         pkl.dump(edf, open(pkl_file, 'wb'))
     return edf
 
@@ -160,24 +169,25 @@ def get_base_dataset(split,
         split,
         ref,
         n_process=n_process,
-        max_length=max_length *
-        pd.Timedelta(seconds=constants.COMMON_DELTA),
+        max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA),
         use_numpy=True,
         num_files=num_files,
         max_num_samples=max_num_samples,
         filter=use_filtering
     )
     labels = read.SeizureLabelReader(sampleInfo=edfData.sampleInfo, n_process=n_process)
-    labels.self_assign_to_sample_info(convert_to_int=True)
+    labels.self_assign_to_sample_info(convert_to_int=True) #ugly code, changes the variable of edfData inside another object :(
 
     samplingInfo = edfData.sampleInfo
     if use_standard_scaler:
         edfData = read.EdfStandardScaler(
             edfData, dataset_includes_label=True, n_process=n_process)
-    ensemble_sample_info_path = "test_" + \
-        ensemble_sample_info_path if is_test else ensemble_sample_info_path
-    ensemble_sample_info_path = "valid_" + \
-        ensemble_sample_info_path if is_valid else ensemble_sample_info_path
+    basename = path.basename(ensemble_sample_info_path)
+    dirname = path.dirname(ensemble_sample_info_path)
+    ensemble_sample_info_path = (dirname + "/test_" + \
+        basename) if is_test else ensemble_sample_info_path
+    ensemble_sample_info_path = (dirname + "/valid_" + \
+        basename) if is_valid else ensemble_sample_info_path
     if use_cached_pkl_dataset and path.exists(ensemble_sample_info_path):
         edfData.sampleInfo = pkl.load(
             open(ensemble_sample_info_path, 'rb'))
@@ -267,25 +277,26 @@ def get_custom_model(
 
 @ex.main
 def main(use_dl):
-    if use_dl:
-        return dl()  # deep learning branch
+    # if use_dl:
+    return dl()  # deep learning branch
 
 @ex.capture
 def get_train_valid_generator(train_split, precached_pkl):
-    return get_data_generator(train_split, pkl_file=precached_pkl)
+    return get_data_generator(train_split, pkl_file=precached_pkl, is_test=False)
 
 @ex.capture
 def get_test_generator(test_split, precached_test_pkl):
-    return get_data_generator(test_split, pkl_file=precached_test_pkl, shuffle_generator=False)
+    return get_data_generator(test_split, pkl_file=precached_test_pkl, shuffle_generator=False, is_test=True)
 
 @ex.capture
-def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus):
+def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus, ensemble_sample_info_path):
     trainValidationDataGenerator = get_train_valid_generator()
     trainValidationDataGenerator.time_first = False
     testDataGenerator = get_test_generator()
     trainValidationDataGenerator.n_classes=2
     trainDataGenerator, validDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size)
 
+    # return
     model = get_model()
     history = model.fit_generator(
         trainDataGenerator,
@@ -293,16 +304,46 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
         steps_per_epoch=steps_per_epoch,
         validation_data = validDataGenerator,
         verbose=fit_generator_verbosity,
-        callbacks=get_cb_list()
+        epochs=num_epochs,
+        callbacks=get_cb_list(),
+        class_weight={
+            0: 1,
+            1: 20,
+        }
         )
+
+
 
     testData = testDataGenerator.dataset
     testData = np.stack(np.stack(testData)[:,0])
-    y_pred = model.predict(testData.reshape((*testData.shape, 1)).transpose(0,2,1,3)) #time second, feature first
+    testData = testData.reshape((*testData.shape, 1)).transpose(0,2,1,3)
+    testEdfEnsembler = er.EdfDatasetEnsembler("dev_test", ref, generate_sample_info=False)
+    basename = path.basename(ensemble_sample_info_path)
+    dirname = path.dirname(ensemble_sample_info_path)
+    test_ensemble_sample_info_path = (dirname + "/test_" + \
+        basename)
+    testEdfEnsembler.sampleInfo = pkl.load(open(test_ensemble_sample_info_path, 'rb'))
+    if use_standard_scaler:
+        testGender = testEdfEnsembler.getEnsembledLabels()
+    else:
+        testGender = testEdfEnsembler.getEnsembledLabels()
+
+    model = keras.models.load_model(model_name)
+    if num_gpus > 1:
+        model = multi_gpu_model(model, num_gpus)
+
+    bin_acc_model = keras.models.load_model("bin_acc_" + model_name)
+    if num_gpus > 1:
+        bin_acc_model = multi_gpu_model(bin_acc_model, num_gpus)
+
+    y_pred = model.predict(testData) #time second, feature first
     print("pred shape", y_pred.shape)
     print("test data shape", testData.shape)
 
-    auc = roc_auc_score(testGender, y_pred.argmax(axis=1))
+    try:
+        auc = roc_auc_score(testGender, y_pred.argmax(axis=1))
+    except Exception:
+        print("Could not calculate auc")
     f1 = f1_score(testGender, y_pred.argmax(axis=1))
     accuracy = accuracy_score(testGender, y_pred.argmax(axis=1))
 
@@ -310,7 +351,10 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     print("pred shape", y_pred_bin_acc.shape)
     print("test data shape", testData.shape)
 
-    bin_acc_auc = roc_auc_score(testGender, y_pred_bin_acc.argmax(axis=1))
+    try:
+        bin_acc_auc = roc_auc_score(testGender, y_pred_bin_acc.argmax(axis=1))
+    except Exception:
+        print("COuld not calculate auc")
     bin_acc_f1 = f1_score(testGender, y_pred_bin_acc.argmax(axis=1))
     bin_acc_accuracy = accuracy_score(
         testGender, y_pred_bin_acc.argmax(axis=1))
@@ -332,32 +376,41 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
             'auc': bin_acc_auc
         }}
 
-    if use_standard_scaler:
-        testGender = testEdfEnsembler.dataset.getEnsembledLabels()
-    else:
-        testGender = testEdfEnsembler.getEnsembledLabels()
 
+
+
+    label, average_pred = testEdfEnsembler.getEnsemblePrediction(
+        y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
+    label, average_over_all_pred = testEdfEnsembler.getEnsemblePrediction(
+        y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
     pred = np.round(average_pred)
     toReturn["ensemble_score"] = {
         "equal_vote":{},
         "over_all":{}
     }
-    toReturn["ensemble_score"]["auc"] = roc_auc_score(label, pred) #keep auc,etc. here as well in top level for compatibility reasons when comparing
-    toReturn["ensemble_score"]["acc"] = accuracy_score(label, pred)
-    toReturn["ensemble_score"]["f1_score"] = f1_score(label, pred)
-    toReturn["ensemble_score"]["discordance"] = np.abs(
-        pred - average_pred).mean()
-    toReturn["ensemble_score"]["equal_vote"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
-    toReturn["ensemble_score"]["equal_vote"]["acc"] = accuracy_score(label, pred)
-    toReturn["ensemble_score"]["equal_vote"]["f1_score"] = f1_score(label, pred)
-    toReturn["ensemble_score"]["equal_vote"]["discordance"] = np.abs(
-        pred - average_pred).mean()
-    pred = np.round(average_over_all_pred)
-    toReturn["ensemble_score"]["over_all"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
-    toReturn["ensemble_score"]["over_all"]["acc"] = accuracy_score(label, pred)
-    toReturn["ensemble_score"]["over_all"]["f1_score"] = f1_score(label, pred)
-    toReturn["ensemble_score"]["over_all"]["discordance"] = np.abs(
-        pred - average_pred).mean()
+    # try:
+    #     toReturn["ensemble_score"]["auc"] = roc_auc_score(label, pred) #keep auc,etc. here as well in top level for compatibility reasons when comparing
+    # except Exception:
+    #     print("AUC could not be calculated")
+    # toReturn["ensemble_score"]["acc"] = accuracy_score(label, pred)
+    # toReturn["ensemble_score"]["f1_score"] = f1_score(label, pred)
+    # toReturn["ensemble_score"]["discordance"] = np.abs(
+    #     pred - average_pred).mean()
+    # try:
+    #     toReturn["ensemble_score"]["equal_vote"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
+    # except Exception:
+    #     print("AUC could not be calculated")
+    # toReturn["ensemble_score"]["equal_vote"]["acc"] = accuracy_score(label, pred)
+    # toReturn["ensemble_score"]["equal_vote"]["f1_score"] = f1_score(label, pred)
+    # toReturn["ensemble_score"]["equal_vote"]["discordance"] = np.abs(
+    #     pred - average_pred).mean()
+    # pred = np.round(average_over_all_pred)
+    # try:
+    #     toReturn["ensemble_score"]["over_all"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
+    # toReturn["ensemble_score"]["over_all"]["acc"] = accuracy_score(label, pred)
+    # toReturn["ensemble_score"]["over_all"]["f1_score"] = f1_score(label, pred)
+    # toReturn["ensemble_score"]["over_all"]["discordance"] = np.abs(
+    #     pred - average_pred).mean()
     return toReturn
 
 

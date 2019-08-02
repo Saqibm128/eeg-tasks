@@ -126,7 +126,6 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
             of 2 by len(self.edf_tokens), first index is True labels, second is average prediction
 
         """
-        assert self.labels is not None
         assert mode in EdfDatasetEnsembler.ENSEMBLE_PREDICTION_MODES
         if mode == EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE:
             pred_labels = pred_labels.argmax(1)

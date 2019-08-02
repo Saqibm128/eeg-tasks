@@ -100,7 +100,7 @@ class DataGenerator(keras.utils.Sequence):
 class EdfDataGenerator(DataGenerator):
     'Can accept EdfDataset and any of its intermediates to make data (i.e. sftft)'
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=10, shuffle=True, max_length=None, time_first=True, precache=False, instance_order_first=True):
+                 n_classes=10, class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, instance_order_first=True):
         super().__init__(list_IDs=list(range(len(dataset))), labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
                      n_classes=n_classes, shuffle=shuffle)
         if not instance_order_first:
@@ -110,6 +110,7 @@ class EdfDataGenerator(DataGenerator):
         self.max_length=max_length
         self.time_first = time_first
         self.instance_order_first = instance_order_first
+        self.class_type=class_type
 
         if precache: #just populate self.labels too if we are precaching anyways
             self.dataset = dataset[:]
@@ -128,11 +129,11 @@ class EdfDataGenerator(DataGenerator):
         train_data, validation_data, train_labels, validation_labels = train_test_split(self.dataset, self.labels, test_size=validation_size, stratify=self.labels)
 
         train_data_gen = EdfDataGenerator(dataset=train_data, mask_value=self.mask_value, labels=train_labels, batch_size=self.batch_size, dim=self.dim, n_channels=self.n_channels,
-                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache)
+                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache, class_type=self.class_type)
 
 
         validation_data_gen = EdfDataGenerator( dataset=validation_data, mask_value=self.mask_value, labels=validation_labels, batch_size=self.batch_size, dim=self.dim, n_channels=self.n_channels,
-                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache)
+                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache, class_type=self.class_type)
 
         return train_data_gen, validation_data_gen
 
@@ -176,7 +177,8 @@ class EdfDataGenerator(DataGenerator):
         x = three_dim_pad(x, self.mask_value, max_length=self.max_length)
         if not self.time_first: # we want batch by feature by time
             x = x.transpose((0, 2,1, *[i + 3 for i in range(x.ndim - 3)]))
-        return x,  keras.utils.to_categorical(y, num_classes=self.n_classes)
-
-
-        return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
+        if not hasattr(self, "class_type") or self.class_type == "nominal":
+            y =  keras.utils.to_categorical(y, num_classes=self.n_classes)
+        elif self.class_type == "quantile":
+            y = y
+        return x, np.stack(y)
