@@ -105,6 +105,7 @@ def config():
     shuffle_generator = True
     use_dl = True
     use_inception_like=False
+    continue_from_model=False
 
 
 # https://pynative.com/python-generate-random-string/
@@ -127,9 +128,9 @@ def get_early_stopping(patience, early_stopping_on):
 @ex.capture
 def get_cb_list(use_early_stopping, model_name):
     if use_early_stopping:
-        return [get_early_stopping(), get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
+        return [get_early_stopping(), get_model_checkpoint(),]
     else:
-        return [get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
+        return [get_model_checkpoint()]
 
 @ex.capture
 def get_data_generator(split, pkl_file, shuffle_generator, is_test=False, use_cached_pkl_dataset=True):
@@ -199,10 +200,18 @@ def get_base_dataset(split,
     edfData.verbosity = 50
     return edfData
 
+@ex.capture
+def load_saved_model(model_name, num_gpus):
+    model = keras.models.load_model(model_name)
+    if num_gpus > 1:
+        model = multi_gpu_model(model, num_gpus)
+    return model
 
 @ex.capture
-def get_model(dropout, max_length, lr, use_vp, num_spatial_filter, use_batch_normalization, max_pool_size, use_inception_like, output_activation="linear", num_gpus=1, num_outputs=1):
-    if use_vp:
+def get_model(dropout, max_length, continue_from_model, lr, use_vp, num_spatial_filter, use_batch_normalization, max_pool_size, use_inception_like, output_activation="linear", num_gpus=1, num_outputs=1):
+    if continue_from_model:
+        model = load_saved_model()
+    elif use_vp:
         model = vp_conv2d(
             dropout=dropout,
             input_shape=(21, max_length, 1),
@@ -276,8 +285,7 @@ def get_custom_model(
 
 @ex.main
 def main(use_dl):
-    if use_dl:
-        return dl()  # deep learning branch
+    return dl()  # deep learning branch
 
 @ex.capture
 def get_train_valid_generator(train_split, precached_pkl):
@@ -324,13 +332,8 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     else:
         testGender = testEdfEnsembler.getEnsembledLabels()
 
-    model = keras.models.load_model(model_name)
-    if num_gpus > 1:
-        model = multi_gpu_model(model, num_gpus)
+    model = load_saved_model()
 
-    bin_acc_model = keras.models.load_model("bin_acc_" + model_name)
-    if num_gpus > 1:
-        bin_acc_model = multi_gpu_model(bin_acc_model, num_gpus)
 
     y_pred = model.predict(testData) #time second, feature first
     print("pred shape", y_pred.shape)
@@ -338,13 +341,6 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
 
     mse = mean_squared_error(testGender, y_pred.argmax(axis=1))
     r2 = r2_score(testGender, y_pred.argmax(axis=1))
-
-    y_pred_bin_acc = bin_acc_model.predict(testData)
-    print("pred shape", y_pred_bin_acc.shape)
-    print("test data shape", testData.shape)
-
-    bin_acc_mse = mean_squared_error(testGender, y_pred_bin_acc.argmax(axis=1))
-    bin_acc_r2 = r2_score(testGender, y_pred_bin_acc.argmax(axis=1))
 
     toReturn = {
         'history': history.history,
@@ -354,11 +350,7 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
         'test_scores': {
             'r2_score': r2,
             'mse': mse,
-        },
-        'best_bin_acc_test_scores':  {
-            'mse': bin_acc_mse,
-            'r2': bin_acc_r2,
-        }}
+        },}
 
 
 

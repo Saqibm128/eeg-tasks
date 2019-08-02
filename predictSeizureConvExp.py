@@ -295,6 +295,8 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     testDataGenerator = get_test_generator()
     trainValidationDataGenerator.n_classes=2
     trainDataGenerator, validDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size)
+    if regenerate_data:
+        return
 
     # return
     model = get_model()

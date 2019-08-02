@@ -138,7 +138,7 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
             pred_vs_true[tokenFile].trueLabel.append(self.sampleInfo[i].label)
             pred_vs_true[tokenFile].predLabel.append(pred_labels[i])
         toReturn = []
-        for tokenFile in self.edf_tokens:
+        for tokenFile in pred_vs_true.keys():
             if mode == EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP:
                 toReturn.append((np.mean(pred_vs_true[tokenFile].trueLabel), np.mean(pred_vs_true[tokenFile].predLabel, axis=0).argmax()))
             elif mode == EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE:
