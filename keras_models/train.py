@@ -8,9 +8,8 @@ def model_run(model, patience, class_weights, model_name, trainDataGen, validDat
     overall_loss_hist = []
     loss_hist = []
     val_loss_hist = []
-    callback_check = num_steps_each_eval
     start = time.time()
-    class_weight = np.array([1,20])
+    class_weight = np.array(class_weights)
     update_amount = 0.9
     best_f1 = -1
     exhausted_patience = 0
@@ -30,7 +29,7 @@ def model_run(model, patience, class_weights, model_name, trainDataGen, validDat
             if verbosity:
                 print("Progress: {}/{}".format(batch_num, len(trainDataGen)))
                 print("Epoch: {}, Step: {}/{}, Loss: {}".format(totalEpochs, batch_num, num_steps_each_eval, loss))
-            if batch_num % callback_check == 0:
+            if batch_num % num_steps_each_eval == 0:
                 y_true = []
                 for k in range(len(validDataGen)):
                     _, y_true_add = validDataGen[k]
