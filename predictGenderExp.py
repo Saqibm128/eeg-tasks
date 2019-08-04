@@ -97,7 +97,7 @@ def config():
     test_pkl="testGenderData.pkl"
 
 @ex.capture
-def get_data(split, ref, num_files, freq_bins, columns_to_use, n_process, include_simple_coherence, filter):
+def get_data(split, ref="01_tcp_ar", num_files=None, freq_bins=[0,3.5,7.5,14,20,25,40], columns_to_use=constants.SYMMETRIC_COLUMN_SUBSET, n_process=4, include_simple_coherence=True, filter=True):
     genderDictItems = cta.getGenderAndFileNames(split, ref)
     clinicalTxtPaths = [genderDictItem[0]
                         for genderDictItem in genderDictItems]
@@ -153,19 +153,19 @@ def getFeatureScores(gridsearch, clf_name):
 def main(train_pkl, test_pkl, train_split, test_split, clf_name, precache):
     if path.exists(train_pkl) and precache:
         trainData, trainGenders = pkl.load(open(train_pkl, 'rb'))
-        # ex.add_resource(train_pkl)
+        # ex.add_resource(train_pkl) #pushes gbs of data to mongo
     else:
         trainData, trainGenders = get_data(split=train_split)
         pkl.dump((trainData, trainGenders), open(train_pkl, 'wb'))
-        # ex.add_artifact(train_pkl)
+        # ex.add_artifact(train_pkl) #pushes gbs of data to mongo
 
     if path.exists(test_pkl) and precache:
-        testData, testGenders = pkl.load(open(train_pkl, 'rb'))
-        # ex.add_resource(train_pkl)
+        testData, testGenders = pkl.load(open(test_pkl, 'rb'))
+        # ex.add_resource(train_pkl) #pushes gbs of data to mongo
     else:
         testData, testGenders = get_data(split=test_split)
         pkl.dump((testData, testGenders), open(test_pkl, 'wb'))
-        # ex.add_artifact(test_pkl)
+        # ex.add_artifact(test_pkl) #pushes gbs of data to mongo
     print("Starting ", clf_name)
 
     gridsearch = getGridsearch()

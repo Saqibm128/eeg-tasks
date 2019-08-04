@@ -22,6 +22,7 @@ import sacred
 import keras
 import ensembleReader as er
 from keras.utils import multi_gpu_model
+from keras_models import train
 
 import random
 import string
@@ -48,6 +49,7 @@ def standardized_ensemble():
     use_random_ensemble = True
     precached_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_train_data_seizure.pkl"
     precached_test_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_test_data_seizure.pkl"
+
     ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_seizure.pkl"
 
     max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
@@ -95,6 +97,7 @@ def config():
     use_random_ensemble = False
     max_num_samples = 10  # number of samples of eeg data segments per eeg.edf file
     num_gpus = 1
+    use_self_train=False
     early_stopping_on = "val_loss"
     test_train_split_pkl_path = "train_test_split_info.pkl"
     # if use_cached_pkl is false and this is true, just generates pickle files, doesn't make models or anything
@@ -134,10 +137,10 @@ def get_cb_list(use_early_stopping, model_name):
         return [get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
 
 @ex.capture
-def get_data_generator(split, pkl_file, shuffle_generator, is_test=False, use_cached_pkl_dataset=True):
+def get_data_generator(split, pkl_file, shuffle_generator=True, is_test=False, use_cached_pkl_dataset=True):
     if use_cached_pkl_dataset and path.exists(pkl_file):
         edf = pkl.load(open(pkl_file, 'rb'))
-    else:
+    elif is_test:
         edf = EdfDataGenerator(
             get_base_dataset(
                 split=split,
@@ -149,7 +152,43 @@ def get_data_generator(split, pkl_file, shuffle_generator, is_test=False, use_ca
             time_first=False
             )
         pkl.dump(edf, open(pkl_file, 'wb'))
+    else:
+        trainTokens, validTokens = get_train_valid_split()
+        trainEdf = EdfDataGenerator(get_base_dataset(
+            split=split,
+            is_test=False,
+            edfTokens=trainTokens
+        ),
+        precache=True,
+        shuffle=shuffle_generator,
+        n_classes=2,
+        time_first=False
+        )
+        validEdf = EdfDataGenerator(get_base_dataset(
+            split=split,
+            is_test=False,
+            edfTokens=validTokens
+        ),
+        precache=True,
+        shuffle=shuffle_generator,
+        n_classes=2,
+        time_first=False
+        )
+        edf = trainEdf, validEdf
+        pkl.dump(edf, open(pkl_file, 'wb'))
     return edf
+
+cached_train_test_split = None
+@ex.capture
+def get_train_valid_split():
+    global cached_train_test_split
+    if cached_train_test_split == None:
+        edfTokens = read.get_all_token_file_names("train", "01_tcp_ar")
+        trainTokens, validTokens, _a, _b = cta.train_test_split_on_combined(edfTokens, edfTokens, 0.1, stratify=False)
+        cached_train_test_split = trainTokens, validTokens
+    else:
+        trainTokens, validTokens = cached_train_test_split
+    return trainTokens, validTokens
 
 @ex.capture
 def get_base_dataset(split,
@@ -162,6 +201,7 @@ def get_base_dataset(split,
                      ensemble_sample_info_path,
                      use_standard_scaler,
                      use_filtering,
+                     edfTokens = None,
                      use_cached_pkl_dataset=True,
                      is_test=False,
                      is_valid=False):
@@ -169,6 +209,7 @@ def get_base_dataset(split,
         split,
         ref,
         n_process=n_process,
+        edf_tokens=edfTokens,
         max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA),
         use_numpy=True,
         num_files=num_files,
@@ -289,30 +330,54 @@ def get_test_generator(test_split, precached_test_pkl):
     return get_data_generator(test_split, pkl_file=precached_test_pkl, shuffle_generator=False, is_test=True)
 
 @ex.capture
-def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus, ensemble_sample_info_path):
-    trainValidationDataGenerator = get_train_valid_generator()
-    trainValidationDataGenerator.time_first = False
+def self_train(model, train_data_generator, valid_data_generator, num_epochs, patience, model_name, num_steps_each_eval):
+    starting_class_weights=np.array([1,20])
+    return train.model_run(
+        model=model,
+        patience=patience,
+        class_weights=starting_class_weights,
+        model_name=model_name,
+        trainDataGen=train_data_generator,
+        validDataGen=valid_data_generator,
+        num_steps_each_eval=256,
+        epochs=num_epochs,
+        update_amount=0.9,
+        verbosity=False)
+
+
+@ex.capture
+def dl(train_split, test_split, num_epochs, use_self_train, lr, batch_size, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus, ensemble_sample_info_path):
+    trainDataGenerator, validDataGenerator = get_train_valid_generator()
+    # trainValidationDataGenerator.time_first = False
     testDataGenerator = get_test_generator()
-    trainValidationDataGenerator.n_classes=2
-    trainDataGenerator, validDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size)
+    # trainValidationDataGenerator.n_classes=2
+    # trainDataGenerator, validDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size)
     if regenerate_data:
         return
 
     # return
     model = get_model()
-    history = model.fit_generator(
-        trainDataGenerator,
-        validation_steps=validation_steps,
-        steps_per_epoch=steps_per_epoch,
-        validation_data = validDataGenerator,
-        verbose=fit_generator_verbosity,
-        epochs=num_epochs,
-        callbacks=get_cb_list(),
-        class_weight={
-            0: 1,
-            1: 20,
-        }
-        )
+
+    best_val_score = -100
+    trainDataGenerator.batch_size = batch_size
+    validDataGenerator.batch_size = batch_size
+
+    if use_self_train:
+        history = self_train(train_data_generator=trainDataGenerator, valid_data_generator=validDataGenerator, model=model, num_steps_each_eval=256)
+    else:
+        history = model.fit_generator(
+            trainDataGenerator,
+            validation_steps=validation_steps,
+            steps_per_epoch=steps_per_epoch,
+            validation_data = validDataGenerator,
+            verbose=fit_generator_verbosity,
+            epochs=num_epochs,
+            callbacks=get_cb_list(),
+            class_weight={
+                0: 1,
+                1: 40,
+            }
+            )
 
 
 
@@ -334,9 +399,6 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     if num_gpus > 1:
         model = multi_gpu_model(model, num_gpus)
 
-    bin_acc_model = keras.models.load_model("bin_acc_" + model_name)
-    if num_gpus > 1:
-        bin_acc_model = multi_gpu_model(bin_acc_model, num_gpus)
 
     y_pred = model.predict(testData) #time second, feature first
     print("pred shape", y_pred.shape)
@@ -349,33 +411,15 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     f1 = f1_score(testGender, y_pred.argmax(axis=1))
     accuracy = accuracy_score(testGender, y_pred.argmax(axis=1))
 
-    y_pred_bin_acc = bin_acc_model.predict(testData)
-    print("pred shape", y_pred_bin_acc.shape)
-    print("test data shape", testData.shape)
-
-    try:
-        bin_acc_auc = roc_auc_score(testGender, y_pred_bin_acc.argmax(axis=1))
-    except Exception:
-        print("COuld not calculate auc")
-    bin_acc_f1 = f1_score(testGender, y_pred_bin_acc.argmax(axis=1))
-    bin_acc_accuracy = accuracy_score(
-        testGender, y_pred_bin_acc.argmax(axis=1))
-
     toReturn = {
         'history': history.history,
         'val_scores': {
             'min_val_loss': min(history.history['val_loss']),
-            'max_val_acc': max(history.history['val_binary_accuracy']),
         },
         'test_scores': {
             'f1': f1,
             'acc': accuracy,
             'auc': auc
-        },
-        'best_bin_acc_test_scores':  {
-            'f1': bin_acc_f1,
-            'acc': bin_acc_accuracy,
-            'auc': bin_acc_auc
         }}
 
 

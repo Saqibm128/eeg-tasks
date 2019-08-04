@@ -220,7 +220,7 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
             else:
                 original_data = original_data_label
             if self.is_pandas_data:
-                columns = original_data.column
+                columns = original_data.columns
                 original_data = original_data.values
             else:
                 columns = list(range(original_data.shape[1]))
