@@ -4,20 +4,23 @@ from addict import Dict
 import time
 import numpy as np
 
-def model_run(model, patience, class_weights, model_name, trainDataGen, validDataGen, num_steps_each_eval=256, epochs=1, update_amount=0.9, verbosity=False):
+def model_run(model, patience, class_weights, model_name, trainDataGen, validDataGen, num_gpus=8, num_steps_each_eval=256, epochs=1, update_amount=0.9, verbosity=False):
     overall_loss_hist = []
     loss_hist = []
     val_loss_hist = []
     start = time.time()
+    if num_steps_each_eval is None:
+        num_steps_each_eval = len(trainDataGen) #do eval checks at end of epoch
     class_weight = np.array(class_weights)
     update_amount = 0.9
     best_f1 = -1
     exhausted_patience = 0
     batch_num = 0
     totalEpochs = 0
+    validDataGen.batch_size = 256*num_gpus #force batch_size high cuz we want to get good performance and utilization across all
     while totalEpochs <= epochs:
             if batch_num == len(trainDataGen):
-                trainDataGen.on_epoch_end()
+                trainDataGen.on_epoch_end() #if shuffle is turned on, the dataGen shuffles the data
                 batch_num = 0
                 totalEpochs += 1
                 overall_loss_hist.append(np.mean(loss_hist))
