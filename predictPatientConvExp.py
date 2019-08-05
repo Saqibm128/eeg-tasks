@@ -6,59 +6,55 @@ import clinical_text_analysis as cta
 import pandas as pd
 import numpy as np
 from os import path
+from keras import backend as K
 import data_reader as read
 import constants
 import util_funcs
 from sklearn.model_selection import PredefinedSplit, GridSearchCV
-from sklearn.metrics import r2_score, make_scorer, mean_squared_error, mean_absolute_error
+from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator
 from keras_models.vanPutten import vp_conv2d, conv2d_gridsearch, inception_like
-from keras import losses
 from keras import optimizers
 import pickle as pkl
 import sacred
 import keras
 import ensembleReader as er
 from keras.utils import multi_gpu_model
+from keras_models import train
 
 import random
 import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-ex = sacred.Experiment(name="predict_age_conv")
+ex = sacred.Experiment(name="predict_patient_in_eeg")
 
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
-@ex.named_config
-def debug():
-    num_files = 200
-    batch_size = 16
-    num_epochs = 20
-    max_num_samples = 2
-
-
+# https://pynative.com/python-generate-random-string/
+def randomString(stringLength=16):
+    """Generate a random string of fixed length """
+    letters = string.ascii_uppercase
+    return ''.join(random.choice(letters) for i in range(stringLength))
 
 @ex.named_config
 def standardized_ensemble():
     use_random_ensemble = True
-    precached_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_train_data_age.pkl"
-    precached_test_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_test_data_age.pkl"
-    ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_age.pkl"
+    precached_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_train_data_patient.pkl"
+    precached_test_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_test_data_patient.pkl"
+    ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_patient.pkl"
 
     max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
     use_filtering = True
 
-
-@ex.named_config
-def stop_on_training_loss():
-    early_stopping_on = "mean_squared_error"
+all_patients = list(set(read.get_patient_dir_names("combined", "01_tcp_ar", full_path=False)))
 
 @ex.config
 def config():
+    global all_patients
     train_split = "train"
     test_split = "dev_test"
     ref = "01_tcp_ar"
@@ -75,6 +71,7 @@ def config():
     precached_test_pkl = "test_data.pkl"
     num_epochs = 1000
     lr = 0.0002
+    total_num_patients = len(all_patients)
     validation_size = 0.2
     test_size = 0.2
     use_cached_pkl = True
@@ -89,14 +86,15 @@ def config():
     use_filtering = True
     max_pool_size = (1, 3)
     max_pool_stride = (1, 2)
-    regenerate_data = False
+    top_n = 5
     use_batch_normalization = True
     use_random_ensemble = False
     max_num_samples = 10  # number of samples of eeg data segments per eeg.edf file
     num_gpus = 1
-    early_stopping_on = "val_mean_squared_error"
+    early_stopping_on = "val_top_k_categorical_accuracy"
     test_train_split_pkl_path = "train_test_split_info.pkl"
     # if use_cached_pkl is false and this is true, just generates pickle files, doesn't make models or anything
+    regenerate_data = False
     use_standard_scaler = False
     ensemble_sample_info_path = "edf_ensemble_path.pkl"
     fit_generator_verbosity = 2
@@ -105,35 +103,10 @@ def config():
     shuffle_generator = True
     use_dl = True
     use_inception_like=False
-    continue_from_model=False
-
-
-# https://pynative.com/python-generate-random-string/
-def randomString(stringLength=16):
-    """Generate a random string of fixed length """
-    letters = string.ascii_uppercase
-    return ''.join(random.choice(letters) for i in range(stringLength))
 
 
 @ex.capture
-def get_model_checkpoint(model_name, monitor='val_mean_squared_error'):
-    return ModelCheckpoint(model_name, monitor=monitor, save_best_only=True, verbose=1)
-
-
-@ex.capture
-def get_early_stopping(patience, early_stopping_on):
-    return EarlyStopping(patience=patience, verbose=1, monitor=early_stopping_on, mode="min")
-
-
-@ex.capture
-def get_cb_list(use_early_stopping, model_name):
-    if use_early_stopping:
-        return [get_early_stopping(), get_model_checkpoint(),]
-    else:
-        return [get_model_checkpoint()]
-
-@ex.capture
-def get_data_generator(split, pkl_file, shuffle_generator, is_test=False, use_cached_pkl_dataset=True):
+def get_data_generator(split, pkl_file, total_num_patients, shuffle_generator=True, is_test=False, use_cached_pkl_dataset=True):
     if use_cached_pkl_dataset and path.exists(pkl_file):
         edf = pkl.load(open(pkl_file, 'rb'))
     elif is_test:
@@ -144,7 +117,7 @@ def get_data_generator(split, pkl_file, shuffle_generator, is_test=False, use_ca
                 ),
             precache=True,
             shuffle=shuffle_generator,
-            class_type="quantile",
+            n_classes=total_num_patients,
             time_first=False
             )
         pkl.dump(edf, open(pkl_file, 'wb'))
@@ -153,23 +126,21 @@ def get_data_generator(split, pkl_file, shuffle_generator, is_test=False, use_ca
         trainEdf = EdfDataGenerator(get_base_dataset(
             split=split,
             is_test=False,
-            edf_tokens=trainTokens
+            edfTokens=trainTokens
         ),
         precache=True,
         shuffle=shuffle_generator,
-        class_type="quantile",
-        n_classes=2,
+        n_classes=total_num_patients,
         time_first=False
         )
         validEdf = EdfDataGenerator(get_base_dataset(
             split=split,
             is_test=False,
-            edf_tokens=validTokens
+            edfTokens=validTokens
         ),
-        class_type="quantile",
         precache=True,
         shuffle=shuffle_generator,
-        n_classes=2,
+        n_classes=total_num_patients,
         time_first=False
         )
         edf = trainEdf, validEdf
@@ -181,7 +152,7 @@ cached_train_test_split = None
 def get_train_valid_split():
     global cached_train_test_split
     if cached_train_test_split is None:
-        edfTokens, ages = cta.demux_to_tokens(cta.getAgesAndFileNames("train", "01_tcp_ar"))
+        edfTokens = read.get_all_token_file_names("train", "01_tcp_ar")
         trainTokens, validTokens, _a, _b = cta.train_test_split_on_combined(edfTokens, edfTokens, 0.1, stratify=False)
         cached_train_test_split = trainTokens, validTokens
     else:
@@ -199,32 +170,27 @@ def get_base_dataset(split,
                      ensemble_sample_info_path,
                      use_standard_scaler,
                      use_filtering,
-                     edf_tokens=None,
+                     edfTokens = None,
                      use_cached_pkl_dataset=True,
                      is_test=False,
                      is_valid=False):
-
-    files, ages = cta.demux_to_tokens(cta.getAgesAndFileNames(split, ref))
-    ages = np.stack(ages)
-    if edf_tokens is not None:
-        ageDict = {}
-        for i, file in enumerate(files):
-            ageDict[file] = ages[i]
-        ages = [ageDict[file] for file in edf_tokens]
-        files = edf_tokens
+    if edfTokens is None:
+        edfTokens = read.get_all_token_file_names(split, ref)
+    patients = [read.parse_edf_token_path_structure(file)[1] for file in edfTokens]
+    global all_patients
+    patients = [all_patients.index(patient) for patient in patients]
     edfData = er.EdfDatasetEnsembler(
         split,
         ref,
-        edf_tokens=files,
-        labels=ages,
         n_process=n_process,
+        edf_tokens=edfTokens,
+        labels=patients,
         max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA),
         use_numpy=True,
         num_files=num_files,
         max_num_samples=max_num_samples,
         filter=use_filtering
     )
-
     samplingInfo = edfData.sampleInfo
     if use_standard_scaler:
         edfData = read.EdfStandardScaler(
@@ -245,18 +211,12 @@ def get_base_dataset(split,
     edfData.verbosity = 50
     return edfData
 
-@ex.capture
-def load_saved_model(model_name, num_gpus):
-    model = keras.models.load_model(model_name)
-    if num_gpus > 1:
-        model = multi_gpu_model(model, num_gpus)
-    return model
 
 @ex.capture
-def get_model(dropout, max_length, continue_from_model, lr, use_vp, num_spatial_filter, use_batch_normalization, max_pool_size, use_inception_like, output_activation="linear", num_gpus=1, num_outputs=1):
-    if continue_from_model:
-        model = load_saved_model()
-    elif use_vp:
+def get_model(dropout, max_length, lr, use_vp, top_n, num_spatial_filter, use_batch_normalization, max_pool_size, use_inception_like, total_num_patients, output_activation="softmax", num_gpus=1, num_outputs=None,):
+    if num_outputs is None:
+        num_outputs = total_num_patients
+    if use_vp:
         model = vp_conv2d(
             dropout=dropout,
             input_shape=(21, max_length, 1),
@@ -270,24 +230,23 @@ def get_model(dropout, max_length, continue_from_model, lr, use_vp, num_spatial_
     elif use_inception_like:
         model = get_inception_like(
             output_activation=output_activation,
-            num_outputs=num_outputs,
-            )
+            num_outputs=num_outputs)
     else:
         model = get_custom_model(
             output_activation=output_activation,
-            num_outputs=num_outputs
-            )
+            num_outputs=num_outputs)
     if num_gpus != 1:
         model = multi_gpu_model(model, num_gpus)
     adam = optimizers.Adam(lr=lr)
-    model.compile(adam, loss=losses.mean_squared_error,
-                  metrics=["mean_absolute_error", "mean_squared_error"])
+    def top_k_categorical_accuracy(x, y):
+        return K.eval(keras.metrics.top_k_categorical_accuracy(x, y, top_n))
+    model.compile(adam, loss="categorical_crossentropy",
+                  metrics=top_k_categorical_accuracy)
     return model
 
 @ex.capture
 def get_inception_like(max_length, num_conv_spatial_layers, num_spatial_filter, dropout, lr, output_activation='softmax', num_outputs=2):
     model = inception_like((21, max_length, 1), num_layers=num_conv_spatial_layers, num_filters=num_spatial_filter, dropout=dropout, output_activation=output_activation, num_outputs=num_outputs)
-    adam = optimizers.Adam(lr=lr)
     return model
 
 
@@ -323,13 +282,13 @@ def get_custom_model(
         output_activation=output_activation,
         num_outputs=num_outputs
     )
-    adam = optimizers.Adam(lr=lr)
     return model
 
 
 
 @ex.main
 def main(use_dl):
+    # if use_dl:
     return dl()  # deep learning branch
 
 @ex.capture
@@ -340,8 +299,27 @@ def get_train_valid_generator(train_split, precached_pkl):
 def get_test_generator(test_split, precached_test_pkl):
     return get_data_generator(test_split, pkl_file=precached_test_pkl, shuffle_generator=False, is_test=True)
 
+
 @ex.capture
-def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus, ensemble_sample_info_path):
+def get_model_checkpoint(model_name, monitor='top_k_categorical_accuracy'):
+    return ModelCheckpoint(model_name, monitor=monitor, save_best_only=True, verbose=1, mode="max")
+
+
+@ex.capture
+def get_early_stopping(patience, early_stopping_on):
+    return EarlyStopping(patience=patience, verbose=1, monitor=early_stopping_on, mode="max")
+
+
+@ex.capture
+def get_cb_list(use_early_stopping, model_name):
+    if use_early_stopping:
+        return [get_early_stopping(), get_model_checkpoint(),]
+    else:
+        return [get_model_checkpoint()]
+
+
+@ex.capture
+def dl(train_split, test_split, num_epochs, lr, top_n, batch_size, n_process, validation_size, max_length, total_num_patients, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus, ensemble_sample_info_path):
     trainDataGenerator, validDataGenerator = get_train_valid_generator()
     # trainValidationDataGenerator.time_first = False
     testDataGenerator = get_test_generator()
@@ -349,17 +327,24 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     # trainDataGenerator, validDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size)
     if regenerate_data:
         return
+
     # return
     model = get_model()
+
+    best_val_score = -100
+    trainDataGenerator.batch_size = batch_size
+    validDataGenerator.batch_size = batch_size
+
+
     history = model.fit_generator(
-        trainDataGenerator,
-        validation_steps=validation_steps,
-        steps_per_epoch=steps_per_epoch,
-        validation_data = validDataGenerator,
-        verbose=fit_generator_verbosity,
-        epochs=num_epochs,
-        callbacks=get_cb_list(),
-        )
+            trainDataGenerator,
+            validation_steps=validation_steps,
+            steps_per_epoch=steps_per_epoch,
+            validation_data = validDataGenerator,
+            verbose=fit_generator_verbosity,
+            epochs=num_epochs,
+            callbacks=get_cb_list(),
+            )
 
 
 
@@ -373,53 +358,41 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
         basename)
     testEdfEnsembler.sampleInfo = pkl.load(open(test_ensemble_sample_info_path, 'rb'))
     if use_standard_scaler:
-        testGender = testEdfEnsembler.getEnsembledLabels()
+        testPatient = testEdfEnsembler.getEnsembledLabels()
     else:
-        testGender = testEdfEnsembler.getEnsembledLabels()
+        testPatient = testEdfEnsembler.getEnsembledLabels()
 
-    model = load_saved_model()
+    model = keras.models.load_model(model_name)
+    if num_gpus > 1:
+        model = multi_gpu_model(model, num_gpus)
 
 
     y_pred = model.predict(testData) #time second, feature first
     print("pred shape", y_pred.shape)
     print("test data shape", testData.shape)
 
-    mse = mean_squared_error(testGender, y_pred.argmax(axis=1))
-    r2 = r2_score(testGender, y_pred.argmax(axis=1))
+    try:
+        auc = roc_auc_score(testPatient, y_pred.argmax(axis=1))
+    except Exception:
+        print("Could not calculate auc")
+        auc=0.5
+    f1 = f1_score(testPatient, y_pred.argmax(axis=1), average='weighted')
+    k_accuracy = keras.metrics.top_k_categorical_accuracy(keras.utils.to_categorical(testPatient, num_classes=total_num_patients), y_pred, top_n)
+    k_accuracy = K.eval(k_accuracy)
+
+    accuracy = accuracy_score(testPatient, y_pred.argmax(1))
 
     toReturn = {
         'history': history.history,
         'val_scores': {
-            'min_val_mse': min(history.history['val_mean_squared_error']),
+            'min_val_loss': min(history.history['val_loss']),
         },
         'test_scores': {
-            'r2_score': r2,
-            'mse': mse,
-        },}
-
-
-
-
-    label, average_pred = testEdfEnsembler.getEnsemblePrediction(
-        y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
-    label, average_over_all_pred = testEdfEnsembler.getEnsemblePrediction(
-        y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
-    pred = np.round(average_pred)
-    toReturn["ensemble_score"] = {
-        "equal_vote":{},
-        "over_all":{}
-    }
-
-    toReturn["ensemble_score"]["equal_vote"]["r2"] = r2_score(label, pred)
-    toReturn["ensemble_score"]["equal_vote"]["mse"] = mean_squared_error(label, pred)
-    toReturn["ensemble_score"]["equal_vote"]["discordance"] = np.abs(
-        pred - average_pred).mean()
-
-    pred = np.round(average_over_all_pred)
-    toReturn["ensemble_score"]["over_all"]["r2"] = r2_score(label, pred)
-    toReturn["ensemble_score"]["over_all"]["mse"] = mean_squared_error(label, pred)
-    toReturn["ensemble_score"]["over_all"]["discordance"] = np.abs(
-        pred - average_pred).mean()
+            'f1': f1,
+            'k_acc': k_accuracy,
+            'acc': accuracy,
+            'auc': auc
+        }}
 
     return toReturn
 

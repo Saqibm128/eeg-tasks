@@ -182,7 +182,7 @@ cached_train_test_split = None
 @ex.capture
 def get_train_valid_split():
     global cached_train_test_split
-    if cached_train_test_split == None:
+    if cached_train_test_split is None:
         edfTokens = read.get_all_token_file_names("train", "01_tcp_ar")
         trainTokens, validTokens, _a, _b = cta.train_test_split_on_combined(edfTokens, edfTokens, 0.1, stratify=False)
         cached_train_test_split = trainTokens, validTokens
