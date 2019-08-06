@@ -19,6 +19,7 @@ from keras_models.dataGen import EdfDataGenerator
 from keras_models.vanPutten import vp_conv2d, conv2d_gridsearch, inception_like
 from keras import optimizers
 import pickle as pkl
+from sklearn.model_selection import train_test_split
 import sacred
 import keras
 import ensembleReader as er
@@ -45,21 +46,25 @@ def standardized_ensemble():
     precached_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_train_data_patient.pkl"
     precached_test_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_test_data_patient.pkl"
     ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_patient.pkl"
+    test_train_split_pkl_path = "/n/scratch2/ms994/test_train_split_patient.pkl"
+
 
     max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
     use_filtering = True
 
 all_patients = list(set(read.get_patient_dir_names("combined", "01_tcp_ar", full_path=False)))
+all_patients.sort()
 
 @ex.config
 def config():
     global all_patients
-    train_split = "train"
-    test_split = "dev_test"
+    train_split = "combined"
+    test_split = "combined"
     ref = "01_tcp_ar"
     n_process = 8
     num_files = None
+    test_train_split_pkl_path = "test_train_split.pkl"
     max_length = 4 * constants.COMMON_FREQ
     batch_size = 64
     start_offset_seconds = 0  # matters if we aren't doing random ensemble sampling
@@ -86,12 +91,12 @@ def config():
     use_filtering = True
     max_pool_size = (1, 3)
     max_pool_stride = (1, 2)
-    top_n = 5
+    top_k = 5
     use_batch_normalization = True
     use_random_ensemble = False
     max_num_samples = 10  # number of samples of eeg data segments per eeg.edf file
     num_gpus = 1
-    early_stopping_on = "val_top_k_categorical_accuracy"
+    early_stopping_on = "val_loss"
     test_train_split_pkl_path = "train_test_split_info.pkl"
     # if use_cached_pkl is false and this is true, just generates pickle files, doesn't make models or anything
     regenerate_data = False
@@ -109,11 +114,12 @@ def config():
 def get_data_generator(split, pkl_file, total_num_patients, shuffle_generator=True, is_test=False, use_cached_pkl_dataset=True):
     if use_cached_pkl_dataset and path.exists(pkl_file):
         edf = pkl.load(open(pkl_file, 'rb'))
-    elif is_test:
+    else:
         edf = EdfDataGenerator(
             get_base_dataset(
                 split=split,
-                is_test=is_test
+                is_test=is_test,
+                # edfTokens=testTokens
                 ),
             precache=True,
             shuffle=shuffle_generator,
@@ -121,43 +127,46 @@ def get_data_generator(split, pkl_file, total_num_patients, shuffle_generator=Tr
             time_first=False
             )
         pkl.dump(edf, open(pkl_file, 'wb'))
-    else:
-        trainTokens, validTokens = get_train_valid_split()
-        trainEdf = EdfDataGenerator(get_base_dataset(
-            split=split,
-            is_test=False,
-            edfTokens=trainTokens
-        ),
-        precache=True,
-        shuffle=shuffle_generator,
-        n_classes=total_num_patients,
-        time_first=False
-        )
-        validEdf = EdfDataGenerator(get_base_dataset(
-            split=split,
-            is_test=False,
-            edfTokens=validTokens
-        ),
-        precache=True,
-        shuffle=shuffle_generator,
-        n_classes=total_num_patients,
-        time_first=False
-        )
-        edf = trainEdf, validEdf
-        pkl.dump(edf, open(pkl_file, 'wb'))
+    # else:
+    #     trainTokens, validTokens, testTokens = get_train_valid_split()
+    #     trainEdf = EdfDataGenerator(get_base_dataset(
+    #         split=split,
+    #         is_test=False,
+    #         edfTokens=trainTokens
+    #     ),
+    #     precache=True,
+    #     shuffle=shuffle_generator,
+    #     n_classes=total_num_patients,
+    #     time_first=False
+    #     )
+    #     validEdf = EdfDataGenerator(get_base_dataset(
+    #         split=split,
+    #         is_test=False,
+    #         edfTokens=validTokens
+    #     ),
+    #     precache=True,
+    #     shuffle=shuffle_generator,
+    #     n_classes=total_num_patients,
+    #     time_first=False
+    #     )
+    #     edf = trainEdf, validEdf
+    #     pkl.dump(edf, open(pkl_file, 'wb'))
     return edf
 
-cached_train_test_split = None
-@ex.capture
-def get_train_valid_split():
-    global cached_train_test_split
-    if cached_train_test_split is None:
-        edfTokens = read.get_all_token_file_names("train", "01_tcp_ar")
-        trainTokens, validTokens, _a, _b = cta.train_test_split_on_combined(edfTokens, edfTokens, 0.1, stratify=False)
-        cached_train_test_split = trainTokens, validTokens
-    else:
-        trainTokens, validTokens = cached_train_test_split
-    return trainTokens, validTokens
+# @ex.capture
+# def get_train_valid_split(test_train_split_pkl_path, validation_size, test_size):
+#     if not path.exists(test_train_split_pkl_path):
+#         edfTokens = read.get_all_token_file_names("combined", "01_tcp_ar")
+#         labels = [read.parse_edf_token_path_structure(token)[1] for token in edfTokens]
+#         labels = [all_patients.index(label) for label in labels]
+#
+#         trainValidTokens, testTokens = train_test_split(edfTokens, test_size=test_size)
+#         trainTokens, validTokens = train_test_split(trainValidTokens, test_size=validation_size)
+#         cached_train_test_split = trainTokens, validTokens, testTokens
+#         pkl.dump(cached_train_test_split, open(test_train_split_pkl_path, 'wb'))
+#     else:
+#         trainTokens, validTokens, testTokens = pkl.load(open(test_train_split_pkl_path, 'rb'))
+#     return trainTokens, validTokens, testTokens
 
 @ex.capture
 def get_base_dataset(split,
@@ -213,7 +222,7 @@ def get_base_dataset(split,
 
 
 @ex.capture
-def get_model(dropout, max_length, lr, use_vp, top_n, num_spatial_filter, use_batch_normalization, max_pool_size, use_inception_like, total_num_patients, output_activation="softmax", num_gpus=1, num_outputs=None,):
+def get_model(dropout, max_length, lr, use_vp, top_k, num_spatial_filter, use_batch_normalization, max_pool_size, use_inception_like, total_num_patients, output_activation="softmax", num_gpus=1, num_outputs=None,):
     if num_outputs is None:
         num_outputs = total_num_patients
     if use_vp:
@@ -239,9 +248,11 @@ def get_model(dropout, max_length, lr, use_vp, top_n, num_spatial_filter, use_ba
         model = multi_gpu_model(model, num_gpus)
     adam = optimizers.Adam(lr=lr)
     def top_k_categorical_accuracy(x, y):
-        return K.eval(keras.metrics.top_k_categorical_accuracy(x, y, top_n))
+        x = K.eval(x)
+        y = K.eval(y)
+        return K.cast(np.mean([x.argmax(1)[i] in y.argsort(1)[:,-top_k:][i] for i in range(len(x))]))
     model.compile(adam, loss="categorical_crossentropy",
-                  metrics=top_k_categorical_accuracy)
+                  metrics=["binary_accuracy"])
     return model
 
 @ex.capture
@@ -301,8 +312,8 @@ def get_test_generator(test_split, precached_test_pkl):
 
 
 @ex.capture
-def get_model_checkpoint(model_name, monitor='top_k_categorical_accuracy'):
-    return ModelCheckpoint(model_name, monitor=monitor, save_best_only=True, verbose=1, mode="max")
+def get_model_checkpoint(model_name, monitor='val_loss'):
+    return ModelCheckpoint(model_name, monitor=monitor, save_best_only=True, verbose=1, mode="min")
 
 
 @ex.capture
@@ -319,10 +330,12 @@ def get_cb_list(use_early_stopping, model_name):
 
 
 @ex.capture
-def dl(train_split, test_split, num_epochs, lr, top_n, batch_size, n_process, validation_size, max_length, total_num_patients, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus, ensemble_sample_info_path):
-    trainDataGenerator, validDataGenerator = get_train_valid_generator()
+def dl(train_split, test_split, num_epochs, lr, top_k, batch_size, n_process, validation_size, test_size, max_length, total_num_patients, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus, ensemble_sample_info_path):
+    data = get_train_valid_generator()
+    trainDataGenerator, testDataGenerator = data.create_validation_train_split(test_size)
+    trainDataGenerator, validDataGenerator = data.create_validation_train_split(validation_size)
     # trainValidationDataGenerator.time_first = False
-    testDataGenerator = get_test_generator()
+    # testDataGenerator = get_test_generator()
     # trainValidationDataGenerator.n_classes=2
     # trainDataGenerator, validDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size)
     if regenerate_data:
@@ -377,8 +390,19 @@ def dl(train_split, test_split, num_epochs, lr, top_n, batch_size, n_process, va
         print("Could not calculate auc")
         auc=0.5
     f1 = f1_score(testPatient, y_pred.argmax(axis=1), average='weighted')
-    k_accuracy = keras.metrics.top_k_categorical_accuracy(keras.utils.to_categorical(testPatient, num_classes=total_num_patients), y_pred, top_n)
-    k_accuracy = K.eval(k_accuracy)
+
+    def top_k_acc(k):
+        top_k_pred = y_pred.argsort()[:,-(top_k):]
+        return np.mean([testPatient[i] in top_k_pred[i] for i in range(len(testPatient))])
+
+    k_accuracy = top_k_acc(top_k)
+    multi_k_acc = {
+        "1":top_k_acc(1),
+        "2":top_k_acc(2),
+        "5":top_k_acc(5),
+        "10":top_k_acc(10),
+        "20":top_k_acc(20)
+    }
 
     accuracy = accuracy_score(testPatient, y_pred.argmax(1))
 
@@ -391,7 +415,8 @@ def dl(train_split, test_split, num_epochs, lr, top_n, batch_size, n_process, va
             'f1': f1,
             'k_acc': k_accuracy,
             'acc': accuracy,
-            'auc': auc
+            'auc': auc,
+            'multi_k_acc':multi_k_acc
         }}
 
     return toReturn
