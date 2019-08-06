@@ -118,7 +118,7 @@ def config():
     lr = 0.0002
     total_num_patients = len(all_patients)
     validation_size = 0.2
-    test_size = 0.2
+    test_size = 0.25
     use_cached_pkl = True
     use_vp = True
     # for custom architectures
@@ -425,11 +425,13 @@ def get_train_valid_test_split_session(test_train_split_pkl_path, validation_siz
         labels = []
         for patientFile in patients:
             patientToSess[patientFile] = read.get_session_dir_names("combined", "01_tcp_ar", patient_dirs=[patientFile])
-            if len(patientToSess[patientFile]) <= 2: #need at least 2 to do a train_valid_test split
+            if len(patientToSess[patientFile]) < 2: #need at least 2 to do a train_valid_test split
                 del patientToSess[patientFile]
             else:
                 sessions += (patientToSess[patientFile])
                 labels += [patientFile for i in range(len(patientToSess[patientFile]))]
+
+        test_size = (len(set(labels)) + 1) / len(sessions) #grab all of the labels to put in test set!
         trainValidSessions, testSessions, trainValidLabels, testLabels = train_test_split(sessions, labels, stratify=labels, test_size=test_size)
 
         testEdfTokens = list(itertools.chain.from_iterable([read.get_token_file_names(session) for session in testSessions]))
