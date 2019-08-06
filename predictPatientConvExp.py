@@ -252,7 +252,7 @@ def get_model(dropout, max_length, lr, use_vp, top_k, num_spatial_filter, use_ba
         y = K.eval(y)
         return K.cast(np.mean([x.argmax(1)[i] in y.argsort(1)[:,-top_k:][i] for i in range(len(x))]))
     model.compile(adam, loss="categorical_crossentropy",
-                  metrics=["binary_accuracy"])
+                  metrics=["categorical_accuracy"])
     return model
 
 @ex.capture
@@ -334,6 +334,7 @@ def dl(train_split, test_split, num_epochs, lr, top_k, batch_size, n_process, va
     data = get_train_valid_generator()
     trainDataGenerator, testDataGenerator = data.create_validation_train_split(test_size)
     trainDataGenerator, validDataGenerator = data.create_validation_train_split(validation_size)
+    pkl.dump(testDataGenerator, open("/n/scratch2/ms994/" + model_name + ".train_data.pkl", 'wb'))
     # trainValidationDataGenerator.time_first = False
     # testDataGenerator = get_test_generator()
     # trainValidationDataGenerator.n_classes=2
@@ -365,35 +366,40 @@ def dl(train_split, test_split, num_epochs, lr, top_k, batch_size, n_process, va
     testData = np.stack(np.stack(testData)[:,0])
     testData = testData.reshape((*testData.shape, 1)).transpose(0,2,1,3)
     testEdfEnsembler = er.EdfDatasetEnsembler("dev_test", ref, generate_sample_info=False)
+    testDataGenerator.shuffle=False
+    testDataGenerator.batch_size = 256*num_gpus
     basename = path.basename(ensemble_sample_info_path)
     dirname = path.dirname(ensemble_sample_info_path)
-    test_ensemble_sample_info_path = (dirname + "/test_" + \
-        basename)
-    testEdfEnsembler.sampleInfo = pkl.load(open(test_ensemble_sample_info_path, 'rb'))
-    if use_standard_scaler:
-        testPatient = testEdfEnsembler.getEnsembledLabels()
-    else:
-        testPatient = testEdfEnsembler.getEnsembledLabels()
+    # test_ensemble_sample_info_path = (dirname + "/test_" + \
+        # basename)
+    # testEdfEnsembler.sampleInfo = pkl.load(open(test_ensemble_sample_info_path, 'rb'))
+    # testPatient = testEdfEnsembler.getEnsembledLabels()
 
     model = keras.models.load_model(model_name)
     if num_gpus > 1:
         model = multi_gpu_model(model, num_gpus)
 
 
-    y_pred = model.predict(testData) #time second, feature first
+    y_pred = model.predict_generator(testDataGenerator) #time second, feature first
+    # y_pred = y_pred.reshape((-1, *y_pred[-2:]))
+    testPatients = []
+    for i in range(len(testDataGenerator)):
+        testData, toAppend = testDataGenerator[i]
+        testPatients.append(toAppend.argmax(1))
+    testPatients = np.hstack(testPatients)
     print("pred shape", y_pred.shape)
     print("test data shape", testData.shape)
 
     try:
-        auc = roc_auc_score(testPatient, y_pred.argmax(axis=1))
+        auc = roc_auc_score(testPatients, y_pred.argmax(axis=1))
     except Exception:
         print("Could not calculate auc")
         auc=0.5
-    f1 = f1_score(testPatient, y_pred.argmax(axis=1), average='weighted')
+    f1 = f1_score(testPatients, y_pred.argmax(axis=1), average='weighted')
 
     def top_k_acc(k):
         top_k_pred = y_pred.argsort()[:,-(top_k):]
-        return np.mean([testPatient[i] in top_k_pred[i] for i in range(len(testPatient))])
+        return np.mean([testPatients[i] in top_k_pred[i] for i in range(len(testPatients))])
 
     k_accuracy = top_k_acc(top_k)
     multi_k_acc = {
@@ -404,7 +410,7 @@ def dl(train_split, test_split, num_epochs, lr, top_k, batch_size, n_process, va
         "20":top_k_acc(20)
     }
 
-    accuracy = accuracy_score(testPatient, y_pred.argmax(1))
+    accuracy = accuracy_score(testPatients, y_pred.argmax(1))
 
     toReturn = {
         'history': history.history,
