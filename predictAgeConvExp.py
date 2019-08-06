@@ -32,6 +32,47 @@ ex = sacred.Experiment(name="predict_age_conv")
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
+
+@ex.named_config
+def conv_spatial_filter_2_2():
+    conv_spatial_filter = (2, 2)
+
+
+@ex.named_config
+def conv_spatial_filter_3_3():
+    conv_spatial_filter = (3, 3)
+
+@ex.named_config
+def max_pool_size_2_2():
+    max_pool_size = (2,2)
+
+@ex.named_config
+def max_pool_size_1_2():
+    max_pool_size = (1,2)
+
+
+@ex.named_config
+def conv_temporal_filter_1_7():
+    conv_temporal_filter = (1, 7)
+
+@ex.named_config
+def conv_temporal_filter_1_3():
+    conv_temporal_filter = (1, 3)
+
+
+@ex.named_config
+def conv_temporal_filter_2_7():
+    conv_temporal_filter = (2,7)
+
+@ex.named_config
+def conv_temporal_filter_2_5():
+    conv_temporal_filter = (2,5)
+
+@ex.named_config
+def conv_temporal_filter_2_3():
+    conv_temporal_filter = (2, 3)
+
+
 @ex.named_config
 def debug():
     num_files = 200

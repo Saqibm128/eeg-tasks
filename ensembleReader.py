@@ -29,7 +29,7 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
             use_average_ref_names=True,
             filter=True,
             lp_cutoff=30,
-            hp_cutoff=(constants.COMMON_FREQ/2-2), #get close to nyq without actually hitting it
+            hp_cutoff=(constants.COMMON_FREQ/2-2), #get close to nyq without actually hitting it to avoid errors
             order_filt=5,
             columns_to_use=util_funcs.get_common_channel_names(),
             use_numpy=True,
