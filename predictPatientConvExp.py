@@ -1,3 +1,4 @@
+import itertools
 from sacred.observers import MongoObserver
 import pickle as pkl
 from addict import Dict
@@ -40,6 +41,46 @@ def randomString(stringLength=16):
     letters = string.ascii_uppercase
     return ''.join(random.choice(letters) for i in range(stringLength))
 
+
+@ex.named_config
+def conv_spatial_filter_2_2():
+    conv_spatial_filter = (2, 2)
+
+
+@ex.named_config
+def conv_spatial_filter_3_3():
+    conv_spatial_filter = (3, 3)
+
+@ex.named_config
+def max_pool_size_2_2():
+    max_pool_size = (2,2)
+
+@ex.named_config
+def max_pool_size_1_2():
+    max_pool_size = (1,2)
+
+
+@ex.named_config
+def conv_temporal_filter_1_7():
+    conv_temporal_filter = (1, 7)
+
+@ex.named_config
+def conv_temporal_filter_1_3():
+    conv_temporal_filter = (1, 3)
+
+
+@ex.named_config
+def conv_temporal_filter_2_7():
+    conv_temporal_filter = (2,7)
+
+@ex.named_config
+def conv_temporal_filter_2_5():
+    conv_temporal_filter = (2,5)
+
+@ex.named_config
+def conv_temporal_filter_2_3():
+    conv_temporal_filter = (2, 3)
+
 @ex.named_config
 def standardized_ensemble():
     use_random_ensemble = True
@@ -47,8 +88,7 @@ def standardized_ensemble():
     precached_test_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_test_data_patient.pkl"
     ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_patient.pkl"
     test_train_split_pkl_path = "/n/scratch2/ms994/test_train_split_patient.pkl"
-
-
+    split_on_sample=True
     max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
     use_filtering = True
@@ -108,6 +148,7 @@ def config():
     shuffle_generator = True
     use_dl = True
     use_inception_like=False
+    split_on_sample=False
 
 
 @ex.capture
@@ -328,13 +369,111 @@ def get_cb_list(use_early_stopping, model_name):
     else:
         return [get_model_checkpoint()]
 
+@ex.capture
+def get_train_valid_test_data_get_session(precached_pkl, shuffle_generator, use_cached_pkl_dataset=True):
+    trainTokens, validTokens, testTokens = get_train_valid_test_split_session()
+    if use_cached_pkl_dataset and path.exists(precached_pkl):
+        edf = pkl.load(open(precached_pkl, 'rb'))
+    else:
+        global all_patients
+        total_num_patients = len(all_patients)
+        split="combined"
+        trainEdf = EdfDataGenerator(
+            get_base_dataset(
+                split=split,
+                is_test=False,
+                edfTokens=trainTokens
+                ),
+            precache=True,
+            shuffle=shuffle_generator,
+            n_classes=total_num_patients,
+            time_first=False
+            )
+        validEdf = EdfDataGenerator(
+            get_base_dataset(
+                split=split,
+                is_test=False,
+                is_valid=True,
+                edfTokens=validTokens
+                ),
+            precache=True,
+            shuffle=shuffle_generator,
+            n_classes=total_num_patients,
+            time_first=False
+            )
+        testEdf = EdfDataGenerator(
+            get_base_dataset(
+                split=split,
+                is_test=True,
+                edfTokens=testTokens
+                ),
+            precache=True,
+            shuffle=False,
+            n_classes=total_num_patients,
+            time_first=False
+            )
+        edf = trainEdf, validEdf, testEdf
+        pkl.dump(edf, open(precached_pkl,'wb'))
+    return edf
 
 @ex.capture
-def dl(train_split, test_split, num_epochs, lr, top_k, batch_size, n_process, validation_size, test_size, max_length, total_num_patients, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus, ensemble_sample_info_path):
-    data = get_train_valid_generator()
-    trainDataGenerator, testDataGenerator = data.create_validation_train_split(test_size)
-    trainDataGenerator, validDataGenerator = data.create_validation_train_split(validation_size)
-    pkl.dump(testDataGenerator, open("/n/scratch2/ms994/" + model_name + ".train_data.pkl", 'wb'))
+def get_train_valid_test_split_session(test_train_split_pkl_path, validation_size=0.2, test_size=0.25):
+    if not path.exists(test_train_split_pkl_path):
+        patients = read.get_patient_dir_names("combined", "01_tcp_ar")
+        patientToSess = Dict()
+        sessions  = []
+        labels = []
+        for patientFile in patients:
+            patientToSess[patientFile] = read.get_session_dir_names("combined", "01_tcp_ar", patient_dirs=[patientFile])
+            if len(patientToSess[patientFile]) <= 2: #need at least 2 to do a train_valid_test split
+                del patientToSess[patientFile]
+            else:
+                sessions += (patientToSess[patientFile])
+                labels += [patientFile for i in range(len(patientToSess[patientFile]))]
+        trainValidSessions, testSessions, trainValidLabels, testLabels = train_test_split(sessions, labels, stratify=labels, test_size=test_size)
+
+        testEdfTokens = list(itertools.chain.from_iterable([read.get_token_file_names(session) for session in testSessions]))
+        trainValidEdfTokens = list(itertools.chain.from_iterable([read.get_token_file_names(session) for session in trainValidSessions]))
+        trainEdfTokens, validEdfTokens = train_test_split(trainValidEdfTokens, test_size=validation_size)
+        pkl.dump((trainEdfTokens, validEdfTokens, testEdfTokens), open(test_train_split_pkl_path, 'wb'))
+    else:
+        trainEdfTokens, validEdfTokens, testEdfTokens = pkl.load(open(test_train_split_pkl_path, 'rb'))
+
+    return trainEdfTokens, validEdfTokens, testEdfTokens
+
+@ex.capture
+def dl(
+    train_split,
+    test_split,
+    num_epochs,
+    lr,
+    top_k,
+    batch_size,
+    n_process,
+    validation_size,
+    test_size,
+    max_length,
+    total_num_patients,
+    use_random_ensemble,
+    ref,
+    num_files,
+    regenerate_data,
+    model_name,
+    use_standard_scaler,
+    fit_generator_verbosity,
+    validation_steps,
+    steps_per_epoch,
+    num_gpus,
+    ensemble_sample_info_path,
+    split_on_sample
+    ):
+    if not split_on_sample:
+        data = get_train_valid_generator()
+        trainDataGenerator, testDataGenerator = data.create_validation_train_split(test_size)
+        trainDataGenerator, validDataGenerator = data.create_validation_train_split(validation_size)
+        pkl.dump(testDataGenerator, open("/n/scratch2/ms994/" + model_name + ".train_data.pkl", 'wb')) #way to force replicate test set
+    else:
+        trainDataGenerator, validDataGenerator, testDataGenerator = get_train_valid_test_data_get_session()
     # trainValidationDataGenerator.time_first = False
     # testDataGenerator = get_test_generator()
     # trainValidationDataGenerator.n_classes=2
@@ -398,7 +537,7 @@ def dl(train_split, test_split, num_epochs, lr, top_k, batch_size, n_process, va
     f1 = f1_score(testPatients, y_pred.argmax(axis=1), average='weighted')
 
     def top_k_acc(k):
-        top_k_pred = y_pred.argsort()[:,-(top_k):]
+        top_k_pred = y_pred.argsort()[:,-(k):]
         return np.mean([testPatients[i] in top_k_pred[i] for i in range(len(testPatients))])
 
     k_accuracy = top_k_acc(top_k)
