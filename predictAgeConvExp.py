@@ -92,6 +92,20 @@ def standardized_ensemble():
     max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
     use_filtering = True
+    standardize_ages = True
+
+@ex.named_config
+def standardized_ensemble_5():
+    use_random_ensemble = True
+    precached_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_train_data_age5.pkl"
+    precached_test_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_test_data_age5.pkl"
+    ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_age5.pkl"
+
+    max_num_samples = 5  # number of samples of eeg data segments per eeg.edf file
+    use_standard_scaler = True
+    use_filtering = True
+    standardize_ages = 100
+
 
 
 @ex.named_config
@@ -147,6 +161,7 @@ def config():
     use_dl = True
     use_inception_like=False
     continue_from_model=False
+    standardize_ages=None
 
 
 # https://pynative.com/python-generate-random-string/
@@ -243,10 +258,14 @@ def get_base_dataset(split,
                      edf_tokens=None,
                      use_cached_pkl_dataset=True,
                      is_test=False,
-                     is_valid=False):
+                     is_valid=False,
+                     standardize_ages=None
+                     ):
 
     files, ages = cta.demux_to_tokens(cta.getAgesAndFileNames(split, ref))
     ages = np.stack(ages)
+    if standardize_ages is not None:
+        ages = (ages - standardize_ages/2) / standardize_ages
     if edf_tokens is not None:
         ageDict = {}
         for i, file in enumerate(files):
@@ -425,8 +444,8 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     print("pred shape", y_pred.shape)
     print("test data shape", testData.shape)
 
-    mse = mean_squared_error(testGender, y_pred.argmax(axis=1))
-    r2 = r2_score(testGender, y_pred.argmax(axis=1))
+    mse = mean_squared_error(testGender, y_pred)
+    r2 = r2_score(testGender, y_pred)
 
     toReturn = {
         'history': history.history,
