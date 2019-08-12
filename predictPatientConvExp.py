@@ -108,14 +108,14 @@ def config():
     max_length = 4 * constants.COMMON_FREQ
     batch_size = 64
     start_offset_seconds = 0  # matters if we aren't doing random ensemble sampling
-    dropout = 0.25
+    dropout = 0.5
     use_early_stopping = True
     patience = 10
     model_name = randomString() + ".h5"
     precached_pkl = "train_data.pkl"
     precached_test_pkl = "test_data.pkl"
     num_epochs = 1000
-    lr = 0.0002
+    lr = 0.002
     total_num_patients = len(all_patients)
     validation_size = 0.2
     test_size = 0.25
@@ -130,6 +130,7 @@ def config():
     num_temporal_filter = 1
     use_filtering = True
     max_pool_size = (1, 3)
+    debug_shuffle = False
     max_pool_stride = (1, 2)
     top_k = 5
     use_batch_normalization = True
@@ -285,6 +286,7 @@ def get_model(dropout, max_length, lr, use_vp, top_k, num_spatial_filter, use_ba
         model = get_custom_model(
             output_activation=output_activation,
             num_outputs=num_outputs)
+    model.summary()
     if num_gpus != 1:
         model = multi_gpu_model(model, num_gpus)
     adam = optimizers.Adam(lr=lr)
@@ -467,7 +469,8 @@ def dl(
     steps_per_epoch,
     num_gpus,
     ensemble_sample_info_path,
-    split_on_sample
+    split_on_sample,
+    debug_shuffle = False
     ):
     if not split_on_sample:
         data = get_train_valid_generator()
@@ -528,6 +531,7 @@ def dl(
         testData, toAppend = testDataGenerator[i]
         testPatients.append(toAppend.argmax(1))
     testPatients = np.hstack(testPatients)
+
     print("pred shape", y_pred.shape)
     print("test data shape", testData.shape)
 
