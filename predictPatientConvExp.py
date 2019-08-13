@@ -475,7 +475,7 @@ def dl(
     if not split_on_sample:
         data = get_train_valid_generator()
         trainDataGenerator, testDataGenerator = data.create_validation_train_split(test_size)
-        trainDataGenerator, validDataGenerator = data.create_validation_train_split(validation_size)
+        trainDataGenerator, validDataGenerator = trainDataGenerator.create_validation_train_split(validation_size)
         pkl.dump(testDataGenerator, open("/n/scratch2/ms994/" + model_name + ".train_data.pkl", 'wb')) #way to force replicate test set
     else:
         trainDataGenerator, validDataGenerator, testDataGenerator = get_train_valid_test_data_get_session()
