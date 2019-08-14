@@ -92,7 +92,7 @@ def standardized_ensemble():
     max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
     use_filtering = True
-    standardize_ages = True
+    standardize_ages = 80
 
 @ex.named_config
 def standardized_ensemble_5():
@@ -104,7 +104,7 @@ def standardized_ensemble_5():
     max_num_samples = 5  # number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
     use_filtering = True
-    standardize_ages = 100
+    standardize_ages = 80
 
 
 
@@ -162,6 +162,7 @@ def config():
     use_inception_like=False
     continue_from_model=False
     standardize_ages=None
+    output_activation = "linear"
 
 
 # https://pynative.com/python-generate-random-string/
@@ -337,6 +338,7 @@ def get_model(dropout, max_length, continue_from_model, lr, use_vp, num_spatial_
             output_activation=output_activation,
             num_outputs=num_outputs
             )
+    model.summary()
     if num_gpus != 1:
         model = multi_gpu_model(model, num_gpus)
     adam = optimizers.Adam(lr=lr)
@@ -345,7 +347,7 @@ def get_model(dropout, max_length, continue_from_model, lr, use_vp, num_spatial_
     return model
 
 @ex.capture
-def get_inception_like(max_length, num_conv_spatial_layers, num_spatial_filter, dropout, lr, output_activation='softmax', num_outputs=2):
+def get_inception_like(max_length, num_conv_spatial_layers, num_spatial_filter, dropout, lr, output_activation, num_outputs=2):
     model = inception_like((21, max_length, 1), num_layers=num_conv_spatial_layers, num_filters=num_spatial_filter, dropout=dropout, output_activation=output_activation, num_outputs=num_outputs)
     adam = optimizers.Adam(lr=lr)
     return model
@@ -356,6 +358,7 @@ def get_custom_model(
     dropout,
     max_length,
     lr,
+    output_activation,
     use_batch_normalization,
     num_conv_spatial_layers=1,
     num_conv_temporal_layers=1,
@@ -365,7 +368,6 @@ def get_custom_model(
     num_temporal_filter=300,
     max_pool_size=(2, 2),
     max_pool_stride=(1, 2),
-    output_activation='softmax',
     num_outputs=2
 ):
     model = conv2d_gridsearch(
