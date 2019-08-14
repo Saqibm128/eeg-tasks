@@ -331,8 +331,8 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             n_process=None,
             use_average_ref_names=True,
             filter=True,
-            lp_cutoff=30,
-            hp_cutoff=(constants.COMMON_FREQ/2-2), #get close to nyq without actually hitting it
+            lp_cutoff=1,
+            hp_cutoff=50, #get close to nyq without actually hitting it
             order_filt=5,
             columns_to_use=util_funcs.get_common_channel_names(),
             use_numpy=False
@@ -376,7 +376,7 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             data = data[self.columns_to_use]
         if self.filter:
             data = data.apply(
-                lambda col: filters.butter_bandgap_filter(
+                lambda col: filters.butter_bandpass_filter(
                     col,
                     lowcut=self.lp_cutoff,
                     highcut=self.hp_cutoff,
