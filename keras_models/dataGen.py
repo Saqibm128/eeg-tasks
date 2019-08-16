@@ -96,20 +96,20 @@ class DataGenerator(keras.utils.Sequence):
             # Store sample
             X[i,], y[i] = self.get_x_y(ID)
 
-
 class EdfDataGenerator(DataGenerator):
     'Can accept EdfDataset and any of its intermediates to make data (i.e. sftft)'
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=10, class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, instance_order_first=True):
+                 n_classes=10, class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True):
+
         super().__init__(list_IDs=list(range(len(dataset))), labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
                      n_classes=n_classes, shuffle=shuffle)
-        if not instance_order_first:
-            self.list_IDs = list(range(len(dataset[0])))
+        if not xy_tuple_form:
+            self.list_IDs = list(range(len(dataset[0]))) #the dataset is a tuple of x and y. grab x and use that length.
         self.dataset = dataset
         self.mask_value=mask_value
         self.max_length=max_length
         self.time_first = time_first
-        self.instance_order_first = instance_order_first
+        self.xy_tuple_form = xy_tuple_form
         self.class_type=class_type
 
         if precache: #just populate self.labels too if we are precaching anyways
@@ -141,9 +141,9 @@ class EdfDataGenerator(DataGenerator):
     def get_x_y(self, i):
         if self.precache:
             data = [self.dataset[j] for j in i]
-        elif self.instance_order_first:
+        elif self.xy_tuple_form:
             data = self.dataset[i]
-        if self.instance_order_first:
+        if self.xy_tuple_form:
             x = [datum[0] for datum in data]
             if self.labels is not None:
                 y = self.labels[i]
@@ -182,3 +182,50 @@ class EdfDataGenerator(DataGenerator):
         elif self.class_type == "quantile":
             y = y
         return x, np.stack(y)
+
+class DataGenMultipleLabels(EdfDataGenerator):
+    '''
+    To be able to deal with cases where neural net can predict for multiple things at once
+    '''
+    def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
+                 n_classes=(2, 2), class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2):
+        super().__init__( dataset, mask_value, labels, batch_size, dim, n_channels,
+                     n_classes, class_type, shuffle, max_length, time_first, precache=False, xy_tuple_form=xy_tuple_form)
+
+        assert num_labels >= 2
+        assert num_labels == len(n_classes)
+        assert len(labels) == num_labels
+
+
+        if self.precache:
+            self.dataset = dataset[:]
+
+    def create_validation_train_split(self, validation_size=0.1):
+        raise NotImplemented()
+
+
+    def get_x_y(self, i):
+        data = [self.dataset[j] for j in i]
+        if self.xy_tuple_form:
+            x = [datum[0] for datum in data]
+        else:
+            x = data
+        labels = []
+        for class_i in self.num_classes:
+            labels.append([self.labels[class_i][j] for j in i])
+        return x, labels
+
+    def __data_generation(self, list_IDs_temp):
+        x, labels = self.get_x_y(list_IDs_temp)
+        x = three_dim_pad(x, self.mask_value, max_length=self.max_length)
+        if not self.time_first: # we want batch by feature by time
+            x = x.transpose((0, 2,1, *[i + 3 for i in range(x.ndim - 3)]))
+
+        y_labels = []
+
+        for i, sing_label in enumerate(labels):
+            if not hasattr(self, "class_type") or self.class_type == "nominal":
+                y =  keras.utils.to_categorical(sing_label, num_classes=self.n_classes[i])
+                y_labels.append(np.stack(y))
+
+        return x, y_labels

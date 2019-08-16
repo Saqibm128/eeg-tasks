@@ -34,7 +34,7 @@ def simplified_vp_conv2d(dropout=0.25, input_shape=(None)):
     ]
     return Sequential(layers)
 
-def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, num_filters=30, output_activation='softmax',num_outputs=2):
+def inception_like_pre_layers(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, num_filters=30,):
     x = Input(input_shape)
 
     y0 = Conv2D(num_filters, (2,2),  activation="relu",)(x)
@@ -97,9 +97,12 @@ def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, 
         y4 = Dropout(dropout)(y4)
         y4 = BatchNormalization()(y4)
     y4 = Flatten()(y4)
-
     y = Concatenate()([y0, y1, y2, y3, y4])
+    return x, y
 
+    
+def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, num_filters=30, output_activation='softmax',num_outputs=2):
+    x, y = inception_like_pre_layers(input_shape, num_layers=num_layers, max_pool_size=max_pool_size, dropout=dropout, num_filters=num_filters,)
     y = Dense(units=num_outputs, activation=output_activation)(y)
     model = Model(inputs=x, outputs =y)
     return model
