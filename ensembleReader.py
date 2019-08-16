@@ -8,6 +8,35 @@ import constants
 import multiprocessing as mp
 from addict import Dict
 
+class EnsemblerSequence():
+    '''
+    Like keras_models.dataGen.EdfDataGenerator but takes into account the ordering
+    of the token files
+    '''
+    def __init__(
+        self,
+        ensembler,
+        batch_size
+    ):
+        assert type(ensembler) == EdfDatasetEnsembler
+        self.ensembler = ensembler
+        self.ensembledData = ensembler[:]
+        self.batch_size = batch_size
+        self.sampleInfo = ensembler.sampleInfo
+        self.seqIndex = Dict()
+        createSeqIndex()
+
+    def createSeqIndex(self):
+        pass
+
+    def __len__(self):
+        return np.ceil(len(self.ensembler)/self.batch_size)
+
+    def __getitem__(self, i):
+        pass
+
+    def on_epoch_end(self):
+        pass
 
 class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
     """
@@ -92,6 +121,7 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
                         self.sampleInfo[currentIndex].token_file_path = token_file
                         self.sampleInfo[currentIndex].sample_num = sample_in_token
                         self.sampleInfo[currentIndex].sample_width = self.max_length
+                        self.sampleInfo[currentIndex].token_file_index = i
                         if self.labels is not None:
                             self.sampleInfo[currentIndex].label = self.labels[i]
 

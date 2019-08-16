@@ -92,7 +92,7 @@ def standardized_ensemble():
     max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
     use_filtering = True
-    standardize_ages = 80
+    standardize_ages = 100
 
 @ex.named_config
 def standardized_ensemble_5():
@@ -104,7 +104,7 @@ def standardized_ensemble_5():
     max_num_samples = 5  # number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
     use_filtering = True
-    standardize_ages = 80
+    standardize_ages = 100
 
 
 
