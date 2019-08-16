@@ -100,14 +100,14 @@ def inception_like_pre_layers(input_shape, num_layers=4, max_pool_size=(1,2), dr
     y = Concatenate()([y0, y1, y2, y3, y4])
     return x, y
 
-    
+
 def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, num_filters=30, output_activation='softmax',num_outputs=2):
     x, y = inception_like_pre_layers(input_shape, num_layers=num_layers, max_pool_size=max_pool_size, dropout=dropout, num_filters=num_filters,)
     y = Dense(units=num_outputs, activation=output_activation)(y)
     model = Model(inputs=x, outputs =y)
     return model
 
-def conv2d_gridsearch(
+def conv2d_gridsearch_pre_layers(
     dropout=0.25,
     input_shape=(None),
     num_conv_spatial_layers=1,
@@ -118,10 +118,8 @@ def conv2d_gridsearch(
     num_temporal_filter=300,
     max_pool_size=(2,2),
     max_pool_stride=(1,2),
-    use_batch_normalization=False,
-    output_activation="softmax",
-    num_outputs=2
-    ):
+    use_batch_normalization=False):
+
     max_temporal_filter=max(num_temporal_filter, num_spatial_filter*3)
     input = Input(shape=input_shape)
     x = input
@@ -147,9 +145,38 @@ def conv2d_gridsearch(
     if use_batch_normalization:
         x = BatchNormalization()(x)
     x = Flatten()(x)
+    return input, x
+
+def conv2d_gridsearch(
+    dropout=0.25,
+    input_shape=(None),
+    num_conv_spatial_layers=1,
+    num_conv_temporal_layers=1,
+    conv_spatial_filter=(3,3),
+    num_spatial_filter=100,
+    conv_temporal_filter=(1,3),
+    num_temporal_filter=300,
+    max_pool_size=(2,2),
+    max_pool_stride=(1,2),
+    use_batch_normalization=False,
+    output_activation="softmax",
+    num_outputs=2
+    ):
+
+    input, x = conv2d_gridsearch_pre_layers(
+        dropout=dropout,
+        input_shape=input_shape,
+        num_conv_spatial_layers=num_conv_spatial_layers,
+        num_conv_temporal_layers=num_conv_temporal_layers,
+        conv_spatial_filter=conv_spatial_filter,
+        num_spatial_filter=num_spatial_filter,
+        conv_temporal_filter=conv_temporal_filter,
+        num_temporal_filter=num_temporal_filter,
+        max_pool_size=max_pool_size,
+        max_pool_stride=max_pool_stride,
+        use_batch_normalization=use_batch_normalization)
+    
     x = Dense(activation=output_activation, units=num_outputs)(x)
-
-
     return Model(input=input, outputs=x)
 
 def vp_conv2d(dropout=0.25, input_shape=(None), filter_size=100, use_batch_normalization=False, max_pool_size=(1,2), output_activation="", num_outputs=2):
