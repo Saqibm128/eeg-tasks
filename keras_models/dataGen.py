@@ -60,7 +60,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def __len__(self):
         'Denotes the number of batches per epoch'
-        return int(np.floor(len(self.list_IDs) / self.batch_size))
+        return int(np.ceil(len(self.list_IDs) / self.batch_size))
 
     def __getitem__(self, index):
         'Generate one batch of data'
@@ -158,13 +158,10 @@ class EdfDataGenerator(DataGenerator):
 
     def __getitem__(self, index):
         'Generate one batch of data'
-        # Generate indexes of the batch
         indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
 
-        # Find list of IDs
         list_IDs_temp = [self.list_IDs[k] for k in indexes]
 
-        # Generate data
         X, y = self.__data_generation(list_IDs_temp)
 
         return X, y
@@ -190,29 +187,58 @@ class DataGenMultipleLabels(EdfDataGenerator):
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
                  n_classes=(2, 2), class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2):
         super().__init__( dataset, mask_value, labels, batch_size, dim, n_channels,
-                     n_classes, class_type, shuffle, max_length, time_first, precache=False, xy_tuple_form=xy_tuple_form)
+                     n_classes, class_type, shuffle, max_length, time_first, precache=precache, xy_tuple_form=xy_tuple_form)
 
         assert num_labels >= 2
         assert num_labels == len(n_classes)
-        assert len(labels) == num_labels
+        assert xy_tuple_form or len(labels) == num_labels
+        self.num_labels = num_labels
 
 
         if self.precache:
             self.dataset = dataset[:]
 
-    def create_validation_train_split(self, validation_size=0.1):
-        raise NotImplemented()
+    def __getitem__(self, index):
+        'Generate one batch of data'
+        indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
+
+        list_IDs_temp = [self.list_IDs[k] for k in indexes]
+
+        X, y = self.__data_generation(list_IDs_temp)
+
+        return X, y
+
+    def create_validation_train_split(self, validation_size=0.1, use_stratify=True):
+        if not self.precache:
+            raise Exception("NOT IMPLEMENTED")
+        if use_stratify:
+            train_data, validation_data, train_labels, validation_labels = train_test_split(self.dataset, self.labels, test_size=validation_size, stratify=self.labels)
+        else:
+            train_data, validation_data, train_labels, validation_labels = train_test_split(self.dataset, self.labels, test_size=validation_size)
+
+        train_data_gen = DataGenMultipleLabels(num_labels=num_labels, dataset=train_data, mask_value=self.mask_value, labels=train_labels, batch_size=self.batch_size, dim=self.dim, n_channels=self.n_channels,
+                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache, class_type=self.class_type)
+
+
+        validation_data_gen = DataGenMultipleLabels(num_labels=num_labels, dataset=validation_data, mask_value=self.mask_value, labels=validation_labels, batch_size=self.batch_size, dim=self.dim, n_channels=self.n_channels,
+                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache, class_type=self.class_type)
+
+        return train_data_gen, validation_data_gen
 
 
     def get_x_y(self, i):
         data = [self.dataset[j] for j in i]
         if self.xy_tuple_form:
             x = [datum[0] for datum in data]
+            instanceLabels = [datum[1] for datum in data]
+            labels = []
+            for class_i in range(self.num_labels):
+                labels.append([instanceLabel[class_i] for instanceLabel in instanceLabels])
         else:
             x = data
-        labels = []
-        for class_i in self.num_classes:
-            labels.append([self.labels[class_i][j] for j in i])
+            labels = []
+            for class_i in range(self.num_labels):
+                labels.append([self.labels[class_i][j] for j in i])
         return x, labels
 
     def __data_generation(self, list_IDs_temp):
@@ -222,10 +248,8 @@ class DataGenMultipleLabels(EdfDataGenerator):
             x = x.transpose((0, 2,1, *[i + 3 for i in range(x.ndim - 3)]))
 
         y_labels = []
-
         for i, sing_label in enumerate(labels):
-            if not hasattr(self, "class_type") or self.class_type == "nominal":
-                y =  keras.utils.to_categorical(sing_label, num_classes=self.n_classes[i])
-                y_labels.append(np.stack(y))
+            y =  keras.utils.to_categorical(sing_label, num_classes=self.n_classes[i])
+            y_labels.append(y)
 
         return x, y_labels
