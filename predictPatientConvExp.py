@@ -17,7 +17,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator
-from keras_models.vanPutten import vp_conv2d, conv2d_gridsearch, inception_like
+from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like
 from keras import optimizers
 import pickle as pkl
 from sklearn.model_selection import train_test_split
