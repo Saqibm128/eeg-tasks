@@ -34,66 +34,66 @@ def simplified_vp_conv2d(dropout=0.25, input_shape=(None)):
     ]
     return Sequential(layers)
 
-def inception_like_pre_layers(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, num_filters=30,):
+def inception_like_pre_layers(input_shape, num_layers=4, max_pool_size=(1,2), max_pool_stride=(1,2), dropout=0.5, num_filters=30,):
     x = Input(input_shape)
 
     y0 = Conv2D(num_filters, (2,2),  activation="relu",)(x)
-    y0 = MaxPool2D(pool_size=max_pool_size,)(y0)
+    y0 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y0)
     y0 = Dropout(dropout)(y0)
     y0 = BatchNormalization()(y0)
     max_additional_layers = num_layers - 1
     for i in range(max_additional_layers):
         y0 = Conv2D(num_filters * 2, (2,2), activation="relu",)(y0)
         if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
-            y0 = MaxPool2D(pool_size=max_pool_size,)(y0)
+            y0 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y0)
         y0 = Dropout(dropout)(y0)
         y0 = BatchNormalization()(y0)
     y0 = Flatten()(y0)
 
     y1 = Conv2D(num_filters, (3,3),  activation="relu")(x)
-    y1 = MaxPool2D(pool_size=max_pool_size,)(y1)
+    y1 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y1)
     y1 = Dropout(dropout)(y1)
     y1 = BatchNormalization()(y1)
     for i in range(max_additional_layers):
         y1 = Conv2D(num_filters * 2, (3,3), activation="relu")(y1)
         if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
-            y1 = MaxPool2D(pool_size=max_pool_size,)(y1)
+            y1 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y1)
         y1 = Dropout(dropout)(y1)
         y1 = BatchNormalization()(y1)
     y1 = Flatten()(y1)
 
     y2 = Conv2D(num_filters, (4,4),  activation="relu")(x)
-    y2 = MaxPool2D(pool_size=max_pool_size,)(y2)
+    y2 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y2)
     y2 = Dropout(dropout)(y2)
     y2 = BatchNormalization()(y2)
     for i in range(max_additional_layers):
         y2 = Conv2D(num_filters * 2, (4,4), activation="relu", padding='same')(y2)
         if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
-            y2 = MaxPool2D(pool_size=max_pool_size,)(y2)
+            y2 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y2)
         y2 = Dropout(dropout)(y2)
         y2 = BatchNormalization()(y2)
     y2 = Flatten()(y2)
 
     y3 = Conv2D(num_filters, (5,5),  activation="relu")(x)
-    y3 = MaxPool2D(pool_size=max_pool_size,)(y3)
+    y3 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y3)
     y3 = Dropout(dropout)(y3)
     y3 = BatchNormalization()(y3)
     for i in range(max_additional_layers):
         y3 = Conv2D(num_filters * 2, (5,5), activation="relu", padding='same')(y3)
         if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
-            y3 = MaxPool2D(pool_size=max_pool_size,)(y3)
+            y3 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y3)
         y3 = Dropout(dropout)(y3)
         y3 = BatchNormalization()(y3)
     y3 = Flatten()(y3)
 
     y4 = Conv2D(num_filters, (6,6),  activation="relu")(x)
-    y4 = MaxPool2D(pool_size=max_pool_size,)(y4)
+    y4 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y4)
     y4 = Dropout(dropout)(y4)
     y4 = BatchNormalization()(y4)
     for i in range(max_additional_layers):
         y4 = Conv2D(num_filters * 2, (6,6), activation="relu", padding='same')(y4)
         if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
-            y4 = MaxPool2D(pool_size=max_pool_size,)(y4)
+            y4 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y4)
         y4 = Dropout(dropout)(y4)
         y4 = BatchNormalization()(y4)
     y4 = Flatten()(y4)
@@ -101,8 +101,8 @@ def inception_like_pre_layers(input_shape, num_layers=4, max_pool_size=(1,2), dr
     return x, y
 
 
-def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), dropout=0.5, num_filters=30, output_activation='softmax',num_outputs=2):
-    x, y = inception_like_pre_layers(input_shape, num_layers=num_layers, max_pool_size=max_pool_size, dropout=dropout, num_filters=num_filters,)
+def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), max_pool_stride=(1,2), dropout=0.5, num_filters=30, output_activation='softmax',num_outputs=2):
+    x, y = inception_like_pre_layers(input_shape, num_layers=num_layers, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, dropout=dropout, num_filters=num_filters,)
     y = Dense(units=num_outputs, activation=output_activation)(y)
     model = Model(inputs=x, outputs =y)
     return model
@@ -175,7 +175,7 @@ def conv2d_gridsearch(
         max_pool_size=max_pool_size,
         max_pool_stride=max_pool_stride,
         use_batch_normalization=use_batch_normalization)
-    
+
     x = Dense(activation=output_activation, units=num_outputs)(x)
     return Model(input=input, outputs=x)
 
