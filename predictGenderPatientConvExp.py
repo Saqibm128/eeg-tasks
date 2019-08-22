@@ -15,8 +15,11 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels
-from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like
+from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like_pre_layers
 from keras import optimizers
+from keras.layers import Dense
+from keras.models import Model
+from keras.utils import multi_gpu_model
 import pickle as pkl
 import sacred
 import keras
@@ -29,7 +32,7 @@ import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
 
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 
@@ -109,7 +112,7 @@ def config():
     n_process = 8
     num_files = None
     max_length = 4 * constants.COMMON_FREQ
-    batch_size = 64
+    batch_size = 32
     start_offset_seconds = 0  # matters if we aren't doing random ensemble sampling
     dropout = 0.25
     use_early_stopping = True
@@ -127,7 +130,7 @@ def config():
     use_vp = True
     # for custom architectures
     num_layers = 4
-    num_filters = 100
+    num_filters = 20
     num_temporal_filter = 1
     use_filtering = True
     max_pool_size = (1, 2)
@@ -175,13 +178,13 @@ def get_cb_list():
     return [get_model_checkpoint(), get_early_stopping()]
 
 @ex.capture
-def get_model(num_filters, dropout, num_layers, num_gpus, patient_weight, gender_weight, lr=0.0005):
-    x, y = cnn_models.inception_like_pre_layers(input_shape=(21, 500, 1), num_filters=num_filters, dropout=dropout, num_layers=num_layers)
+def get_model(num_filters, dropout, num_layers, num_gpus, patient_weight, gender_weight, max_pool_size, max_pool_stride, lr=0.0005):
+    x, y = inception_like_pre_layers(input_shape=(21, 500, 1), max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_filters=num_filters, dropout=dropout, num_layers=num_layers)
     y_gender = Dense(2, activation="softmax", name="gender")(y)
     y_patient = Dense(len(allPatients), activation="softmax", name="patient")(y)
     model = Model(inputs=x, outputs=[y_gender, y_patient])
     model.summary()
-    if num_gpus is not None or num_gpus > 1:
+    if num_gpus is not None and num_gpus > 1:
         model = multi_gpu_model(model, num_gpus)
     adam = keras.optimizers.Adam(lr=lr)
     loss_weights = [gender_weight, patient_weight]
@@ -253,10 +256,10 @@ def get_raw_data(num_files, max_num_samples, n_process):
             else:
                 trainPatientFiles += files
                 trainLabels += genders
-    testEnsembler = er.EdfDatasetEnsembler("combined", "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=testPatientFiles, n_process=n_process, labels=testLabels)
+    testEnsembler = er.EdfDatasetEnsembler("combined", "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=testPatientFiles, n_process=n_process, labels=testLabels, filter=True)
     testEnsemblerRawData = testEnsembler[:]
 
-    trainEnsembler = er.EdfDatasetEnsembler("combined", "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=trainPatientFiles, n_process=n_process, labels=trainLabels)
+    trainEnsembler = er.EdfDatasetEnsembler("combined", "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=trainPatientFiles, n_process=n_process, labels=trainLabels, filter=True)
     trainEnsemblerRawData = trainEnsembler[:]
     trainEnsemblerRawData, validEnsemblerRawData = train_test_split(trainEnsembler, test_size=0.1)
 
@@ -275,13 +278,14 @@ def main(regenerate_data, num_epochs, fit_generator_verbosity, model_name, num_g
     results.history = history.history
 
     model = keras.models.load_model(model_name)
-    model = multi_gpu_model(model, num_gpus)
+    if num_gpus is not None and num_gpus > 1:
+        model = multi_gpu_model(model, num_gpus)
 
     y_pred = model.predict(np.stack([data[0].reshape(500,21,1).transpose(1,0,2) for data in testEnsemblerRawData]))
 
-    results.gender.acc = accuracy_score(ypred[0].argmax(1), [data[1][0] for data in testEnsembler])
-    results.gender.AUC = roc_auc_score(ypred[0].argmax(1), [data[1][0] for data in testEnsembler])
-    results.patient.acc = accuracy_score(ypred[1].argmax(1), [data[1][1] for data in testEnsembler])
+    results.gender.acc = accuracy_score(y_pred[0].argmax(1), [data[1][0] for data in testEnsemblerRawData])
+    results.gender.AUC = roc_auc_score(y_pred[0].argmax(1), [data[1][0] for data in testEnsemblerRawData])
+    results.patient.acc = accuracy_score(y_pred[1].argmax(1), [data[1][1] for data in testEnsemblerRawData])
 
     return results
 
