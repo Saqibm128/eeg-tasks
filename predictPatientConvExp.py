@@ -299,8 +299,8 @@ def get_model(dropout, max_length, lr, use_vp, top_k, num_spatial_filter, use_ba
     return model
 
 @ex.capture
-def get_inception_like(max_length, num_conv_spatial_layers, num_spatial_filter, dropout, lr, output_activation='softmax', num_outputs=2):
-    model = inception_like((21, max_length, 1), num_layers=num_conv_spatial_layers, num_filters=num_spatial_filter, dropout=dropout, output_activation=output_activation, num_outputs=num_outputs)
+def get_inception_like(max_length, num_conv_spatial_layers, num_spatial_filter, dropout, lr, max_pool_size, max_pool_stride, output_activation='softmax', num_outputs=2):
+    model = inception_like((21, max_length, 1), num_layers=num_conv_spatial_layers, num_filters=num_spatial_filter, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, dropout=dropout, output_activation=output_activation, num_outputs=num_outputs)
     return model
 
 
