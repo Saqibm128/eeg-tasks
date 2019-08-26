@@ -97,25 +97,25 @@
 # done
 # sbatch -n 1 --mem-per-cpu 24G -t 6:00:00 -p gpu --gres=gpu:1 run.sh
 
-for num_conv_spatial_layers in 2 3 4
-do
-  for num_conv_temporal_layers in 2 3 4
-  do
-    for num_spatial_filter in 32 64
-    do
-      for num_steps_per_epoch in 32 64 128
-      do
-        for dropout in  0.5 0.6 0.7 0.8
-        do
-           sbatch -n 1 --mem-per-cpu 32G -t 6:00:00 -p gpu --gres=gpu:1 run.sh predictSeizureConvExp.py with batch_size=64 steps_per_epoch=$num_steps_per_epoch standardized_ensemble n_process=1 lr=0.002 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers num_temporal_filter=1 num_epochs=500 stop_on_training_loss num_spatial_filter=$num_spatial_filter use_early_stopping=True patience=75 dropout=$dropout num_epochs=500 patience=30
-           # sbatch -n 1 --mem-per-cpu 32G -t 6:00:00 -p gpu --gres=gpu:1 run.sh predictAgeConvExp.py     with batch_size=64 steps_per_epoch=$num_steps_per_epoch standardized_ensemble n_process=1 lr=0.002 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers num_temporal_filter=1 num_epochs=500 stop_on_training_loss num_spatial_filter=$num_spatial_filter use_early_stopping=True patience=75 dropout=$dropout num_epochs=500 patience=30
-  done
-    done
-  done
-  done
-done
-
-sbatch -n 1 --mem-per-cpu 32G -t 6:00:00 -p gpu --gres=gpu:4 run.sh predictSeizureConvExp.py with batch_size=64 standardized_ensemble n_process=1 lr=0.002 use_vp=False num_temporal_filter=1 num_epochs=500 num_spatial_filter=100 use_early_stopping=True patience=75 dropout=0.25 num_epochs=500 patience=10 use_dl=False use_inception_like=True num_gpus=4 use_vp=True
+# for num_conv_spatial_layers in 2 3 4
+# do
+#   for num_conv_temporal_layers in 2 3 4
+#   do
+#     for num_spatial_filter in 32 64
+#     do
+#       for num_steps_per_epoch in 32 64 128
+#       do
+#         for dropout in  0.5 0.6 0.7 0.8
+#         do
+#            sbatch -n 1 --mem-per-cpu 32G -t 6:00:00 -p gpu --gres=gpu:1 run.sh predictSeizureConvExp.py with batch_size=64 steps_per_epoch=$num_steps_per_epoch standardized_ensemble n_process=1 lr=0.002 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers num_temporal_filter=1 num_epochs=500 stop_on_training_loss num_spatial_filter=$num_spatial_filter use_early_stopping=True patience=75 dropout=$dropout num_epochs=500 patience=30
+#            # sbatch -n 1 --mem-per-cpu 32G -t 6:00:00 -p gpu --gres=gpu:1 run.sh predictAgeConvExp.py     with batch_size=64 steps_per_epoch=$num_steps_per_epoch standardized_ensemble n_process=1 lr=0.002 use_vp=False num_conv_spatial_layers=$num_conv_spatial_layers num_conv_temporal_layers=$num_conv_temporal_layers num_temporal_filter=1 num_epochs=500 stop_on_training_loss num_spatial_filter=$num_spatial_filter use_early_stopping=True patience=75 dropout=$dropout num_epochs=500 patience=30
+#   done
+#     done
+#   done
+#   done
+# done
+#
+# sbatch -n 1 --mem-per-cpu 32G -t 6:00:00 -p gpu --gres=gpu:4 run.sh predictSeizureConvExp.py with batch_size=64 standardized_ensemble n_process=1 lr=0.002 use_vp=False num_temporal_filter=1 num_epochs=500 num_spatial_filter=100 use_early_stopping=True patience=75 dropout=0.25 num_epochs=500 patience=10 use_dl=False use_inception_like=True num_gpus=4 use_vp=True
 
 # for num_conv_spatial_layers in 3 4
 # do
@@ -131,3 +131,8 @@ sbatch -n 1 --mem-per-cpu 32G -t 6:00:00 -p gpu --gres=gpu:4 run.sh predictSeizu
 #     done
 #   done
 # done
+
+for patient_weight in 0 0.01 0.1 0.25 0.5 0.9 1 1.1 2 4 10 100
+do
+  sbatch -n 1 --mem-per-cpu 64G -t 3:00:00 -p gpu --gres=gpu:2 runPython.sh predictGenderPatientConvExp.py with batch_size=64 standardized_combined_simple_ensemble lr=0.002 num_epochs=50 patience=5 dropout=0.5 patience=5 patient_weight=$patient_weight gender_weight=1 num_gpus=2 num_filters=20
+done

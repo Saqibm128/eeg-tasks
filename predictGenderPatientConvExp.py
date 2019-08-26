@@ -30,7 +30,7 @@ from sklearn.model_selection import train_test_split
 import random
 import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-ex = sacred.Experiment(name="gender_predict_conv_gridsearch")
+ex = sacred.Experiment(name="gender_patient_predict_conv_gridsearch")
 
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
@@ -187,7 +187,7 @@ def get_model(num_filters, dropout, num_layers, num_gpus, patient_weight, gender
     if num_gpus is not None and num_gpus > 1:
         model = multi_gpu_model(model, num_gpus)
     adam = keras.optimizers.Adam(lr=lr)
-    loss_weights = [gender_weight, patient_weight]
+    loss_weights = [np.float(gender_weight), np.float(patient_weight)]
     model.compile(adam, loss=["categorical_crossentropy", "categorical_crossentropy"], metrics=["categorical_accuracy"], loss_weights=loss_weights)
     return model
 
@@ -287,7 +287,7 @@ def main(regenerate_data, num_epochs, fit_generator_verbosity, model_name, num_g
     results.gender.AUC = roc_auc_score(y_pred[0].argmax(1), [data[1][0] for data in testEnsemblerRawData])
     results.patient.acc = accuracy_score(y_pred[1].argmax(1), [data[1][1] for data in testEnsemblerRawData])
 
-    return results
+    return results.to_dict()
 
 
 if __name__ == "__main__":
