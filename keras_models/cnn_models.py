@@ -34,8 +34,9 @@ def simplified_vp_conv2d(dropout=0.25, input_shape=(None)):
     ]
     return Sequential(layers)
 
-def inception_like_pre_layers(input_shape, num_layers=4, max_pool_size=(1,2), max_pool_stride=(1,2), dropout=0.5, num_filters=30,):
-    x = Input(input_shape)
+def inception_like_pre_layers(input_shape=None, x=None, num_layers=4, max_pool_size=(1,2), max_pool_stride=(1,2), dropout=0.5, num_filters=30,):
+    if x is None:
+        x = Input(input_shape)
 
     y0 = Conv2D(num_filters, (2,2),  activation="relu",)(x)
     y0 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y0)

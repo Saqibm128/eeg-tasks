@@ -17,11 +17,12 @@ import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels
 from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like_pre_layers
 from keras import optimizers
-from keras.layers import Dense
+from keras.layers import Dense, TimeDistributed, Input, Reshape
 from keras.models import Model
 from keras.utils import multi_gpu_model
 import pickle as pkl
 import sacred
+from sacred.stflow import LogFileWriter
 import keras
 import ensembleReader as er
 from keras.utils import multi_gpu_model
@@ -106,6 +107,26 @@ def standardized_combined_simple_ensemble():
 def stop_on_training_loss():
     early_stopping_on = "loss"
 
+@ex.named_config
+def use_lin_pre():
+    use_time_first = True
+    max_pool_size = (2, 1)
+    max_pool_stride = (2, 1)
+    use_linear_pre_layers = True
+    num_lin_layer = 1
+    pre_layer_h = 32
+    num_layers = 4
+
+@ex.named_config
+def use_lin_pre_max_pool():
+    use_time_first = True
+    max_pool_size = (3, 2)
+    max_pool_stride = (3, 2)
+    use_linear_pre_layers = True
+    num_lin_layer = 2
+    pre_layer_h = 128
+    num_layers = 3
+
 
 @ex.config
 def config():
@@ -137,6 +158,7 @@ def config():
     max_pool_stride = (1, 2)
     patient_weight=1
     gender_weight=1
+    use_time_first = False
     use_batch_normalization = True
     use_random_ensemble = False
     max_num_samples = 10  # number of samples of eeg data segments per eeg.edf file
@@ -156,6 +178,9 @@ def config():
     use_dl = True
     use_inception_like=False
     shuffle_channels=False
+    use_linear_pre_layers = False
+    pre_layer_h = 64
+    num_lin_layer = None
 
 
 # https://pynative.com/python-generate-random-string/
@@ -179,7 +204,38 @@ def get_cb_list():
     return [get_model_checkpoint(), get_early_stopping()]
 
 @ex.capture
-def get_model(num_filters, dropout, num_layers, num_gpus, patient_weight, gender_weight, max_pool_size, max_pool_stride, lr=0.0005):
+def get_model(use_linear_pre_layers, pre_layer_h, use_time_first, num_lin_layer, num_filters, dropout, num_layers, num_gpus, patient_weight, gender_weight, max_pool_size, max_pool_stride, lr=0.0005):
+    if not use_linear_pre_layers:
+        return get_no_linear_pre_model()
+    else:
+        assert use_time_first
+        #make a linear pre layer to learn a linear combination of channels that represents the optimal input
+        x = Input((500, 21, 1)) #time, ecg channel, cnn channel
+        y = Reshape((500, 21))(x) #remove channel dim
+        y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
+        for i in range(num_lin_layer - 1):
+            y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
+        y = Reshape((500, pre_layer_h, 1))(y) #add back in channel dim
+
+
+        _, y = inception_like_pre_layers(x=y, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_filters=num_filters, dropout=dropout, num_layers=num_layers)
+        y_gender = Dense(2, activation="softmax", name="gender")(y)
+        y_patient = Dense(len(allPatients), activation="softmax", name="patient")(y)
+        model = Model(inputs=x, outputs=[y_gender, y_patient])
+        model.summary()
+        if num_gpus is not None and num_gpus > 1:
+            model = multi_gpu_model(model, num_gpus)
+        adam = keras.optimizers.Adam(lr=lr)
+        loss_weights = [np.float(gender_weight), np.float(patient_weight)]
+        model.compile(adam, loss=["categorical_crossentropy", "categorical_crossentropy"], metrics=["categorical_accuracy"], loss_weights=loss_weights)
+        return model
+
+
+@ex.capture
+def get_no_linear_pre_model(num_filters, dropout, num_layers, num_gpus, patient_weight, gender_weight, max_pool_size, max_pool_stride, lr=0.0005):
+    '''
+    Created before realizing that I'd want to try to make a FC layers beforehand applied to each time step
+    '''
     x, y = inception_like_pre_layers(input_shape=(21, 500, 1), max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_filters=num_filters, dropout=dropout, num_layers=num_layers)
     y_gender = Dense(2, activation="softmax", name="gender")(y)
     y_patient = Dense(len(allPatients), activation="softmax", name="patient")(y)
@@ -193,7 +249,7 @@ def get_model(num_filters, dropout, num_layers, num_gpus, patient_weight, gender
     return model
 
 @ex.capture
-def get_data_generator(precached_train_pkl, precached_valid_pkl, precached_test_pkl, patient_path, batch_size, use_cached_pkl, shuffle_channels):
+def get_data_generator(precached_train_pkl, precached_valid_pkl, precached_test_pkl, patient_path, batch_size, use_cached_pkl, shuffle_channels, use_time_first):
     global allPatients
     if path.exists(precached_test_pkl) \
         and path.exists(precached_train_pkl) \
@@ -209,9 +265,9 @@ def get_data_generator(precached_train_pkl, precached_valid_pkl, precached_test_
         pkl.dump(validEnsemblerRawData, open(precached_valid_pkl, 'wb'))
         pkl.dump(testEnsemblerRawData, open(precached_test_pkl, 'wb'))
         pkl.dump(allPatients, open(patient_path, 'wb'))
-    testDataGen = DataGenMultipleLabels(testEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=False, shuffle_channels=shuffle_channels)
-    trainDataGen = DataGenMultipleLabels(trainEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=False, shuffle=True, shuffle_channels=shuffle_channels)
-    validDataGen = DataGenMultipleLabels(validEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=False, shuffle_channels=shuffle_channels)
+    testDataGen = DataGenMultipleLabels(testEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=use_time_first, shuffle_channels=shuffle_channels)
+    trainDataGen = DataGenMultipleLabels(trainEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=use_time_first, shuffle=True, shuffle_channels=shuffle_channels)
+    validDataGen = DataGenMultipleLabels(validEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=use_time_first, shuffle_channels=shuffle_channels)
     return trainDataGen, validDataGen, testDataGen, testEnsemblerRawData
 
 @ex.capture
@@ -267,6 +323,7 @@ def get_raw_data(num_files, max_num_samples, n_process):
     return trainEnsembler, trainEnsemblerRawData, testEnsembler, testEnsemblerRawData, validEnsemblerRawData
 
 @ex.main
+@LogFileWriter(ex)
 def main(regenerate_data, num_epochs, fit_generator_verbosity, model_name, num_gpus):
     trainDataGen, validDataGen, testDataGen, testEnsemblerRawData = get_data_generator()
     if regenerate_data:
