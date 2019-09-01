@@ -185,7 +185,7 @@ class DataGenMultipleLabels(EdfDataGenerator):
     To be able to deal with cases where neural net can predict for multiple things at once
     '''
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=(2, 2), class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2):
+                 n_classes=(2, 2), class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2, shuffle_channels=False):
         super().__init__( dataset, mask_value, labels, batch_size, dim, n_channels,
                      n_classes, class_type, shuffle, max_length, time_first, precache=precache, xy_tuple_form=xy_tuple_form)
 
@@ -193,6 +193,7 @@ class DataGenMultipleLabels(EdfDataGenerator):
         assert num_labels == len(n_classes)
         assert xy_tuple_form or len(labels) == num_labels
         self.num_labels = num_labels
+        self.shuffle_channels = shuffle_channels
 
 
         if self.precache:
@@ -217,11 +218,11 @@ class DataGenMultipleLabels(EdfDataGenerator):
             train_data, validation_data, train_labels, validation_labels = train_test_split(self.dataset, self.labels, test_size=validation_size)
 
         train_data_gen = DataGenMultipleLabels(num_labels=num_labels, dataset=train_data, mask_value=self.mask_value, labels=train_labels, batch_size=self.batch_size, dim=self.dim, n_channels=self.n_channels,
-                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache, class_type=self.class_type)
+                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache, class_type=self.class_type, shuffle_channels=self.shuffle_channels)
 
 
         validation_data_gen = DataGenMultipleLabels(num_labels=num_labels, dataset=validation_data, mask_value=self.mask_value, labels=validation_labels, batch_size=self.batch_size, dim=self.dim, n_channels=self.n_channels,
-                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache, class_type=self.class_type)
+                     n_classes=self.n_classes, shuffle=self.shuffle, max_length=self.max_length, time_first=self.time_first, precache=self.precache, class_type=self.class_type,  shuffle_channels=self.shuffle_channels)
 
         return train_data_gen, validation_data_gen
 
@@ -244,6 +245,10 @@ class DataGenMultipleLabels(EdfDataGenerator):
     def __data_generation(self, list_IDs_temp):
         x, labels = self.get_x_y(list_IDs_temp)
         x = three_dim_pad(x, self.mask_value, max_length=self.max_length)
+        if self.shuffle_channels:
+            new_col_order = [i for i in range(x.shape[2])]
+            np.random.shuffle(new_col_order)
+            x_new = x[:,:,new_col_order,:] #shuffles features, to do an experiment to see if column order is being memorized
         if not self.time_first: # we want batch by feature by time
             x = x.transpose((0, 2,1, *[i + 3 for i in range(x.ndim - 3)]))
 

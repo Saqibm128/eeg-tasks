@@ -155,6 +155,7 @@ def config():
     shuffle_generator = True
     use_dl = True
     use_inception_like=False
+    shuffle_channels=False
 
 
 # https://pynative.com/python-generate-random-string/
@@ -192,7 +193,7 @@ def get_model(num_filters, dropout, num_layers, num_gpus, patient_weight, gender
     return model
 
 @ex.capture
-def get_data_generator(precached_train_pkl, precached_valid_pkl, precached_test_pkl, patient_path, batch_size, use_cached_pkl):
+def get_data_generator(precached_train_pkl, precached_valid_pkl, precached_test_pkl, patient_path, batch_size, use_cached_pkl, shuffle_channels):
     global allPatients
     if path.exists(precached_test_pkl) \
         and path.exists(precached_train_pkl) \
@@ -208,9 +209,9 @@ def get_data_generator(precached_train_pkl, precached_valid_pkl, precached_test_
         pkl.dump(validEnsemblerRawData, open(precached_valid_pkl, 'wb'))
         pkl.dump(testEnsemblerRawData, open(precached_test_pkl, 'wb'))
         pkl.dump(allPatients, open(patient_path, 'wb'))
-    testDataGen = DataGenMultipleLabels(testEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=False)
-    trainDataGen = DataGenMultipleLabels(trainEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=False, shuffle=True)
-    validDataGen = DataGenMultipleLabels(validEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=False)
+    testDataGen = DataGenMultipleLabels(testEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=False, shuffle_channels=shuffle_channels)
+    trainDataGen = DataGenMultipleLabels(trainEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=False, shuffle=True, shuffle_channels=shuffle_channels)
+    validDataGen = DataGenMultipleLabels(validEnsemblerRawData, batch_size=batch_size, num_labels=2, n_classes=(2, len(allPatients)), precache=True, time_first=False, shuffle_channels=shuffle_channels)
     return trainDataGen, validDataGen, testDataGen, testEnsemblerRawData
 
 @ex.capture
