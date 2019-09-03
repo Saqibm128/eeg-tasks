@@ -22,7 +22,7 @@ from keras.models import Model
 from keras.utils import multi_gpu_model
 import pickle as pkl
 import sacred
-from sacred.stflow import LogFileWriter
+# from sacred.stflow import LogFileWriter
 import keras
 import ensembleReader as er
 from keras.utils import multi_gpu_model
@@ -88,6 +88,19 @@ def debug():
     max_num_samples = 2
 
 
+@ex.named_config
+def standardized_combined_split_patient():
+    use_combined = True
+    use_random_ensemble = True
+    precached_train_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_train_data_patient_gender_patient_split.pkl"
+    precached_valid_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_valid_data_patient_gender_patient_split.pkl"
+    precached_test_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_test_data_patient_gender_patient_split.pkl"
+    ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_patient_gender_patient_split.pkl"
+    patient_path = "/n/scratch2/ms994/patient_list_with_gender_2_plus_sess_patient.pkl"
+    max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
+    use_standard_scaler = True
+    use_filtering = True
+    split_on_session = False
 
 @ex.named_config
 def standardized_combined_simple_ensemble():
@@ -101,6 +114,7 @@ def standardized_combined_simple_ensemble():
     max_num_samples = 5  # number of samples of eeg data segments per eeg.edf file
     use_standard_scaler = True
     use_filtering = True
+    split_on_session = True
 
 
 @ex.named_config
@@ -181,6 +195,7 @@ def config():
     use_linear_pre_layers = False
     pre_layer_h = 64
     num_lin_layer = None
+    split_on_session = True
 
 
 # https://pynative.com/python-generate-random-string/
@@ -271,7 +286,14 @@ def get_data_generator(precached_train_pkl, precached_valid_pkl, precached_test_
     return trainDataGen, validDataGen, testDataGen, testEnsemblerRawData
 
 @ex.capture
-def get_raw_data(num_files, max_num_samples, n_process):
+def get_raw_data(num_files, max_num_samples, n_process, split_on_session, test_size, validation_size):
+    '''
+    reality is that multitask learning can't actually incorporate both gender and patient
+    in a fair way; either patients need to be segregated between test and train sets, in which case
+    the predict patient task is impossible on the test set, or the patients are shared and sessions are
+    segregated, in which case the predict gender task becomes unfair
+    if split_on_session is True, we prioritize patient id, otherwise, we don't
+    '''
     global allPatients
     files, genders = cta.demux_to_tokens(cta.getGenderAndFileNames("combined", "01_tcp_ar", True))
     files = files[:num_files]
@@ -285,52 +307,80 @@ def get_raw_data(num_files, max_num_samples, n_process):
         sessionDict[patients[i]][sessions[i]][i].file = file
         sessionDict[patients[i]][sessions[i]][i].gender = genders[i]
         sessionDict[patients[i]][sessions[i]][i].patient = allPatients.index(patients[i])
-    #delete all patients with only one session
     for patient in set(patients):
-        print(len(sessionDict[patient].keys()))
-        if len(sessionDict[patient].keys()) < 2:
-            del sessionDict[patient]
+        #delete all patients with only one session if we are doing a patient id
+        if split_on_session:
+            if len(sessionDict[patient].keys()) < 2:
+                del sessionDict[patient]
 
 
     def returnFilesAndLabelsFromSessionDict(d):
         files = []
-        genders = []
+        labels = []
         for id_num in d.keys():
             files.append(d[id_num].file)
-            genders.append((d[id_num].gender, d[id_num].patient))
-        return files, genders
+            labels.append((d[id_num].gender, d[id_num].patient))
+        return files, labels
     testPatientFiles = []
     testLabels = []
     trainPatientFiles = []
     trainLabels = []
-    for patient in sessionDict.keys():
-        testSessionToAdd = np.random.choice(list(sessionDict[patient].keys()))
-        for session in sessionDict[patient].keys():
-            files, genders = returnFilesAndLabelsFromSessionDict(sessionDict[patient][session])
-            if session == testSessionToAdd:
-                testPatientFiles += files
-                testLabels += genders
-            else:
-                trainPatientFiles += files
-                trainLabels += genders
+    validPatientFiles = []
+    validLabels = []
+
+    if split_on_session:
+        for patient in sessionDict.keys():
+            testSessionToAdd = np.random.choice(list(sessionDict[patient].keys()))
+            for session in sessionDict[patient].keys():
+                files, labels = returnFilesAndLabelsFromSessionDict(sessionDict[patient][session])
+                if session == testSessionToAdd:
+                    testPatientFiles += files
+                    testLabels += labels
+                else:
+                    trainPatientFiles += files
+                    trainLabels += labels
+    else:
+        trainPatients, testPatients = train_test_split(list(sessionDict.keys()), test_size=test_size)
+        trainPatients, validPatients = train_test_split(trainPatients, test_size=validation_size)
+
+        for patient in sessionDict.keys():
+            for session in sessionDict[patient].keys():
+                files, labels = returnFilesAndLabelsFromSessionDict(sessionDict[patient][session])
+                if patient in trainPatients:
+                    trainPatientFiles += files
+                    trainLabels += labels
+                elif patient in validPatients:
+                    validPatientFiles += files
+                    validLabels += labels
+                else:
+                    testPatientFiles += files
+                    testLabels += labels
+
     testEnsembler = er.EdfDatasetEnsembler("combined", "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=testPatientFiles, n_process=n_process, labels=testLabels, filter=True)
     testEnsemblerRawData = testEnsembler[:]
 
     trainEnsembler = er.EdfDatasetEnsembler("combined", "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=trainPatientFiles, n_process=n_process, labels=trainLabels, filter=True)
     trainEnsemblerRawData = trainEnsembler[:]
-    trainEnsemblerRawData, validEnsemblerRawData = train_test_split(trainEnsembler, test_size=0.1)
 
-    return trainEnsembler, trainEnsemblerRawData, testEnsembler, testEnsemblerRawData, validEnsemblerRawData
+    if split_on_session:
+        trainEnsemblerRawData, validEnsemblerRawData = train_test_split(trainEnsemblerRawData, test_size=0.1)
+    else:
+        validEnsemblerRawData = er.EdfDatasetEnsembler("combined", "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=validPatientFiles, n_process=n_process, labels=validLabels, filter=True)
+
+    return trainEnsembler, trainEnsemblerRawData, testEnsembler, testEnsemblerRawData, validEnsemblerRawData[:]
 
 @ex.main
-@LogFileWriter(ex)
-def main(regenerate_data, num_epochs, fit_generator_verbosity, model_name, num_gpus):
+# @LogFileWriter(ex)
+def main(regenerate_data, num_epochs, fit_generator_verbosity, model_name, num_gpus, use_time_first, steps_per_epoch):
     trainDataGen, validDataGen, testDataGen, testEnsemblerRawData = get_data_generator()
     if regenerate_data:
         return
     model = get_model()
     cb_list = get_cb_list()
-    history = model.fit_generator(trainDataGen, epochs=num_epochs, validation_data=validDataGen, callbacks=cb_list, verbose=fit_generator_verbosity)
+    if steps_per_epoch is not None:
+        history = model.fit_generator(trainDataGen, epochs=num_epochs, validation_data=validDataGen, callbacks=cb_list, steps_per_epoch=steps_per_epoch, verbose=fit_generator_verbosity)
+    else:
+        history = model.fit_generator(trainDataGen, epochs=num_epochs, validation_data=validDataGen, callbacks=cb_list, verbose=fit_generator_verbosity)
 
     results = Dict()
     results.history = history.history
@@ -339,11 +389,30 @@ def main(regenerate_data, num_epochs, fit_generator_verbosity, model_name, num_g
     if num_gpus is not None and num_gpus > 1:
         model = multi_gpu_model(model, num_gpus)
 
-    y_pred = model.predict(np.stack([data[0].reshape(500,21,1).transpose(1,0,2) for data in testEnsemblerRawData]))
+    if use_time_first:
+        transpose = (0, 1, 2)
+    else:
+        transpose = (1, 0, 2) #don't need to transpose actually
+
+    y_pred = model.predict(np.stack([data[0].reshape(500,21,1).transpose(*transpose) for data in testEnsemblerRawData]))
 
     results.gender.acc = accuracy_score(y_pred[0].argmax(1), [data[1][0] for data in testEnsemblerRawData])
     results.gender.AUC = roc_auc_score(y_pred[0].argmax(1), [data[1][0] for data in testEnsemblerRawData])
-    results.patient.acc = accuracy_score(y_pred[1].argmax(1), [data[1][1] for data in testEnsemblerRawData])
+
+    testPatients = [data[1][1] for data in testEnsemblerRawData]
+    results.patient.acc = accuracy_score(y_pred[1].argmax(1), testPatients)
+
+    def top_k_acc(k):
+        top_k_pred = y_pred[1].argsort()[:,-(k):]
+        return np.mean([testPatients[i] in top_k_pred[i] for i in range(len(testPatients))])
+
+    results.patient.multi_k_acc = {
+        "1":top_k_acc(1),
+        "2":top_k_acc(2),
+        "5":top_k_acc(5),
+        "10":top_k_acc(10),
+        "20":top_k_acc(20)
+    }
 
     return results.to_dict()
 
