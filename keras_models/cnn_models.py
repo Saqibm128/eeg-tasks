@@ -34,65 +34,71 @@ def simplified_vp_conv2d(dropout=0.25, input_shape=(None)):
     ]
     return Sequential(layers)
 
-def inception_like_pre_layers(input_shape=None, x=None, num_layers=4, max_pool_size=(1,2), max_pool_stride=(1,2), dropout=0.5, num_filters=30,):
+def inception_like_pre_layers(input_shape=None, x=None, num_layers=4, max_pool_size=(1,2), max_pool_stride=(1,2), dropout=0.5, num_filters=30, get_kernel_regularizer=None, get_activity_regularizer=None):
+    def get_none():
+        return None
+    if get_kernel_regularizer is None:
+        get_kernel_regularizer = get_none
+    if get_activity_regularizer is None:
+        get_activity_regularizer = get_none
     if x is None:
         x = Input(input_shape)
 
-    y0 = Conv2D(num_filters, (2,2),  activation="relu",)(x)
+    y0 = Conv2D(num_filters, (2,2),  activation="relu", kernel_regularizer=get_kernel_regularizer(), activity_regularizer=get_activity_regularizer())(x)
     y0 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y0)
     y0 = Dropout(dropout)(y0)
     y0 = BatchNormalization()(y0)
     max_additional_layers = num_layers - 1
     for i in range(max_additional_layers):
-        y0 = Conv2D(num_filters * 2, (2,2), activation="relu",)(y0)
+        y0 = Conv2D(num_filters * 2, (2,2), activation="relu", kernel_regularizer=get_kernel_regularizer(), activity_regularizer=get_activity_regularizer())(y0)
         if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
             y0 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y0)
         y0 = Dropout(dropout)(y0)
         y0 = BatchNormalization()(y0)
     y0 = Flatten()(y0)
 
-    y1 = Conv2D(num_filters, (3,3),  activation="relu")(x)
+    y1 = Conv2D(num_filters, (3,3),  activation="relu", kernel_regularizer=get_kernel_regularizer(), activity_regularizer=get_activity_regularizer())(x)
     y1 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y1)
     y1 = Dropout(dropout)(y1)
     y1 = BatchNormalization()(y1)
     for i in range(max_additional_layers):
-        y1 = Conv2D(num_filters * 2, (3,3), activation="relu")(y1)
+        y1 = Conv2D(num_filters * 2, (3,3), activation="relu", kernel_regularizer=get_kernel_regularizer(), activity_regularizer=get_activity_regularizer())(y1)
         if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
             y1 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y1)
         y1 = Dropout(dropout)(y1)
         y1 = BatchNormalization()(y1)
     y1 = Flatten()(y1)
 
-    y2 = Conv2D(num_filters, (4,4),  activation="relu")(x)
+    y2 = Conv2D(num_filters, (4,4),  activation="relu", kernel_regularizer=get_kernel_regularizer(), activity_regularizer=get_activity_regularizer())(x)
     y2 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y2)
     y2 = Dropout(dropout)(y2)
     y2 = BatchNormalization()(y2)
     for i in range(max_additional_layers):
-        y2 = Conv2D(num_filters * 2, (4,4), activation="relu", padding='same')(y2)
+        y2 = Conv2D(num_filters * 2, (4,4), activation="relu", padding='same', kernel_regularizer=get_kernel_regularizer(), activity_regularizer=get_activity_regularizer())(y2)
         if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
             y2 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y2)
         y2 = Dropout(dropout)(y2)
         y2 = BatchNormalization()(y2)
     y2 = Flatten()(y2)
 
-    y3 = Conv2D(num_filters, (5,5),  activation="relu")(x)
+    y3 = Conv2D(num_filters, (5,5),  activation="relu", kernel_regularizer=get_kernel_regularizer(), activity_regularizer=get_activity_regularizer())(x)
     y3 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y3)
     y3 = Dropout(dropout)(y3)
     y3 = BatchNormalization()(y3)
     for i in range(max_additional_layers):
-        y3 = Conv2D(num_filters * 2, (5,5), activation="relu", padding='same')(y3)
+        y3 = Conv2D(num_filters * 2, (5,5), activation="relu", padding='same', kernel_regularizer=get_kernel_regularizer(), activity_regularizer=get_activity_regularizer())(y3)
         if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
             y3 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y3)
         y3 = Dropout(dropout)(y3)
         y3 = BatchNormalization()(y3)
     y3 = Flatten()(y3)
 
-    y4 = Conv2D(num_filters, (6,6),  activation="relu")(x)
+    y4 = Conv2D(num_filters, (6,6),  activation="relu", kernel_regularizer=get_kernel_regularizer(), activity_regularizer=get_activity_regularizer())(x)
     y4 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y4)
     y4 = Dropout(dropout)(y4)
     y4 = BatchNormalization()(y4)
     for i in range(max_additional_layers):
-        y4 = Conv2D(num_filters * 2, (6,6), activation="relu", padding='same')(y4)
+        y4 = Conv2D(num_filters * 2, (6,6), activation="relu", padding='same', kernel_regularizer=get_kernel_regularizer(), activity_regularizer=get_activity_regularizer())(y4)
         if i > max_additional_layers - 5: #add up to 5 max pools, to avoid negative dim
             y4 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y4)
         y4 = Dropout(dropout)(y4)

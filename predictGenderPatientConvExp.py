@@ -27,6 +27,7 @@ import keras
 import ensembleReader as er
 from keras.utils import multi_gpu_model
 from sklearn.model_selection import train_test_split
+from keras import regularizers
 
 import random
 import string
@@ -116,6 +117,10 @@ def standardized_combined_simple_ensemble():
     use_filtering = True
     split_on_session = True
 
+@ex.named_config
+def use_regularization():
+    use_weight_regularization=True
+    use_activity_regularization=True
 
 @ex.named_config
 def stop_on_training_loss():
@@ -196,6 +201,10 @@ def config():
     pre_layer_h = 64
     num_lin_layer = None
     split_on_session = True
+    use_weight_regularization = False
+    use_activity_regularization = False
+    weight_regularization = 0.1
+    activation_regularization = None
 
 
 # https://pynative.com/python-generate-random-string/
@@ -219,7 +228,38 @@ def get_cb_list():
     return [get_model_checkpoint(), get_early_stopping()]
 
 @ex.capture
-def get_model(use_linear_pre_layers, pre_layer_h, use_time_first, num_lin_layer, num_filters, dropout, num_layers, num_gpus, patient_weight, gender_weight, max_pool_size, max_pool_stride, lr=0.0005):
+def get_weight_regularizer(use_weight_regularization, weight_regularization):
+    if use_weight_regularization:
+        return regularizers.l1(weight_regularization)
+    else:
+        return None
+
+@ex.capture
+def get_activation_regularizer(use_activity_regularization, activation_regularization, weight_regularization):
+    if activation_regularization is None:
+        activation_regularization = weight_regularization
+    if use_activity_regularization:
+        return regularizers.l1(activation_regularization)
+    else:
+        return None
+
+
+@ex.capture
+def get_model(
+    use_linear_pre_layers,
+    pre_layer_h,
+    use_time_first,
+    num_lin_layer,
+    num_filters,
+    dropout,
+    num_layers,
+    num_gpus,
+    patient_weight,
+    gender_weight,
+    max_pool_size,
+    max_pool_stride,
+    lr=0.0005):
+
     if not use_linear_pre_layers:
         return get_no_linear_pre_model()
     else:
@@ -227,15 +267,15 @@ def get_model(use_linear_pre_layers, pre_layer_h, use_time_first, num_lin_layer,
         #make a linear pre layer to learn a linear combination of channels that represents the optimal input
         x = Input((500, 21, 1)) #time, ecg channel, cnn channel
         y = Reshape((500, 21))(x) #remove channel dim
-        y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
+        y = TimeDistributed(Dense(pre_layer_h, activation="relu", kernel_regularizer=get_weight_regularizer(), activity_regularizer=get_activation_regularizer()))(y)
         for i in range(num_lin_layer - 1):
-            y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
+            y = TimeDistributed(Dense(pre_layer_h, activation="relu", kernel_regularizer=get_weight_regularizer(), activity_regularizer=get_activation_regularizer()))(y)
         y = Reshape((500, pre_layer_h, 1))(y) #add back in channel dim
 
 
-        _, y = inception_like_pre_layers(x=y, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_filters=num_filters, dropout=dropout, num_layers=num_layers)
-        y_gender = Dense(2, activation="softmax", name="gender")(y)
-        y_patient = Dense(len(allPatients), activation="softmax", name="patient")(y)
+        _, y = inception_like_pre_layers(x=y, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_filters=num_filters, dropout=dropout, num_layers=num_layers, get_kernel_regularizer=get_weight_regularizer, get_activity_regularizer=get_activation_regularizer)
+        y_gender = Dense(2, activation="softmax", name="gender",  kernel_regularizer=get_weight_regularizer(), activity_regularizer=get_activation_regularizer())(y)
+        y_patient = Dense(len(allPatients), activation="softmax", name="patient",  kernel_regularizer=get_weight_regularizer(), activity_regularizer=get_activation_regularizer())(y)
         model = Model(inputs=x, outputs=[y_gender, y_patient])
         model.summary()
         if num_gpus is not None and num_gpus > 1:
@@ -251,9 +291,9 @@ def get_no_linear_pre_model(num_filters, dropout, num_layers, num_gpus, patient_
     '''
     Created before realizing that I'd want to try to make a FC layers beforehand applied to each time step
     '''
-    x, y = inception_like_pre_layers(input_shape=(21, 500, 1), max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_filters=num_filters, dropout=dropout, num_layers=num_layers)
-    y_gender = Dense(2, activation="softmax", name="gender")(y)
-    y_patient = Dense(len(allPatients), activation="softmax", name="patient")(y)
+    x, y = inception_like_pre_layers(input_shape=(21, 500, 1), max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_filters=num_filters, dropout=dropout, num_layers=num_layers, get_kernel_regularizer=get_weight_regularizer, get_activity_regularizer=get_activation_regularizer)
+    y_gender = Dense(2, activation="softmax", name="gender", kernel_regularizer=get_weight_regularizer(), activity_regularizer=get_activation_regularizer())(y)
+    y_patient = Dense(len(allPatients), activation="softmax", name="patient", kernel_regularizer=get_weight_regularizer(), activity_regularizer=get_activation_regularizer())(y)
     model = Model(inputs=x, outputs=[y_gender, y_patient])
     model.summary()
     if num_gpus is not None and num_gpus > 1:
