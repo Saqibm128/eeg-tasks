@@ -571,9 +571,12 @@ def get_patient_dir_names(data_split, ref, full_path=True):
     """
     assert data_split in get_data_split()
     assert ref in get_reference_node_types()
-    root_dir_entry = data_split + "_" + ref
     config = read_config()
-    root_dir_path = config[root_dir_entry]
+    if data_split is None:
+        root_dir_path = config["data_dir_root"] + "/" + ref
+    else:
+        root_dir_entry = data_split + "_" + ref
+        root_dir_path = config[root_dir_entry]
     subdirs = get_abs_files(root_dir_path)
     patient_dirs = list(itertools.chain.from_iterable(
         [get_abs_files(subdir) for subdir in subdirs]))

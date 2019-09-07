@@ -182,7 +182,7 @@ def get_annotation_types():
 
 
 def get_data_split():
-    return ["train", "dev_test", "combined"]
+    return ["train", "dev_test", "combined", None]
 
 
 def get_reference_node_types():
@@ -213,10 +213,13 @@ def get_mongo_client(path=path.join(root_path,"dbmi_eeg_clustering/config.json")
         mongo_uri = config["mongo_uri"]
         return pymongo.MongoClient(mongo_uri)
 
+config = None #don't use lru_cache, instead this is exposed for idiots like me to mess with
 
-@lru_cache(10)
 def read_config(path=path.join(root_path,"dbmi_eeg_clustering/config.json")):
-    return json.load(open(path, "rb"))
+    global config
+    if config is None:
+        config = json.load(open(path, "rb"))
+    return config
 
 
 if __name__ == "__main__":
