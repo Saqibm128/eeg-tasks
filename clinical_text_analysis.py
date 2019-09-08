@@ -73,7 +73,7 @@ def demux_to_tokens(dataDictItems):
     return tokenFiles, labels
 
 @lru_cache(10)
-def getGenderAndFileNames(split, ref, convert_gender_to_num=False):
+def getGenderAndFileNames(split, ref, convert_gender_to_num=False,):
     all_token_fns = get_all_token_file_names(split, ref)
     num_hits = []
     genders = {}

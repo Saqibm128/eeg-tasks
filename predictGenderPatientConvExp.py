@@ -90,6 +90,22 @@ def debug():
 
 
 @ex.named_config
+def standardized_combined_split_patient_5():
+    use_combined = True
+    use_random_ensemble = True
+    precached_train_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_train_data_patient_gender_patient_split_5.pkl"
+    precached_valid_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_valid_data_patient_gender_patient_split_5.pkl"
+    precached_test_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_test_data_patient_gender_patient_split_5.pkl"
+    ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_patient_gender_patient_split_5.pkl"
+    patient_path = "/n/scratch2/ms994/patient_list_with_gender_2_plus_sess_patient_5.pkl"
+    max_num_samples = 5  # number of samples of eeg data segments per eeg.edf file
+    use_standard_scaler = True
+    use_filtering = True
+    split_on_session = False
+
+
+
+@ex.named_config
 def standardized_combined_split_patient():
     use_combined = True
     use_random_ensemble = True
@@ -182,7 +198,7 @@ def config():
     use_random_ensemble = False
     max_num_samples = 10  # number of samples of eeg data segments per eeg.edf file
     use_combined = False
-    combined_split = "combined"
+    combined_split = None
     num_gpus = 1
     early_stopping_on = "val_loss"
     test_train_split_pkl_path = "train_test_split_info.pkl"
@@ -326,7 +342,7 @@ def get_data_generator(precached_train_pkl, precached_valid_pkl, precached_test_
     return trainDataGen, validDataGen, testDataGen, testEnsemblerRawData
 
 @ex.capture
-def get_raw_data(num_files, max_num_samples, n_process, split_on_session, test_size, validation_size):
+def get_raw_data(num_files, max_num_samples, n_process, split_on_session, test_size, validation_size, combined_split):
     '''
     reality is that multitask learning can't actually incorporate both gender and patient
     in a fair way; either patients need to be segregated between test and train sets, in which case
@@ -335,7 +351,7 @@ def get_raw_data(num_files, max_num_samples, n_process, split_on_session, test_s
     if split_on_session is True, we prioritize patient id, otherwise, we don't
     '''
     global allPatients
-    files, genders = cta.demux_to_tokens(cta.getGenderAndFileNames("combined", "01_tcp_ar", True))
+    files, genders = cta.demux_to_tokens(cta.getGenderAndFileNames(combined_split, "01_tcp_ar", True))
     files = files[:num_files]
     genders = genders[:num_files]
     sessions = [read.parse_edf_token_path_structure(file)[2] for file in files]
@@ -396,16 +412,16 @@ def get_raw_data(num_files, max_num_samples, n_process, split_on_session, test_s
                     testPatientFiles += files
                     testLabels += labels
 
-    testEnsembler = er.EdfDatasetEnsembler("combined", "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=testPatientFiles, n_process=n_process, labels=testLabels, filter=True)
+    testEnsembler = er.EdfDatasetEnsembler(combined_split, "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=testPatientFiles, n_process=n_process, labels=testLabels, filter=True)
     testEnsemblerRawData = testEnsembler[:]
 
-    trainEnsembler = er.EdfDatasetEnsembler("combined", "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=trainPatientFiles, n_process=n_process, labels=trainLabels, filter=True)
+    trainEnsembler = er.EdfDatasetEnsembler(combined_split, "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=trainPatientFiles, n_process=n_process, labels=trainLabels, filter=True)
     trainEnsemblerRawData = trainEnsembler[:]
 
     if split_on_session:
         trainEnsemblerRawData, validEnsemblerRawData = train_test_split(trainEnsemblerRawData, test_size=0.1)
     else:
-        validEnsemblerRawData = er.EdfDatasetEnsembler("combined", "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=validPatientFiles, n_process=n_process, labels=validLabels, filter=True)
+        validEnsemblerRawData = er.EdfDatasetEnsembler(combined_split, "01_tcp_ar", max_num_samples=max_num_samples, edf_tokens=validPatientFiles, n_process=n_process, labels=validLabels, filter=True)
 
     return trainEnsembler, trainEnsemblerRawData, testEnsembler, testEnsemblerRawData, validEnsemblerRawData[:]
 

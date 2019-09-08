@@ -33,6 +33,22 @@ ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 # trainEdfEnsembler = None
 # testEdfEnsembler = None
 
+@ex.named_config
+def standardized_combined_simple_ensemble_5():
+    use_combined = True
+    use_random_ensemble = True
+    train_split = None
+    test_split = None
+    precached_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_train_data_5.pkl"
+    precached_test_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_test_data_5.pkl"
+    ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_5.pkl"
+
+    max_num_samples = 5  # number of samples of eeg data segments per eeg.edf file
+    use_standard_scaler = True
+    use_filtering = True
+    ref = "01_tcp_ar"
+    combined_split = None
+
 
 @ex.named_config
 def rf():
@@ -280,10 +296,11 @@ def get_base_dataset(split,
         if use_standard_scaler:
             edfData = read.EdfStandardScaler(
                 edfData, dataset_includes_label=True, n_process=n_process)
-        ensemble_sample_info_path = "test_" + \
-            ensemble_sample_info_path if is_test else ensemble_sample_info_path
-        ensemble_sample_info_path = "valid_" + \
-            ensemble_sample_info_path if is_valid else ensemble_sample_info_path
+        base_dir, subpath = path.split(ensemble_sample_info_path)
+        ensemble_sample_info_path = base_dir + "/test_" + \
+            subpath if is_test else ensemble_sample_info_path
+        ensemble_sample_info_path = base_dir + "/valid_" + \
+            subpath if is_valid else ensemble_sample_info_path
         print(ensemble_sample_info_path)
         if use_cached_pkl_dataset and path.exists(ensemble_sample_info_path):
             edfData.sampleInfo = pkl.load(
@@ -343,7 +360,8 @@ def get_data(split, ref, n_process, num_files, max_length, precached_pkl, precac
             split, ref, convert_gender_to_num=True)
         edfTokenPaths, genders = cta.demux_to_tokens(genderDict)
     if is_valid:
-        precached_pkl = "valid_" + precached_pkl
+        basedir, subpath = path.split(precached_pkl)
+        precached_pkl = basedir + "/valid_" + subpath
     if path.exists(precached_pkl) and use_cached_pkl_dont_reload_data:
         edfData = pkl.load(open(precached_pkl, 'rb'))
     else:
@@ -624,6 +642,7 @@ def dl(train_split, test_split, num_epochs, lr, n_process, validation_size, max_
     print(model.summary())
 
     print("x batch shape", len(trainDataGenerator))
+
     if not regenerate_data:
         # had issues where logs get too long, so onlye one line per epoch
         # also was trying to use multiprocessing for data analysis

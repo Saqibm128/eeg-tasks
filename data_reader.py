@@ -395,7 +395,7 @@ def parse_edf_token_path_structure(edf_token_path):
     remaining, session = path.split(remaining)
     remaining, patient = path.split(remaining)
     remaining, patient_prefix = path.split(remaining) #first 3 digits of patient id
-    remaining, split = path.split(remaining) #first 3 digits of patient id
+    remaining, split = path.split(remaining)
     return split, patient, session, token
 
 
@@ -413,6 +413,7 @@ def get_edf_data_and_label_ts_format(
             tse_data_ts = read_tse_file(tse_data_path)
     except Exception as e:
         print("could not read: {}".format(edf_path))
+        print(e)
         raise e
     return edf_data, tse_data_ts
 
