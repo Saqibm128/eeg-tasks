@@ -101,4 +101,14 @@ showing the assigned probabilities for various annotations
 Data is from TUH project.
 https://www.isip.piconepress.com/projects/tuh_eeg/
 
+
 3d_positions is generated from code in https://github.com/sappelhoff/eeg_positions/
+
+### Notes
+Data from all versions are concatenated into a single ALL directory with the use of the TUH_EEG file updates notebook.
+(using symlinks to the original location)
+
+2 EEF files are excluded due to issues with channels; there are 50352 edf files, but only 50350 have all 21 common channels.
+These were manually removed due to this issue:
+tuh_eeg/all//01_tcp_ar/117/00011700/s001_2014_06_11/00011700_s001_t000.edf
+tuh_eeg/all//01_tcp_ar/114/00011488/s002_2014_06_06/00011488_s002_t001.edf

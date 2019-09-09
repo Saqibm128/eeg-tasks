@@ -402,7 +402,8 @@ def get_data_generator(split, batch_size, num_files, max_length, use_random_ense
         labels=np.array(genders) if not use_random_ensemble else None,
         batch_size=batch_size,
         max_length=max_length,
-        shuffle=shuffle_generator
+        shuffle=shuffle_generator,
+        time_first=False
     )
 
 
