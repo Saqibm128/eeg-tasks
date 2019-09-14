@@ -273,16 +273,15 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
             if not self.return_ann:
                 return new_hist_bins
             if (self.edf_dataset.expand_tse and not self.non_overlapping):
-                return new_hist_bins, original_data[1].rolling(window_count_size).mean(
+                return new_hist_bins, label.rolling(window_count_size).mean(
                 )[:-window_count_size + 1].fillna(method="ffill").fillna(method="bfill")
             elif (self.edf_dataset.expand_tse and self.non_overlapping):
-                annotations = original_data[1].rolling(window_count_size).mean()[
+                annotations = label.rolling(window_count_size).mean()[
                     :-window_count_size + 1]
                 return new_hist_bins, annotations.iloc[list(range(
                     0, annotations.shape[0], window_count_size))].fillna(method="ffill").fillna(method="bfill")
             else:
-                return new_hist_bins, original_data[1].fillna(
-                    method="ffill").fillna(method="bfill")
+                return new_hist_bins, label
 
 
 class EdfDataset(util_funcs.MultiProcessingDataset):

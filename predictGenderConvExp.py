@@ -34,6 +34,41 @@ ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 # testEdfEnsembler = None
 
 @ex.named_config
+def standardized_combined_simple_ensemble_40():
+    use_combined = True
+    use_random_ensemble = True
+    train_split = None
+    test_split = None
+    precached_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_train_data_40.pkl"
+    precached_test_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_test_data_40.pkl"
+    ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_40.pkl"
+    test_train_split_pkl_path = "/n/scratch2/ms994/train_test_split_info_40.pkl"
+
+    max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
+    use_standard_scaler = True
+    use_filtering = True
+    ref = "01_tcp_ar"
+    combined_split = None
+
+@ex.named_config
+def standardized_combined_simple_ensemble_1():
+    use_combined = True
+    use_random_ensemble = True
+    train_split = None
+    test_split = None
+    precached_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_train_data_1.pkl"
+    precached_test_pkl = "/n/scratch2/ms994/standardized_combined_simple_ensemble_test_data_1.pkl"
+    ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_1.pkl"
+    test_train_split_pkl_path = "/n/scratch2/ms994/train_test_split_info_1.pkl"
+
+    max_num_samples = 1  # number of samples of eeg data segments per eeg.edf file
+    use_standard_scaler = True
+    use_filtering = True
+    ref = "01_tcp_ar"
+    combined_split = None
+
+
+@ex.named_config
 def standardized_combined_simple_ensemble_5():
     use_combined = True
     use_random_ensemble = True
@@ -259,7 +294,7 @@ def get_base_dataset(split,
                      ensemble_sample_info_path,
                      use_standard_scaler,
                      use_filtering,
-                     use_cached_pkl_dataset=True,
+                     use_cached_pkl,
                      is_test=False,
                      is_valid=False):
     if not use_random_ensemble:
@@ -302,7 +337,7 @@ def get_base_dataset(split,
         ensemble_sample_info_path = base_dir + "/valid_" + \
             subpath if is_valid else ensemble_sample_info_path
         print(ensemble_sample_info_path)
-        if use_cached_pkl_dataset and path.exists(ensemble_sample_info_path):
+        if use_cached_pkl and path.exists(ensemble_sample_info_path):
             edfData.sampleInfo = pkl.load(
                 open(ensemble_sample_info_path, 'rb'))
             ex.add_resource(ensemble_sample_info_path)
@@ -315,9 +350,9 @@ def get_base_dataset(split,
 
 cached_test_train_split_info = None
 @ex.capture
-def get_test_train_split_from_combined(combined_split, ref, test_size,  test_train_split_pkl_path, validation_size, use_cached_pkl_test_train_split=True,):
+def get_test_train_split_from_combined(combined_split, ref, test_size,  test_train_split_pkl_path, validation_size, use_cached_pkl):
     global cached_test_train_split_info
-    if use_cached_pkl_test_train_split and path.exists(test_train_split_pkl_path):
+    if use_cached_pkl and path.exists(test_train_split_pkl_path):
         cached_test_train_split_info = pkl.load(
             open(test_train_split_pkl_path, 'rb'))
         ex.add_resource(test_train_split_pkl_path)
@@ -340,7 +375,7 @@ def get_test_train_split_from_combined(combined_split, ref, test_size,  test_tra
 
 
 @ex.capture
-def get_data(split, ref, n_process, num_files, max_length, precached_pkl, precached_test_pkl, use_cached_pkl_dont_reload_data=True, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False):
+def get_data(split, ref, n_process, num_files, max_length, precached_pkl, precached_test_pkl, use_cached_pkl, use_combined=False, train_split="", test_split="",  is_test=False, is_valid=False):
     if is_test:
         precached_pkl = precached_test_pkl
     if use_combined:  # use the previous test train split, since we are sharing a split instead of enforcing it with a different directory
@@ -362,7 +397,7 @@ def get_data(split, ref, n_process, num_files, max_length, precached_pkl, precac
     if is_valid:
         basedir, subpath = path.split(precached_pkl)
         precached_pkl = basedir + "/valid_" + subpath
-    if path.exists(precached_pkl) and use_cached_pkl_dont_reload_data:
+    if path.exists(precached_pkl) and use_cached_pkl:
         edfData = pkl.load(open(precached_pkl, 'rb'))
     else:
         edfData = get_base_dataset(
@@ -483,10 +518,10 @@ def get_custom_model(
 
 
 @ex.capture
-def get_test_data(test_split, max_length, precached_test_pkl, use_cached_pkl):
+def get_test_data(test_split, max_length, precached_test_pkl):
     testData, testGender = get_data(
         test_split, precached_pkl=precached_test_pkl, is_test=True)
-    testData = np.stack([datum[0] for datum in testData])
+    testData = np.stack([datum[0][0:max_length] for datum in testData]) #weird issue, just forcing it to work
     testData = testData[:, 0:max_length]
     testData = testData.reshape(*testData.shape, 1).transpose(0, 2, 1, 3)
     return testData, testGender
