@@ -58,7 +58,7 @@ class EdfStandardScaler(util_funcs.MultiProcessingDataset):
             return data
 
 class SeizureLabelReader(util_funcs.MultiProcessingDataset):
-    def __init__(self, is_present_only=True, edf_token_paths=[], sampleInfo=None, n_process=4, overwrite_sample_info_label=True):
+    def __init__(self, split=None, ref="01_tcp_ar", return_tse_data=False, is_present_only=True, edf_token_paths=[], sampleInfo=None, n_process=4, overwrite_sample_info_label=True):
         """ Provides access to an array-like that can create labels matching sampleInfo
         or if edf_token_paths is available
 
@@ -80,14 +80,18 @@ class SeizureLabelReader(util_funcs.MultiProcessingDataset):
         """
         if not is_present_only:
             raise NotImplementedError("TODO: maybe allow ways to get labels over time or if seizure is about to occur")
-        if sampleInfo is None:
-            raise NotImplementedError("TODO: Just depend directly on idea of random ensembling")
-        self.is_present_only  = is_present_only
         self.sampleInfo = sampleInfo
+        if sampleInfo is None:
+            token_files = get_all_token_file_names(split, ref)
+            self.sampleInfo = Dict()
+            for i, token_file in enumerate(token_files):
+                self.sampleInfo[i].token_file_path = token_file
+        self.is_present_only  = is_present_only
         self.n_process = n_process
         self.verbosity = 100
         self.edf_token_paths = edf_token_paths
         self.overwrite_sample_info_label = overwrite_sample_info_label
+        self.return_tse_data = return_tse_data
 
     def self_assign_to_sample_info(self, convert_to_int):
         labels = self[:]
@@ -111,6 +115,8 @@ class SeizureLabelReader(util_funcs.MultiProcessingDataset):
             sample_width = self.sampleInfo[i].sample_width
             label_file = convert_edf_path_to_tse(token_file_path)
             seiz_label = read_tse_file(label_file)
+            if self.return_tse_data:
+                return seiz_label
             startTime = pd.Timedelta(sampleNum * sample_width).seconds
             endTime = pd.Timedelta(sampleNum*sample_width + sample_width).seconds
             #look for where the slice lands

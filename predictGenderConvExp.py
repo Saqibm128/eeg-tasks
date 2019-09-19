@@ -34,6 +34,23 @@ ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 # testEdfEnsembler = None
 
 @ex.named_config
+def nonstandardized_combined_simple_ensemble_40():
+    use_combined = True
+    use_random_ensemble = True
+    train_split = None
+    test_split = None
+    precached_pkl = "/n/scratch2/ms994/nonstandardized_simple_ensemble_train_data_40.pkl"
+    precached_test_pkl = "/n/scratch2/ms994/nonstandardized_simple_ensemble_test_data_40.pkl"
+    ensemble_sample_info_path = "/n/scratch2/ms994/nonstandardized_edf_ensemble_sample_info_40.pkl"
+    test_train_split_pkl_path = "/n/scratch2/ms994/nonstandardized_train_test_split_info_40.pkl"
+
+    max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
+    use_standard_scaler = False
+    use_filtering = True
+    ref = "01_tcp_ar"
+    combined_split = None
+
+@ex.named_config
 def standardized_combined_simple_ensemble_40():
     use_combined = True
     use_random_ensemble = True
