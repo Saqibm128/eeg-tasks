@@ -214,6 +214,17 @@ def get_mongo_client(path=path.join(root_path,"dbmi_eeg_clustering/config.json")
         return pymongo.MongoClient(mongo_uri)
 
 config = None #don't use lru_cache, instead this is exposed for idiots like me to mess with
+def switch_to_seizure_subset():
+    global config
+    config = read_config()
+    config.update(config["seizure_config"])
+    return config
+
+def switch_to_general_superset():
+    global config
+    config = read_config()
+    config.update(config["tuh_eeg_all"])
+    return config
 
 def read_config(path=path.join(root_path,"dbmi_eeg_clustering/config.json")):
     global config

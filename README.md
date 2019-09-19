@@ -9,13 +9,38 @@ Reads the directory of the data using config.json file
 
 ``` config.json
 {
-  "train_01_tcp_ar": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/train/01_tcp_ar/",
-  "dev_test_01_tcp_ar": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/dev_test/01_tcp_ar/",
-  "train_02_tcp_le": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/train/02_tcp_le/",
-  "dev_test_02_tcp_le": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/dev_test/02_tcp_le/",
-  "train_03_tcp_ar_a": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/dev_test/03_tcp_ar_a/",
-  "dev_test_03_tcp_ar_a": "/mnt/c/Users/sawer/src/dbmi/tuh/v1.5.0/edf/train/03_tcp_ar_a/"
+  "mongo_uri": "mongodb://user:pass@ip:port",
+  "data_dir_root": "/home/ms994/v1.5.0/edf",
+  "train_01_tcp_ar": "/home/ms994/v1.5.0/edf/train/01_tcp_ar/",
+  "combined_01_tcp_ar": "/home/ms994/v1.5.0/edf/combined/01_tcp_ar/",
+  "dev_test_01_tcp_ar": "/home/ms994/v1.5.0/edf/dev_test/01_tcp_ar/",
+  "train_02_tcp_le": "/home/ms994/v1.5.0/edf/train/02_tcp_le/",
+  "dev_test_02_tcp_le": "/home/ms994/v1.5.0/edf/dev_test/02_tcp_le/",
+  "train_03_tcp_ar_a": "/home/ms994/v1.5.0/edf/dev_test/03_tcp_ar_a/",
+  "dev_test_03_tcp_ar_a": "/home/ms994/v1.5.0/edf/train/03_tcp_ar_a/",
+  "seizure_tse_root": "/n/scratch2/ms994/",
+  "seizure_config": {
+    "data_dir_root": "/home/ms994/v1.5.0/edf",
+    "train_01_tcp_ar": "/home/ms994/v1.5.0/edf/train/01_tcp_ar/",
+    "combined_01_tcp_ar": "/home/ms994/v1.5.0/edf/combined/01_tcp_ar/",
+    "dev_test_01_tcp_ar": "/home/ms994/v1.5.0/edf/dev_test/01_tcp_ar/",
+    "train_02_tcp_le": "/home/ms994/v1.5.0/edf/train/02_tcp_le/",
+    "dev_test_02_tcp_le": "/home/ms994/v1.5.0/edf/dev_test/02_tcp_le/",
+    "train_03_tcp_ar_a": "/home/ms994/v1.5.0/edf/dev_test/03_tcp_ar_a/",
+    "dev_test_03_tcp_ar_a": "/home/ms994/v1.5.0/edf/train/03_tcp_ar_a/"
+  },
+  "tuh_eeg_all": {
+    "data_dir_root": "/n/scratch2/ms994/tuh_files/tuh_eeg/v1.1.0/edf/",
+    "train_01_tcp_ar": "/n/scratch2/ms994/tuh_files/tuh_eeg/v1.1.0/edf/train/01_tcp_ar/",
+    "combined_01_tcp_ar": "/n/scratch2/ms994/tuh_files/tuh_eeg/v1.1.0/edf/combined/01_tcp_ar/",
+    "dev_test_01_tcp_ar": "/n/scratch2/ms994/tuh_files/tuh_eeg/v1.1.0/edf/dev_test/01_tcp_ar/",
+    "train_02_tcp_le": "/n/scratch2/ms994/tuh_files/tuh_eeg/v1.1.0/edf/train/02_tcp_le/",
+    "dev_test_02_tcp_le": "/n/scratch2/ms994/tuh_files/tuh_eeg/v1.1.0/edf/dev_test/02_tcp_le/",
+    "train_03_tcp_ar_a": "/n/scratch2/ms994/tuh_files/tuh_eeg/v1.1.0/edf/dev_test/03_tcp_ar_a/",
+    "dev_test_03_tcp_ar_a": "/n/scratch2/ms994/tuh_files/tuh_eeg/v1.1.0/edf/train/03_tcp_ar_a/"
+  }
 }
+
 ```
 
 ## Code Overview

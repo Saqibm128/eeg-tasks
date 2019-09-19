@@ -57,10 +57,23 @@ class EdfStandardScaler(util_funcs.MultiProcessingDataset):
         else:
             return data
 
+class GeneralLabelReader(util_funcs.MultiProcessingDataset):
+    def __init__(self, split=None, ref="01_tcp_ar", n_process=4):
+        self.split = split
+        self.ref = ref
+        self.n_process = n_process
+        self.token_files = get_all_token_file_names(split, ref)
+
+    def __len__(self):
+        pass
+
+
 class SeizureLabelReader(util_funcs.MultiProcessingDataset):
     def __init__(self, split=None, ref="01_tcp_ar", return_tse_data=False, is_present_only=True, edf_token_paths=[], sampleInfo=None, n_process=4, overwrite_sample_info_label=True):
         """ Provides access to an array-like that can create labels matching sampleInfo
         or if edf_token_paths is available
+
+        Primarily designed for TUH_EEG data subset
 
         Parameters
         ----------
