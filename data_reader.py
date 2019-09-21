@@ -509,6 +509,52 @@ def expand_tse_file(ann_y, ts_index, dtype=np.float32):
     ann_y_t.fillna(0, inplace=True)
     return ann_y_t
 
+def seizure_series_annotate_times(raw_ann, pre_cooldown=5, post_cooldow=5, sample_time=300):
+    possibleSeizureTrainTimes = []
+    possibleNonseizureTrainTimes = []
+    start_min = raw_ann.start.min()
+    end_max = raw_ann.end.max()
+    cooldown_times = []
+    seizure_times = []
+    preseizure_cooldown_times = []
+    postseizure_cooldown_times = []
+    possible_sample_times = []
+    timeInd = pd.TimedeltaIndex(freq=pd.Timedelta(seconds=1), start=0, periods=raw_ann.end.max())
+    labelTimeSeries = pd.Series(index=timeInd)
+
+    preseizure_predict_times = []
+    for i, label in raw_ann.iterrows():
+        if "sz" in label["label"].lower():
+            seizure_times.append((label.start, label.end))
+            preseizure_cooldown_times.append((max(0, label.start-pre_cooldown), label.start))
+            possible_sample_times.append((max(0, label.start-pre_cooldown - sample_time), max(0, label.start-pre_cooldown)))
+            postseizure_cooldown_times.append((label.end, min(max(raw_ann.end), label.end+post_cooldown)))
+    postseizure_cooldown_times = pd.DataFrame(postseizure_cooldown_times, columns=["start", "end"])
+    postseizure_cooldown_times = postseizure_cooldown_times.loc[postseizure_cooldown_times["start"] != postseizure_cooldown_times["end"]]
+
+
+    preseizure_cooldown_times = pd.DataFrame(preseizure_cooldown_times, columns=["start", "end"])
+    preseizure_cooldown_times = preseizure_cooldown_times.loc[preseizure_cooldown_times["start"] != preseizure_cooldown_times["end"]]
+
+    seizure_times = pd.DataFrame(seizure_times, columns=["start", "end"])
+    seizure_times = seizure_times.loc[seizure_times["start"] != seizure_times["end"]]
+
+    possible_sample_times = pd.DataFrame(possible_sample_times, columns=["start", "end"])
+    possible_sample_times = possible_sample_times.loc[possible_sample_times["start"] != possible_sample_times["end"]]
+    new_ann = raw_ann.copy()
+
+
+    labelTimeSeries = labelTimeSeries.fillna("bckg")
+    for i, samp_time in possible_sample_times.iterrows():
+        labelTimeSeries[pd.Timedelta(seconds=samp_time.start):pd.Timedelta(seconds=samp_time.end)] = "sample"
+    for i, cooldown in preseizure_cooldown_times.iterrows():
+        labelTimeSeries[pd.Timedelta(seconds=cooldown.start):pd.Timedelta(seconds=cooldown.end)] = "presz"
+    for i, cooldown in postseizure_cooldown_times.iterrows():
+        labelTimeSeries[pd.Timedelta(seconds=cooldown.start):pd.Timedelta(seconds=cooldown.end)] = "postsz"
+
+    for i, seizure in seizure_times.iterrows():
+        labelTimeSeries[pd.Timedelta(seconds=seizure.start):pd.Timedelta(seconds=seizure.end)] = "sz"
+    return labelTimeSeries
 
 def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None):
     """ Transforms from EDF to pd.df, with channel labels as columns.
