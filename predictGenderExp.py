@@ -34,7 +34,7 @@ def rf():
     parameters = {
         'rf__criterion': ["gini", "entropy"],
         'rf__n_estimators': [50, 100, 200, 400, 600, 1200],
-        'rf__max_features': ['auto', 'log2', 2, 4, 8, 16, .1, .4, .6],
+        'rf__max_features': ['auto', 'log2', 2, 3, 4, 5, 6, 7 8, 16, .04, .02],
         'rf__max_depth': [None, 4, 8, 12],
         'rf__min_samples_split': [2, 4, 8],
         'rf__n_jobs': [1],
@@ -201,7 +201,9 @@ def main(train_pkl, test_pkl, train_split, test_split, clf_name, precache):
         'f1': f1_score(y_pred, testGenders),
         'acc': accuracy_score(y_pred, testGenders),
         'mcc': matthews_corrcoef(y_pred, testGenders),
-        'auc': roc_auc_score(y_pred, testGenders)
+        'auc': roc_auc_score(y_pred, testGenders),
+        'best_params_': toSaveDict.best_params_,
+        'cv_results': gridsearch.cv_results_
     }}
 
 
