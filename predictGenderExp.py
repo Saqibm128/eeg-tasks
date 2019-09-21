@@ -16,7 +16,8 @@ from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
 import pickle as pkl
 import sacred
-ex = sacred.Experiment(name="gender_predict")
+import ensembleReader as er
+ex = sacred.Experiment(name="gender_predict_conventional")
 
 '''
 Based on
@@ -32,8 +33,8 @@ ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 def rf():
     parameters = {
         'rf__criterion': ["gini", "entropy"],
-        'rf__n_estimators': [50, 100, 200, 400, 600],
-        'rf__max_features': ['auto', 'log2', .1, .4, .6],
+        'rf__n_estimators': [50, 100, 200, 400, 600, 1200],
+        'rf__max_features': ['auto', 'log2', 2, 4, 8, 16, .1, .4, .6],
         'rf__max_depth': [None, 4, 8, 12],
         'rf__min_samples_split': [2, 4, 8],
         'rf__n_jobs': [1],
@@ -93,7 +94,7 @@ def config():
     n_gridsearch_process = n_process
     precache = False
     train_pkl="trainGenderData.pkl"
-    filter = False
+    filter = True
     test_pkl="testGenderData.pkl"
 
 @ex.capture

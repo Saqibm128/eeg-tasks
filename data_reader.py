@@ -454,6 +454,8 @@ def read_tse_file(tse_path):
                 tse_data_line['end'] = float(subparts[1])
                 tse_data_line['label'] = str(subparts[2])
                 tse_data_line['p'] = float(subparts[3])
+                tse_data_line["duration"] = tse_data_line["end"] - tse_data_line["start"]
+
                 tse_data_lines.append(tse_data_line)
     tse_data = pd.concat(tse_data_lines, axis=1).T
     return tse_data

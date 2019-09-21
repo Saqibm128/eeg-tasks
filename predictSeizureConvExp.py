@@ -27,7 +27,7 @@ from keras_models import train
 import random
 import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-ex = sacred.Experiment(name="predict_seizure_in_eeg")
+ex = sacred.Experiment(name="detect_seizure_in_eeg")
 
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
