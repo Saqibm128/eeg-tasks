@@ -40,6 +40,10 @@ def rf():
     clf_step = ('rf', RandomForestClassifier())
 
 @ex.named_config
+def rf_debug():
+    parameters = {'rf__criterion': ["gini", "entropy"],}
+
+@ex.named_config
 def lr():
     parameters = {
         'lr__tol': [0.001, 0.0001, 0.00001],
