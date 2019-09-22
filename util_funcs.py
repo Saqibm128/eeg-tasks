@@ -12,9 +12,43 @@ import multiprocessing as mp
 import queue
 import constants
 from functools import lru_cache
+from imblearn.over_sampling import SMOTE, ADASYN
+from imblearn.under_sampling import RandomUnderSampler
+
 
 root_path = "/home/ms994/" if "EEG_ROOT" not in os.environ.keys() else os.environ["EEG_ROOT"]
 
+class ImbalancedClassResampler():
+    SMOTE = "SMOTE"
+    RANDOM_UNDERSAMPLE = "RANDOM_UNDERSAMPLE"
+    def __init__(self, method=None, n_process=1):
+        self.method = method
+        self.n_process = n_process
+        self.resampler = None
+
+    def fit(self, x, y):
+        if self.method is None:
+            return self
+        if self.method == ImbalancedClassResampler.SMOTE:
+            self.resampler = SMOTE(n_jobs=self.n_process)
+            self.resampler.fit(x, y)
+        elif self.method == ImbalancedClassResampler.RANDOM_UNDERSAMPLE:
+            self.resampler = RandomUnderSampler()
+
+    def get_params(self,deep):
+        return {"method": self.method}
+
+    def set_params(self, method):
+        self.method = method
+
+    def resample(self,x, y):
+        if self.method is None:
+            return x, y
+        return self.resampler.resample(x, y)
+
+    def fit_resample(self,x, y):
+        self.fit(x, y)
+        return self.transform(x, y)
 
 class MultiProcessingDataset():
     """Class to help improve speed of looking up multiple records at once using multiple processes.

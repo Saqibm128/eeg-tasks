@@ -124,11 +124,17 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         hp_cutoff=50,
         order_filt=5,
         mode=DETECT_MODE,
-        gap = pd.Timedelta(seconds=4)
+        resample=pd.Timedelta(seconds=constants.COMMON_DELTA),
+        gap = pd.Timedelta(seconds=4),
+        num_samples=None,
+        max_bckg_samps_per_file=None,
+        n_process=4
     ):
         if mode != EdfDatasetSegmentedSampler.DETECT_MODE:
             raise NotImplemented("have not created other modes for prediction or both yet")
         self.mode = mode
+        self.n_process = n_process
+        self.resample = resample
         self.segment_file_tuples = segment_file_tuples
         self.columns_to_use = columns_to_use
         self.use_numpy = use_numpy
@@ -137,13 +143,21 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         self.order_filt = order_filt
         self.sampleInfo = Dict()
         self.gap = gap
+        self.num_samples = num_samples
         currentIndex = 0
         for token_file_path, segment in self.segment_file_tuples:
+            num_bckg_samps_per_file = 0
             for time_period, label in segment.iteritems():
-                if label == "presz" or label == "postsz":
+                if num_samples is not None and currentIndex >= self.num_samples:
+                    break
+                if max_bckg_samps_per_file is not None and num_bckg_samps_per_file >= max_bckg_samps_per_file and label == "bckg":
+                    continue
+                if label != "bckg" and label != "sz":
                     continue #go to next, too close to seizure to be safe
                 if self.mode == EdfDatasetSegmentedSampler.DETECT_MODE:
                     self.sampleInfo[currentIndex].label = (label == "sz")
+                if label == "bckg":
+                    num_bckg_samps_per_file += 1
                 self.sampleInfo[currentIndex].token_file_path = token_file_path
                 self.sampleInfo[currentIndex].sample_num = time_period / self.gap
                 self.sampleInfo[currentIndex].sample_width = self.gap
@@ -159,12 +173,11 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
             return self.getItemSlice(i)
         indexData = self.sampleInfo[i]
         data = read.edf_eeg_2_df(indexData.token_file_path,
-                                 resample=pd.Timedelta(
-                                     seconds=constants.COMMON_DELTA),
+                                 resample=self.resample,
                                  start=pd.Timedelta(indexData.sample_num * self.gap),
                                  max_length=self.gap)
 
-        data = data.loc[pd.Timedelta(seconds=0):self.max_length].iloc[0:-1]
+        data = data.loc[pd.Timedelta(seconds=0):self.gap].iloc[0:-1]
 
         data = data[self.columns_to_use]
         data = data.apply(

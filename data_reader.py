@@ -142,6 +142,31 @@ class SeizureLabelReader(util_funcs.MultiProcessingDataset):
             return label
 
 
+class Flattener(util_funcs.MultiProcessingDataset):
+    def __init__(self, dataset, is_tuple_data=True, is_pandas_data=True, n_process=4):
+        self.dataset = dataset
+        self.is_tuple_data = is_tuple_data
+        self.is_pandas_data = is_pandas_data
+        self.n_process = n_process
+
+    def __len__(self):
+        return len(self.dataset)
+    def __getitem__(self, i):
+        if self.should_use_mp(i):
+            return self.getItemSlice(i)
+        else:
+            if self.is_tuple_data:
+                data, label = self.dataset[i]
+            else:
+                data = self.dataset[i]
+
+            if self.is_pandas_data:
+                data = data.values
+            data = data.flatten()
+            if self.is_tuple_data:
+                return data, label
+            else:
+                return data
 
 
 

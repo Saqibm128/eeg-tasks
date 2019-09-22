@@ -202,6 +202,8 @@ def main(train_pkl, test_pkl, train_split, test_split, clf_name, precache):
         'acc': accuracy_score(y_pred, testGenders),
         'mcc': matthews_corrcoef(y_pred, testGenders),
         'auc': roc_auc_score(y_pred, testGenders),
+
+    }, 'gridsearch_results': {
         'best_params_': toSaveDict.best_params_,
         'cv_results': gridsearch.cv_results_
     }}
