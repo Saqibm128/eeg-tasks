@@ -112,9 +112,9 @@ class EdfDatasetSegments():
 
 
 class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
-    DETECT_MODE=1
-    PREDICT_MODE=2
-    DETECT_PREDICT_MODE=3
+    DETECT_MODE="DETECT"
+    PREDICT_MODE="PREDICT"
+    DETECT_PREDICT_MODE="BOTH"
     def __init__(
         self,
         segment_file_tuples,
@@ -130,8 +130,6 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         max_bckg_samps_per_file=None,
         n_process=4
     ):
-        if mode != EdfDatasetSegmentedSampler.DETECT_MODE:
-            raise NotImplemented("have not created other modes for prediction or both yet")
         self.mode = mode
         self.n_process = n_process
         self.resample = resample
@@ -152,10 +150,17 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
                     break
                 if max_bckg_samps_per_file is not None and num_bckg_samps_per_file >= max_bckg_samps_per_file and label == "bckg":
                     continue
-                if label != "bckg" and label != "sz":
+                if (label != "bckg" and label != "sz" and self.mode == EdfDatasetSegmentedSampler.DETECT_MODE):
                     continue #go to next, too close to seizure to be safe
                 if self.mode == EdfDatasetSegmentedSampler.DETECT_MODE:
                     self.sampleInfo[currentIndex].label = (label == "sz")
+
+
+                if (label != "bckg" and label != "sample" and self.mode == EdfDatasetSegmentedSampler.PREDICT_MODE):
+                    continue #go to next, too close to seizure to be safe or is seizure, we don't want to deal with this
+                if self.mode == EdfDatasetSegmentedSampler.PREDICT_MODE:
+                    self.sampleInfo[currentIndex].label = (label == "sample")
+
                 if label == "bckg":
                     num_bckg_samps_per_file += 1
                 self.sampleInfo[currentIndex].token_file_path = token_file_path

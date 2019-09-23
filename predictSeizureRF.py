@@ -17,6 +17,8 @@ import wf_analysis.datasets as wfdata
 import pickle as pkl
 import sacred
 import ensembleReader as er
+from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import RandomUnderSampler
 ex = sacred.Experiment(name="seizure_predict_traditional")
 
 
@@ -79,18 +81,33 @@ def config():
     valid_pkl="/n/scratch2/ms994/validSeizureData.pkl"
     test_pkl="/n/scratch2/ms994/testSeizureData.pkl"
     mode = "detect"
-    max_bckg_samps_per_file = 20
+    max_bckg_samps_per_file = 40
     resample_imbalanced_method = None
     max_samples=None
     regenerate_data=False
+    imbalanced_resampler = None
+    pre_cooldown=35
+    post_cooldown=None
+    sample_time=30
+    num_seconds=4
+    mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
+
 
 @ex.named_config
 def predict_mode():
-    mode="predict"
+    mode=er.EdfDatasetSegmentedSampler.PREDICT_MODE
+    train_pkl="/n/scratch2/ms994/trainPredictSeizureData.pkl"
+    valid_pkl="/n/scratch2/ms994/validPredictSeizureData.pkl"
+    test_pkl="/n/scratch2/ms994/testPredictSeizureData.pkl"
+
+@ex.capture
+def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds):
+    return er.EdfDatasetSegments(pre_cooldown=pre_cooldown, post_cooldown=post_cooldown, sample_time=sample_time, num_seconds=num_seconds,)
+
 
 @ex.capture
 def get_data(mode, max_samples, max_bckg_samps_per_file, ref="01_tcp_ar", num_files=None, freq_bins=[0,3.5,7.5,14,20,25,40], n_process=4, include_simple_coherence=True,):
-    eds = er.EdfDatasetSegments()
+    eds = getDataSampleGenerator()
     train_label_files_segs = eds.get_train_split()
     test_label_files_segs = eds.get_test_split()
     valid_label_files_segs = eds.get_valid_split()
@@ -102,7 +119,21 @@ def get_data(mode, max_samples, max_bckg_samps_per_file, ref="01_tcp_ar", num_fi
     test_edss = read.Flattener(read.EdfFFTDatasetTransformer(test_edss, freq_bins=freq_bins, is_pandas_data=False))[:]
     return train_edss, valid_edss, test_edss
 
+@ex.capture
+def getImbResampler(imbalanced_resampler):
+    if imbalanced_resampler is None:
+        return None
+    elif imbalanced_resampler == "SMOTE":
+        return SMOTE()
+    elif imbalanced_resampler == "rul":
+        return RandomUnderSampler()
 
+@ex.capture
+def resample_x_y(x, y, imbalanced_resampler):
+    if imbalanced_resampler is None:
+        return x, y
+    else:
+        return getImbResampler().fit_resample(x, y)
 
 @ex.capture
 def getGridsearch(valid_indices, clf_step, parameters, n_process):
@@ -147,18 +178,24 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, test_split, clf_name, prec
 
     print("Starting ", clf_name)
 
-    trainValidData = np.vstack([trainData, validData])
-    trainValidLabels = np.hstack([trainLabels, validLabels]).reshape(-1, 1)
+    #resample separately to avoid any data leaking between splits
+    trainDataResampled, trainLabelsResampled = resample_x_y(trainData, trainLabels)
+    validDataResampled, validLabelsResampled = resample_x_y(validData, validLabels)
 
-    valid_indices = [[[i for i in range(len(trainLabels))], [i + len(trainLabels) for i in range(len(validLabels))]]]
+    trainValidData = np.vstack([trainDataResampled, validDataResampled])
+    trainValidLabels = np.hstack([trainLabelsResampled, validLabelsResampled])
+
+
+    valid_indices = [[[i for i in range(len(trainLabelsResampled))], [i + len(trainLabelsResampled) for i in range(len(validLabelsResampled))]]]
     gridsearch = getGridsearch(valid_indices)
+
     gridsearch.fit(trainValidData, trainValidLabels)
     print(pd.Series(trainLabels).value_counts())
 
     print("Best Parameters were: ", gridsearch.best_params_)
     print(pd.Series(testLabels).value_counts())
 
-    bestPredictor = gridsearch.best_estimator_.named_steps["rf"]
+    bestPredictor = gridsearch.best_estimator_.named_steps[clf_name]
     bestPredictor.fit(trainValidData, trainValidLabels)
     y_pred = bestPredictor.predict(testData)
     print("Proportion 1 in Predicted Test Set: ", y_pred.sum() / len(testLabels),
@@ -188,4 +225,6 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, test_split, clf_name, prec
 
 
 if __name__ == "__main__":
+    #https://github.com/ContinuumIO/anaconda-issues/issues/11294#issuecomment-533138984 mp got jacked by version upgrade
+
     ex.run_commandline()
