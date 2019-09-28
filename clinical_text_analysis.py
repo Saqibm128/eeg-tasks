@@ -42,7 +42,22 @@ def train_test_split_on_combined(edfTokens, labels, test_size=0.2, warn_conflict
             labelTest.append(patients[testId].label)
     return edfTokenTrain, edfTokenTest, labelTrain, labelTest
 
+def get_clinical_notes_by_section(path, is_edf_path=True):
+    """Gets clinical notes and splits based on the subheading into a somewhat structured dictionary
 
+    Parameters
+    ----------
+    path : string
+        path to edf file or text file
+    is_edf_path : bool
+        if true, then path is to edf file, we then find text file location based on that
+
+    Returns
+    -------
+    Dict
+        keys are headers, values are the info from the clinical notes
+    """
+    pass
 
 def demux_to_tokens(dataDictItems):
     """utility method to deal with fact that labels are on session level, but

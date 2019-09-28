@@ -514,8 +514,12 @@ def get_all_clinical_notes(session_path, edf_convert=True):
         clinical_notes_path = convert_edf_path_to_txt(session_path)
     else:
         clinical_notes_path = session_path
-    with open(clinical_notes_path, 'rb') as f:
-        lines = f.readlines()
+    try:
+        with open(clinical_notes_path, 'r') as f:
+            lines = f.readlines()
+    except Exception:
+        with open(clinical_notes_path, 'rb') as f:
+            lines = f.readlines()
     res = ""
     for line in lines:
         res += str(line)
