@@ -19,7 +19,8 @@ import sacred
 import ensembleReader as er
 from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
-ex = sacred.Experiment(name="seizure_predict_traditional")
+import xgboost as xgb
+ex = sacred.Experiment(name="seizure_predict_traditional_ml")
 
 
 
@@ -91,6 +92,7 @@ def config():
     sample_time=32
     num_seconds=4
     mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
+    use_xgboost = False
 
 
 @ex.named_config
@@ -153,9 +155,14 @@ def getFeatureScores(gridsearch, clf_name):
     elif clf_name == "rf":
         return gridsearch.best_estimator_.named_steps[clf_name].feature_importances_
 
+@ex.capture
+def xgboost_flow(trainDataResampled, trainLabelsResampled, validDataResampled, validLabelsResampled):
+
+    results = Dict()
+    return results
 
 @ex.main
-def main(train_pkl, valid_pkl, test_pkl, train_split, test_split, clf_name, precache, regenerate_data):
+def main(train_pkl, valid_pkl, test_pkl, train_split, test_split, clf_name, precache, regenerate_data, use_xgboost):
     if path.exists(train_pkl) and precache:
         testData, testLabels = pkl.load(open(test_pkl, 'rb'))
         trainData, trainLabels = pkl.load(open(train_pkl, 'rb'))
@@ -181,6 +188,9 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, test_split, clf_name, prec
     #resample separately to avoid any data leaking between splits
     trainDataResampled, trainLabelsResampled = resample_x_y(trainData, trainLabels)
     validDataResampled, validLabelsResampled = resample_x_y(validData, validLabels)
+
+    if use_xgboost:
+        return xgboost_flow(trainDataResampled, trainLabelsResampled, validDataResampled, validLabelsResampled)
 
     trainValidData = np.vstack([trainDataResampled, validDataResampled])
     trainValidLabels = np.hstack([trainLabelsResampled, validLabelsResampled])

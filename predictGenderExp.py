@@ -34,7 +34,7 @@ def rf():
     parameters = {
         'rf__criterion': ["gini", "entropy"],
         'rf__n_estimators': [50, 100, 200, 400, 600, 1200],
-        'rf__max_features': ['auto', 'log2', 2, 3, 4, 5, 6, 7 8, 16, .04, .02],
+        'rf__max_features': ['auto', 'log2'], #, 2, 3, 4, 5, 6, 7, 8, 16, .04, .02
         'rf__max_depth': [None, 4, 8, 12],
         'rf__min_samples_split': [2, 4, 8],
         'rf__n_jobs': [1],
