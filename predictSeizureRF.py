@@ -9,8 +9,8 @@ from os import path
 import data_reader as read
 import constants
 import util_funcs
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef, classification_report
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef, classification_report, mean_squared_error
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
@@ -43,6 +43,22 @@ def rf():
     clf_step = ('rf', RandomForestClassifier())
 
 @ex.named_config
+def xgboost():
+    parameters = {
+        "xgboost__max_depth": [3,4,5,6],
+        "xgboost__learning_rate":[0.1,0.2],
+        "xgboost__gamma":[0,0.1,0.2],
+        "xgboost__alpha":[0,0.1,0.2],
+        "xgboost__lambda":[0,0.1,0.2],
+        "xgboost__top_k":[0,1,2,4,8,16],
+        "xgboost__feature_selector":["cyclic", "shuffle"],
+        "xgboost__rf__n_estimators":[100,200,300,400,600],
+    }
+    clf_name = "xgboost"
+    clf_step = (clf_name, xgb.XGBRegressor(objective='binary:logistic',))
+    use_xgboost=True
+
+@ex.named_config
 def rf_debug():
     parameters = {'rf__criterion': ["gini", "entropy"],}
 
@@ -67,6 +83,7 @@ def debug():
 @ex.config
 def config():
     train_split = "train"
+    use_random_cv = False
     test_split = "dev_test"
     ref = "01_tcp_ar"
     include_simple_coherence = True
@@ -138,14 +155,24 @@ def resample_x_y(x, y, imbalanced_resampler):
         return getImbResampler().fit_resample(x, y)
 
 @ex.capture
-def getGridsearch(valid_indices, clf_step, parameters, n_process):
+def getGridsearch(valid_indices, clf_step, parameters, n_process, use_random_cv, num_random_choices=10, use_xgboost=False):
     steps = [
         # ("imb", util_funcs.ImbalancedClassResampler(n_process=n_process)),
         clf_step
     ]
+
+
+
     pipeline = Pipeline(steps)
+    if use_xgboost:
+        scorer = make_scorer(roc_auc_score)
+    else:
+        scorer = make_scorer(f1_score)
+    if use_random_cv:
+        return RandomizedSearchCV(pipeline, parameters, cv=valid_indices,
+                            scoring=scorer, n_jobs=n_process, n_iter=num_random_choices)
     return GridSearchCV(pipeline, parameters, cv=valid_indices,
-                        scoring=make_scorer(f1_score), n_jobs=n_process)
+                        scoring=scorer, n_jobs=n_process)
 
 
 @ex.capture
@@ -155,14 +182,9 @@ def getFeatureScores(gridsearch, clf_name):
     elif clf_name == "rf":
         return gridsearch.best_estimator_.named_steps[clf_name].feature_importances_
 
-@ex.capture
-def xgboost_flow(trainDataResampled, trainLabelsResampled, validDataResampled, validLabelsResampled):
-
-    results = Dict()
-    return results
 
 @ex.main
-def main(train_pkl, valid_pkl, test_pkl, train_split, test_split, clf_name, precache, regenerate_data, use_xgboost):
+def main(train_pkl, valid_pkl, test_pkl, train_split, test_split, clf_name, precache, regenerate_data, use_xgboost, num_random_choices=10):
     if path.exists(train_pkl) and precache:
         testData, testLabels = pkl.load(open(test_pkl, 'rb'))
         trainData, trainLabels = pkl.load(open(train_pkl, 'rb'))
@@ -189,8 +211,9 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, test_split, clf_name, prec
     trainDataResampled, trainLabelsResampled = resample_x_y(trainData, trainLabels)
     validDataResampled, validLabelsResampled = resample_x_y(validData, validLabels)
 
-    if use_xgboost:
-        return xgboost_flow(trainDataResampled, trainLabelsResampled, validDataResampled, validLabelsResampled)
+
+    # if use_xgboost:
+    #     return xgboost_flow(trainDataResampled, trainLabelsResampled, validDataResampled, validLabelsResampled, testData, testLabels)
 
     trainValidData = np.vstack([trainDataResampled, validDataResampled])
     trainValidLabels = np.hstack([trainLabelsResampled, validLabelsResampled])
@@ -208,8 +231,12 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, test_split, clf_name, prec
     bestPredictor = gridsearch.best_estimator_.named_steps[clf_name]
     bestPredictor.fit(trainValidData, trainValidLabels)
     y_pred = bestPredictor.predict(testData)
-    print("Proportion 1 in Predicted Test Set: ", y_pred.sum() / len(testLabels),
-          "Proportion 0 in Predicted Test Set: ", 1 - y_pred.sum() / len(testLabels))
+
+    if y_pred.dtype == np.float32 or y_pred.dtype == np.float:
+        y_pred = y_pred > 0.5
+
+    print("Proportion True in Predicted Test Set: ", y_pred.sum() / len(testLabels),
+          "Proportion False in Predicted Test Set: ", 1 - y_pred.sum() / len(testLabels))
 
     print("F1_score: ", f1_score(y_pred, testLabels))
     print("accuracy: ", accuracy_score(y_pred, testLabels))
