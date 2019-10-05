@@ -24,7 +24,7 @@ ex = sacred.Experiment(name="seizure_predict_traditional_ml")
 
 
 
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 @ex.named_config
@@ -110,6 +110,7 @@ def config():
     num_seconds=4
     mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
     use_xgboost = False
+    use_simple_hand_engineered_features=None
 
 
 @ex.named_config
@@ -133,18 +134,18 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_splits_p
     train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, num_splits_per_sample=num_splits_per_sample)
     valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, num_splits_per_sample=num_splits_per_sample)
     test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, num_splits_per_sample=num_splits_per_sample)
+    if include_simple_coherence:
+        trainCoherData = np.stack([datum.values for datum in [datum[0] for datum in wfdata.CoherenceTransformer(train_edss, n_process=n_process, is_pandas=False)[:]]])
+        validCoherData = np.stack([datum.values for datum in [datum[0] for datum in wfdata.CoherenceTransformer(valid_edss, n_process=n_process, is_pandas=False)[:]]])
+        testCoherData = np.stack([datum.values for datum in  [datum[0] for datum in wfdata.CoherenceTransformer(test_edss, n_process=n_process, is_pandas=False)[:]]])
     train_edss = read.Flattener(read.EdfFFTDatasetTransformer(train_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
     valid_edss = read.Flattener(read.EdfFFTDatasetTransformer(valid_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
     test_edss = read.Flattener(read.EdfFFTDatasetTransformer(test_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
     if include_simple_coherence:
-        trainCoherData = [datum[0] for datum in wfdata.CoherenceTransformer(train_edss, n_process=n_process)[:]]
-        validCoherData = [datum[0] for datum in wfdata.CoherenceTransformer(valid_edss, n_process=n_process)[:]]
-        testCoherData = wfdata.CoherenceTransformer(test_edss, n_process=n_process)
-        
+        train_edss = np.hstack([train_edss, trainCoherData])
+        valid_edss = np.hstack([valid_edss, validCoherData])
+        test_edss = np.hstack([test_edss, testCoherData])
 
-        fullCoherData = [datum[0] for datum in coherData[:]]
-        fullCoherData = np.stack([datum.values for datum in fullCoherData])
-        toReturnData = np.hstack([toReturnData, fullCoherData])
     return train_edss, valid_edss, test_edss
 
 @ex.capture
