@@ -126,6 +126,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         order_filt=5,
         mode=DETECT_MODE,
         resample=pd.Timedelta(seconds=constants.COMMON_DELTA),
+        num_splits_per_sample= None,
         gap = pd.Timedelta(seconds=4),
         num_samples=None,
         max_bckg_samps_per_file=None,
@@ -143,8 +144,9 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         self.sampleInfo = Dict()
         self.gap = gap
         self.num_samples = num_samples
+        self.num_splits_per_sample = num_splits_per_sample
         currentIndex = 0
-        self.segment_file_tuples = random.shuffle(self.segment_file_tuples) #randomize order
+        random.shuffle(self.segment_file_tuples) #randomize order
         for token_file_path, segment in self.segment_file_tuples:
             num_bckg_samps_per_file = 0
             for time_period, label in segment.iteritems():
@@ -154,21 +156,25 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
                     continue
                 if (label != "bckg" and label != "sz" and self.mode == EdfDatasetSegmentedSampler.DETECT_MODE):
                     continue #go to next, too close to seizure to be safe
-                if self.mode == EdfDatasetSegmentedSampler.DETECT_MODE:
-                    self.sampleInfo[currentIndex].label = (label == "sz")
+                if num_splits_per_sample is None:
+                    num_splits_per_sample = 1
+
+                for split_num in range(num_splits_per_sample):
+                    if self.mode == EdfDatasetSegmentedSampler.DETECT_MODE:
+                        self.sampleInfo[currentIndex].label = (label == "sz")
 
 
-                if (label != "bckg" and label != "sample" and self.mode == EdfDatasetSegmentedSampler.PREDICT_MODE):
-                    continue #go to next, too close to seizure to be safe or is seizure, we don't want to deal with this
-                if self.mode == EdfDatasetSegmentedSampler.PREDICT_MODE:
-                    self.sampleInfo[currentIndex].label = (label == "sample")
+                    if (label != "bckg" and label != "sample" and self.mode == EdfDatasetSegmentedSampler.PREDICT_MODE):
+                        continue #go to next, too close to seizure to be safe or is seizure, we don't want to deal with this
+                    if self.mode == EdfDatasetSegmentedSampler.PREDICT_MODE:
+                        self.sampleInfo[currentIndex].label = (label == "sample")
 
-                if label == "bckg":
-                    num_bckg_samps_per_file += 1
-                self.sampleInfo[currentIndex].token_file_path = token_file_path
-                self.sampleInfo[currentIndex].sample_num = time_period / self.gap
-                self.sampleInfo[currentIndex].sample_width = self.gap
-                currentIndex += 1
+                    if label == "bckg":
+                        num_bckg_samps_per_file += 1
+                    self.sampleInfo[currentIndex].token_file_path = token_file_path
+                    self.sampleInfo[currentIndex].sample_num = (time_period + self.gap / num_splits_per_sample * split_num) / self.gap
+                    self.sampleInfo[currentIndex].sample_width = self.gap / num_splits_per_sample
+                    currentIndex += 1
 
 
     def __len__(self):
@@ -182,7 +188,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         data = read.edf_eeg_2_df(indexData.token_file_path,
                                  resample=self.resample,
                                  start=pd.Timedelta(indexData.sample_num * self.gap),
-                                 max_length=self.gap)
+                                 max_length=self.gap/self.num_splits_per_sample)
 
         data = data.loc[pd.Timedelta(seconds=0):self.gap].iloc[0:-1]
 
