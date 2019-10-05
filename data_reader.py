@@ -532,15 +532,39 @@ def read_tse_file_and_return_ts(tse_path, ts_index):
     return expand_tse_file(ann_y, ts_index)
 
 
-def expand_tse_file(ann_y, ts_index=None, dtype=np.float32):
-    if ts_index is None:
-        ts_index = pd.timedelta_range(start=0, end=ann_y.end.max()*pd.Timedelta(seconds=1), freq=pd.Timedelta(seconds=1))
-    ann_y_t = pd.DataFrame(columns=get_annotation_types(), index=ts_index)
-    ann_y.apply(lambda row: ann_y_t[row['label']].loc[pd.Timedelta(
-        seconds=row['start']):pd.Timedelta(seconds=row['end'])].fillna(row['p'], inplace=True), axis=1)
-    ann_y_t.fillna(0, inplace=True)
-    return ann_y_t
+def expand_tse_file(ann_y, ts_index=None, dtype=np.float32, fully_expand=True, time_period=pd.Timedelta(seconds=1)):
+    """expands a time series file to fill up a set period of time
 
+    Parameters
+    ----------
+    ann_y : type
+        Description of parameter `ann_y`.
+    ts_index : type
+        Description of parameter `ts_index`.
+    dtype : type
+        Description of parameter `dtype`.
+    fully_expand : bool
+        If True, then expand to be total annotations by time (1's and 0's), else if false, just expand into series of time, holding ann strings
+    time_period : pd.Timedelta
+        Used for granularity of our time series preprocessing, mostly used if ts_index isn't supplied
+    Returns
+    -------
+    type
+        Description of returned object.
+
+    """
+    if ts_index is None:
+        ts_index = pd.timedelta_range(start=0, end=ann_y.end.max()*time_period, freq=time_period)
+    if fully_expand:
+        ann_y_t = pd.DataFrame(columns=get_annotation_types(), index=ts_index)
+        ann_y.apply(lambda row: ann_y_t[row['label']].loc[pd.Timedelta(
+            seconds=row['start']):pd.Timedelta(seconds=row['end'])].fillna(row['p'], inplace=True), axis=1)
+        ann_y_t.fillna(0, inplace=True)
+    else:
+        ann_y_t = pd.Series(index=ts_index, dtype=str)
+        ann_y.apply(lambda row: ann_y_t.loc[pd.Timedelta(
+            seconds=row['start']):pd.Timedelta(seconds=row['end'])].fillna(row['label'], inplace=True), axis=1)
+    return ann_y_t
 
 def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None):
     """ Transforms from EDF to pd.df, with channel labels as columns.
