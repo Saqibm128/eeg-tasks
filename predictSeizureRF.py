@@ -135,6 +135,15 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, ref="01_tcp_
     train_edss = read.Flattener(read.EdfFFTDatasetTransformer(train_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
     valid_edss = read.Flattener(read.EdfFFTDatasetTransformer(valid_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
     test_edss = read.Flattener(read.EdfFFTDatasetTransformer(test_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
+    if include_simple_coherence:
+        trainCoherData = [datum[0] for datum in wfdata.CoherenceTransformer(train_edss, n_process=n_process)[:]]
+        validCoherData = [datum[0] for datum in wfdata.CoherenceTransformer(valid_edss, n_process=n_process)[:]]
+        testCoherData = wfdata.CoherenceTransformer(test_edss, n_process=n_process)
+        
+
+        fullCoherData = [datum[0] for datum in coherData[:]]
+        fullCoherData = np.stack([datum.values for datum in fullCoherData])
+        toReturnData = np.hstack([toReturnData, fullCoherData])
     return train_edss, valid_edss, test_edss
 
 @ex.capture
