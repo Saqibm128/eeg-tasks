@@ -532,7 +532,9 @@ def read_tse_file_and_return_ts(tse_path, ts_index):
     return expand_tse_file(ann_y, ts_index)
 
 
-def expand_tse_file(ann_y, ts_index, dtype=np.float32):
+def expand_tse_file(ann_y, ts_index=None, dtype=np.float32):
+    if ts_index is None:
+        ts_index = pd.timedelta_range(start=0, end=ann_y.end.max()*pd.Timedelta(seconds=1), freq=pd.Timedelta(seconds=1))
     ann_y_t = pd.DataFrame(columns=get_annotation_types(), index=ts_index)
     ann_y.apply(lambda row: ann_y_t[row['label']].loc[pd.Timedelta(
         seconds=row['start']):pd.Timedelta(seconds=row['end'])].fillna(row['p'], inplace=True), axis=1)
