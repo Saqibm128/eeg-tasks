@@ -203,7 +203,23 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         return data, indexData.label
 
 
-
+def generate_label_rolling_window(ann, cooldown=1, sample_time=1):
+    partial_expand = read.expand_tse_file(ann, fully_expand=False)
+    label_arr = pd.Series(index=partial_expand.index, dtype=str).fillna(0)
+    def is_seiz_class(label):
+        if type(label) == pd.Series:
+            return label.apply(lambda data: "sz" in data)
+        return "sz" in label
+    for i, time_index in enumerate(partial_expand.index):
+        if is_seiz_class(partial_expand[i]):
+            label_arr[time_index] = "sz"
+        elif is_seiz_class(partial_expand[partial_expand.index[max(0,i-cooldown):i-1]]).any():
+            label_arr[time_index] = "postsz" # we had seizure in past, we can't use the following period for seizure prediction
+        elif is_seiz_class(partial_expand.iloc[i:i+cooldown]).any():
+            label_arr[time_index] = "presz" #cooldown period before seizure starts, we can't use this
+        elif is_seiz_class(partial_expand.iloc[i+cooldown:i+cooldown+sample_time]).any():
+            label_arr[time_index] = "sample" #seizure target
+    return label_arr
 
 def seizure_series_annotate_times(raw_ann,
                                   pre_cooldown=5,
