@@ -8,6 +8,7 @@ import constants
 import multiprocessing as mp
 from addict import Dict
 from sklearn.model_selection import train_test_split
+import random
 
 class EnsemblerSequence():
     '''
@@ -143,6 +144,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         self.gap = gap
         self.num_samples = num_samples
         currentIndex = 0
+        self.segment_file_tuples = random.shuffle(self.segment_file_tuples) #randomize order
         for token_file_path, segment in self.segment_file_tuples:
             num_bckg_samps_per_file = 0
             for time_period, label in segment.iteritems():

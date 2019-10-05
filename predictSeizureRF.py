@@ -93,7 +93,6 @@ def config():
     num_files = None
     freq_bins = constants.FREQ_BANDS  # bands for alpha, beta, theta, delta
     n_process = 7
-    num_cv_folds = 5
     precache = True
     train_pkl="/n/scratch2/ms994/trainSeizureData.pkl"
     valid_pkl="/n/scratch2/ms994/validSeizureData.pkl"
@@ -106,7 +105,7 @@ def config():
     imbalanced_resampler = None
     pre_cooldown=4
     post_cooldown=None
-    sample_time=32
+    sample_time=4
     num_seconds=4
     mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
     use_xgboost = False
