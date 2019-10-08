@@ -22,7 +22,7 @@ def autocorrelation(lag):
     return lambda x: feats.autocorrelation(x, lag)
 
 class SimpleHandEngineeredDataset(util_funcs.MultiProcessingDataset):
-    def __init__(self, edfRawData, n_process=None, features = [], f_names = [], max_size=None, vectorize=None):
+    def __init__(self, edfRawData, n_process=None, features = [], f_names = [], max_size=None, vectorize=None, is_pandas_data=True):
         assert len(features) == len(f_names)
         self.edfRawData = edfRawData
         self.n_process = n_process
@@ -32,6 +32,7 @@ class SimpleHandEngineeredDataset(util_funcs.MultiProcessingDataset):
         self.f_names = f_names
         self.max_size = max_size
         self.vectorize = vectorize
+        self.is_pandas_data = is_pandas_data
 
     def __len__(self):
         return len(self.edfRawData)
@@ -39,13 +40,15 @@ class SimpleHandEngineeredDataset(util_funcs.MultiProcessingDataset):
     def __getitem__(self, i):
         if self.should_use_mp(i):
             return self.getItemSlice(i)
-        fftData, ann = self.edfRawData[i]
-        if self.max_size is not None and max(fftData.index) < self.max_size:
-            fftData = fftData[:self.max_size]
-        handEngineeredData = pd.DataFrame(index=fftData.columns, columns=self.f_names)
+        rawData, ann = self.edfRawData[i]
+        if self.max_size is not None and max(rawData.index) < self.max_size:
+            rawData = rawData[:self.max_size]
+        if not self.is_pandas_data:
+            rawData = pd.DataFrame(rawData)
+        handEngineeredData = pd.DataFrame(index=rawData.columns, columns=self.f_names)
 
         for i, feature in enumerate(self.features):
-            handEngineeredData[self.f_names[i]] = fftData.apply(lambda x: feature(x))
+            handEngineeredData[self.f_names[i]] = rawData.apply(lambda x: feature(x.values))
         if self.vectorize == "full":
             return handEngineeredData.values.reshape(-1)
         if self.vectorize == "mean":

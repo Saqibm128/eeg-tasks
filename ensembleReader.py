@@ -40,7 +40,54 @@ class EnsemblerSequence():
     def on_epoch_end(self):
         pass
 
+class Utility_Custom_Annotater(util_funcs.MultiProcessingDataset):
+    def __init__(self, files, labels, custom_annotate, n_process=20):
+        self.labels = labels
+        self.files = files
+        self.n_process = n_process
+        self.verbosity = 1000
+        self.custom_annotate = custom_annotate
+    def __len__(self):
+        return len(self.files)
+    def __getitem__(self, i):
+        if self.should_use_mp(i):
+            print("starting custom_annotater")
+            return self.getItemSlice(i)
+        return self.files[i], self.custom_annotate(self.labels[i])
+
 class EdfDatasetSegments():
+    """Short summary.
+
+    bckg | sample | preseizure | seizure | postsz | bckg
+    arrangement of the allocations of the segments for each seizure
+
+    Parameters
+    ----------
+    train_split : string
+        based on tuh, train or dev_test
+    test_split : string
+        based on tuh, train or dev_test
+    ref : string
+        reference system from tuh, usually 01_tcp_ar
+    n_process : int
+        num processes to launch
+    valid_size : double
+        how much of train to reserve for validation set
+    pre_cooldown : int
+        number of seconds to wait before a seizure occurs before sampling section
+    post_cooldown : int
+        number of secs after seizure before we can allow another sample to start
+    sample_time : int
+        max size of sampling before a seizure
+    num_seconds : int
+        granularity of label
+    use_rolling : bool
+        use the generate_label_rolling_window function (which is slow)
+
+    Attributes
+    ----------
+
+    """
     def __init__(self,
                  train_split="train",
                  test_split="dev_test",
@@ -50,7 +97,8 @@ class EdfDatasetSegments():
                  pre_cooldown=5,
                  post_cooldown=None,
                  sample_time=60,
-                 num_seconds=4,):
+                 num_seconds=4,
+                 use_rolling=False):
         self.train_split = train_split
         self.test_split = test_split
         self.ref = ref
@@ -82,6 +130,10 @@ class EdfDatasetSegments():
         self.valid_files = []
         self.train_labeling = []
         self.valid_labeling = []
+        if use_rolling:
+            self.func_call = generate_label_rolling_window
+        else:
+            self.func_call = seizure_series_annotate_times
         for i, file in enumerate(train_valid_files):
             if patients[i] in trainPatients:
                 self.train_files.append(file)
@@ -91,7 +143,7 @@ class EdfDatasetSegments():
                 self.valid_labeling.append(self.train_valid_labels[i])
 
     def custom_annotate(self, ann):
-        return seizure_series_annotate_times(
+        return self.func_call(
             ann,
             num_seconds=self.num_seconds,
             pre_cooldown=self.pre_cooldown,
@@ -99,15 +151,19 @@ class EdfDatasetSegments():
             sample_time=self.sample_time)
 
 
+
     def get_train_valid_split(self):
         return [(self.train_valid_files[i], self.custom_annotate(self.train_valid_labels[i],)) for i in range(len(self.train_valid_files))]
     def get_test_split(self):
+        return Utility_Custom_Annotater(self.test_files, self.test_labeling, self.custom_annotate)[:]
         return [(self.test_files[i], self.custom_annotate(self.test_labeling[i],)) for i in range(len(self.test_files))]
 
     def get_train_split(self):
+        return Utility_Custom_Annotater(self.train_files, self.train_labeling, self.custom_annotate)[:]
         return [(self.train_files[i], self.custom_annotate(self.train_labeling[i],)) for i in range(len(self.train_files))]
 
     def get_valid_split(self):
+        return Utility_Custom_Annotater(self.valid_files, self.valid_labeling, self.custom_annotate)[:]
         return [(self.valid_files[i], self.custom_annotate(self.valid_labeling[i],)) for i in range(len(self.valid_files))]
 
 
@@ -126,8 +182,8 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         order_filt=5,
         mode=DETECT_MODE,
         resample=pd.Timedelta(seconds=constants.COMMON_DELTA),
-        num_splits_per_sample= None,
-        gap = pd.Timedelta(seconds=4),
+        # num_splits_per_sample= None,
+        gap = pd.Timedelta(seconds=1),
         num_samples=None,
         max_bckg_samps_per_file=None,
         n_process=4
@@ -144,37 +200,36 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         self.sampleInfo = Dict()
         self.gap = gap
         self.num_samples = num_samples
-        self.num_splits_per_sample = num_splits_per_sample
+        # self.num_splits_per_sample = num_splits_per_sample
         currentIndex = 0
-        random.shuffle(self.segment_file_tuples) #randomize order
         for token_file_path, segment in self.segment_file_tuples:
+            segment = segment.reindex(np.random.permutation(segment.index)) #randomly sample from each eeg file
             num_bckg_samps_per_file = 0
             for time_period, label in segment.iteritems():
+                # segment = segment.resample(gap).mode() #if gap isn't correct size, just resample
                 if num_samples is not None and currentIndex >= self.num_samples:
                     break
                 if max_bckg_samps_per_file is not None and num_bckg_samps_per_file >= max_bckg_samps_per_file and label == "bckg":
                     continue
-                if (label != "bckg" and label != "sz" and self.mode == EdfDatasetSegmentedSampler.DETECT_MODE):
+                if (label != "bckg" and "sz" not in label and self.mode == EdfDatasetSegmentedSampler.DETECT_MODE):
                     continue #go to next, too close to seizure to be safe
-                if num_splits_per_sample is None:
-                    num_splits_per_sample = 1
 
-                for split_num in range(num_splits_per_sample):
-                    if self.mode == EdfDatasetSegmentedSampler.DETECT_MODE:
-                        self.sampleInfo[currentIndex].label = (label == "sz")
+                # for split_num in range(num_splits_per_sample):
+                if self.mode == EdfDatasetSegmentedSampler.DETECT_MODE:
+                    self.sampleInfo[currentIndex].label = ("sz" in label)
 
 
-                    if (label != "bckg" and label != "sample" and self.mode == EdfDatasetSegmentedSampler.PREDICT_MODE):
-                        continue #go to next, too close to seizure to be safe or is seizure, we don't want to deal with this
-                    if self.mode == EdfDatasetSegmentedSampler.PREDICT_MODE:
-                        self.sampleInfo[currentIndex].label = (label == "sample")
+                if (label != "bckg" and label != "sample" and self.mode == EdfDatasetSegmentedSampler.PREDICT_MODE):
+                    continue #go to next, too close to seizure to be safe or is seizure, we don't want to deal with this
+                if self.mode == EdfDatasetSegmentedSampler.PREDICT_MODE:
+                    self.sampleInfo[currentIndex].label = (label == "sample")
 
-                    if label == "bckg":
-                        num_bckg_samps_per_file += 1
-                    self.sampleInfo[currentIndex].token_file_path = token_file_path
-                    self.sampleInfo[currentIndex].sample_num = (time_period + self.gap / num_splits_per_sample * split_num) / self.gap
-                    self.sampleInfo[currentIndex].sample_width = self.gap / num_splits_per_sample
-                    currentIndex += 1
+                if label == "bckg":
+                    num_bckg_samps_per_file += 1
+                self.sampleInfo[currentIndex].token_file_path = token_file_path
+                self.sampleInfo[currentIndex].sample_num = (time_period ) / self.gap
+                self.sampleInfo[currentIndex].sample_width = self.gap
+                currentIndex += 1
 
 
     def __len__(self):
@@ -188,7 +243,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         data = read.edf_eeg_2_df(indexData.token_file_path,
                                  resample=self.resample,
                                  start=pd.Timedelta(indexData.sample_num * self.gap),
-                                 max_length=self.gap/self.num_splits_per_sample)
+                                 max_length=self.gap)
 
         data = data.loc[pd.Timedelta(seconds=0):self.gap].iloc[0:-1]
 
@@ -209,28 +264,31 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         return data, indexData.label
 
 
-def generate_label_rolling_window(ann, cooldown=1, sample_time=1):
+def generate_label_rolling_window(ann, pre_cooldown=5, post_cooldown=None, sample_time=5, num_seconds=1):
+    if post_cooldown is None:
+        post_cooldown = pre_cooldown
     partial_expand = read.expand_tse_file(ann, fully_expand=False)
-    label_arr = pd.Series(index=partial_expand.index, dtype=str).fillna(0)
+    timeInd = pd.timedelta_range(freq=pd.Timedelta(seconds=num_seconds), start=0, periods=ann.end.max())
+    label_arr = pd.Series(index=timeInd, dtype=str).fillna("bckg")
     def is_seiz_class(label):
         if type(label) == pd.Series:
             return label.apply(lambda data: "sz" in data)
         return "sz" in label
     for i, time_index in enumerate(partial_expand.index):
         if is_seiz_class(partial_expand[i]):
-            label_arr[time_index] = "sz"
-        elif is_seiz_class(partial_expand[partial_expand.index[max(0,i-cooldown):i-1]]).any():
+            label_arr[time_index] = partial_expand[i]
+        elif i != 0 and is_seiz_class(partial_expand[partial_expand.index[max(0,i-post_cooldown):i-1]]).any():
             label_arr[time_index] = "postsz" # we had seizure in past, we can't use the following period for seizure prediction
-        elif is_seiz_class(partial_expand.iloc[i:i+cooldown]).any():
+        elif is_seiz_class(partial_expand.iloc[i:i+pre_cooldown]).any():
             label_arr[time_index] = "presz" #cooldown period before seizure starts, we can't use this
-        elif is_seiz_class(partial_expand.iloc[i+cooldown:i+cooldown+sample_time]).any():
+        elif is_seiz_class(partial_expand.iloc[i+pre_cooldown:i+pre_cooldown+sample_time]).any():
             label_arr[time_index] = "sample" #seizure target
     return label_arr
 
 def seizure_series_annotate_times(raw_ann,
                                   pre_cooldown=5,
                                   post_cooldown=None,
-                                  sample_time=60,
+                                  sample_time=5,
                                   num_seconds=1
                                   ):
     if post_cooldown is None:
@@ -250,24 +308,23 @@ def seizure_series_annotate_times(raw_ann,
     preseizure_predict_times = []
     for i, label in raw_ann.iterrows():
         if "sz" in label["label"].lower():
-            seizure_times.append((label.start, label.end))
-            preseizure_cooldown_times.append((max(0, label.start-pre_cooldown), label.start))
-            possible_sample_times.append((max(0, label.start-pre_cooldown - sample_time), max(0, label.start-pre_cooldown)))
-            postseizure_cooldown_times.append((label.end, min(max(raw_ann.end), label.end+post_cooldown)))
-    postseizure_cooldown_times = pd.DataFrame(postseizure_cooldown_times, columns=["start", "end"])
+            seizure_times.append((label.start, label.end, label.label))
+            preseizure_cooldown_times.append((max(0, label.start-pre_cooldown), label.start, label.label))
+            possible_sample_times.append((max(0, label.start-pre_cooldown - sample_time), max(0, label.start-pre_cooldown), label.label))
+            postseizure_cooldown_times.append((label.end, min(max(raw_ann.end), label.end+post_cooldown), label.label))
+    postseizure_cooldown_times = pd.DataFrame(postseizure_cooldown_times, columns=["start", "end", "label"])
     postseizure_cooldown_times = postseizure_cooldown_times.loc[postseizure_cooldown_times["start"] != postseizure_cooldown_times["end"]]
 
 
-    preseizure_cooldown_times = pd.DataFrame(preseizure_cooldown_times, columns=["start", "end"])
+    preseizure_cooldown_times = pd.DataFrame(preseizure_cooldown_times, columns=["start", "end", "label"])
     preseizure_cooldown_times = preseizure_cooldown_times.loc[preseizure_cooldown_times["start"] != preseizure_cooldown_times["end"]]
 
-    seizure_times = pd.DataFrame(seizure_times, columns=["start", "end"])
+    seizure_times = pd.DataFrame(seizure_times, columns=["start", "end", "label"])
     seizure_times = seizure_times.loc[seizure_times["start"] != seizure_times["end"]]
 
-    possible_sample_times = pd.DataFrame(possible_sample_times, columns=["start", "end"])
+    possible_sample_times = pd.DataFrame(possible_sample_times, columns=["start", "end", "label"])
     possible_sample_times = possible_sample_times.loc[possible_sample_times["start"] != possible_sample_times["end"]]
     new_ann = raw_ann.copy()
-
 
     labelTimeSeries = labelTimeSeries.fillna("bckg")
     for i, samp_time in possible_sample_times.iterrows():
@@ -278,7 +335,7 @@ def seizure_series_annotate_times(raw_ann,
         labelTimeSeries[pd.Timedelta(seconds=cooldown.start):pd.Timedelta(seconds=cooldown.end)] = "postsz"
 
     for i, seizure in seizure_times.iterrows():
-        labelTimeSeries[pd.Timedelta(seconds=seizure.start):pd.Timedelta(seconds=seizure.end)] = "sz"
+        labelTimeSeries[pd.Timedelta(seconds=seizure.start):pd.Timedelta(seconds=seizure.end)] = seizure.label
     return labelTimeSeries
 
 class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):

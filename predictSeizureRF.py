@@ -1,3 +1,4 @@
+import tsfresh.feature_extraction.feature_calculators as tsf
 from sacred.observers import MongoObserver
 import pickle as pkl
 from addict import Dict
@@ -6,6 +7,7 @@ import clinical_text_analysis as cta
 import pandas as pd
 import numpy as np
 from os import path
+import sys
 import data_reader as read
 import constants
 import util_funcs
@@ -93,7 +95,6 @@ def config():
     num_files = None
     freq_bins = constants.FREQ_BANDS  # bands for alpha, beta, theta, delta
     n_process = 7
-    num_splits_per_sample = 4 #take a normal 4 second sample, split into 4 non_overlapping samples
     precache = True
     train_pkl="/n/scratch2/ms994/trainSeizureData.pkl"
     valid_pkl="/n/scratch2/ms994/validSeizureData.pkl"
@@ -107,10 +108,10 @@ def config():
     pre_cooldown=4
     post_cooldown=None
     sample_time=4
-    num_seconds=4
+    num_seconds=1
     mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
     use_xgboost = False
-    use_simple_hand_engineered_features=None
+    use_simple_hand_engineered_features=False
 
 
 @ex.named_config
@@ -126,18 +127,25 @@ def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds
 
 
 @ex.capture
-def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_splits_per_sample, ref="01_tcp_ar", num_files=None, freq_bins=[0,3.5,7.5,14,20,25,40],  include_simple_coherence=True,):
+def get_data(mode, max_samples, n_process, max_bckg_samps_per_file,use_simple_hand_engineered_features, ref="01_tcp_ar", num_files=None, freq_bins=[0,3.5,7.5,14,20,25,40],  include_simple_coherence=True,):
     eds = getDataSampleGenerator()
     train_label_files_segs = eds.get_train_split()
     test_label_files_segs = eds.get_test_split()
     valid_label_files_segs = eds.get_valid_split()
-    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, num_splits_per_sample=num_splits_per_sample)
-    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, num_splits_per_sample=num_splits_per_sample)
-    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, num_splits_per_sample=num_splits_per_sample)
+
+    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, )[:]
+    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, )[:]
+    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, )[:]
+
     if include_simple_coherence:
         trainCoherData = np.stack([datum.values for datum in [datum[0] for datum in wfdata.CoherenceTransformer(train_edss, n_process=n_process, is_pandas=False)[:]]])
         validCoherData = np.stack([datum.values for datum in [datum[0] for datum in wfdata.CoherenceTransformer(valid_edss, n_process=n_process, is_pandas=False)[:]]])
         testCoherData = np.stack([datum.values for datum in  [datum[0] for datum in wfdata.CoherenceTransformer(test_edss, n_process=n_process, is_pandas=False)[:]]])
+    if use_simple_hand_engineered_features:
+        trainSHED = wfdata.SimpleHandEngineeredDataset(train_edss, n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
+        validSHED = wfdata.SimpleHandEngineeredDataset(valid_edss, n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
+        testSHED = wfdata.SimpleHandEngineeredDataset(test_edss, n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
+
     train_edss = read.Flattener(read.EdfFFTDatasetTransformer(train_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
     valid_edss = read.Flattener(read.EdfFFTDatasetTransformer(valid_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
     test_edss = read.Flattener(read.EdfFFTDatasetTransformer(test_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
@@ -146,6 +154,10 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_splits_p
         valid_edss = np.hstack([valid_edss, validCoherData])
         test_edss = np.hstack([test_edss, testCoherData])
 
+    if use_simple_hand_engineered_features:
+        train_edss = np.hstack([train_edss, trainSHED])
+        valid_edss = np.hstack([valid_edss, validSHED])
+        test_edss = np.hstack([test_edss, testSHED])
     return train_edss, valid_edss, test_edss
 
 @ex.capture

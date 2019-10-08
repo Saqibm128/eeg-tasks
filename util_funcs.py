@@ -124,7 +124,7 @@ class MultiProcessingDataset():
         for i in iter(in_q.get, None):
             if not hasattr(self, "verbose") or self.verbose == True:
                 if not hasattr(self, "verbosity"):
-                    self.verbosity = 10
+                    self.verbosity = 250
                 if i % self.verbosity == 0:
                     print("retrieving: {}".format(i))
             out_q.put((i, self[i]))
