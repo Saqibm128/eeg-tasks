@@ -1,5 +1,7 @@
 import tsfresh.feature_extraction.feature_calculators as tsf
 from sacred.observers import MongoObserver
+from sacred import SETTINGS
+SETTINGS["CONFIG"]["READ_ONLY_CONFIG"] = False #weird issue where GridSearchCV alters one of the config values
 import pickle as pkl
 from addict import Dict
 from sklearn.pipeline import Pipeline
@@ -82,6 +84,12 @@ def debug():
     max_samples=1000
     max_bckg_samps_per_file=20
 
+@ex.named_config
+def knn_server():
+    train_pkl="/home/msaqib/trainSeizureData.pkl"
+    valid_pkl="/home/msaqib/validSeizureData.pkl"
+    test_pkl="/home/msaqib/testSeizureData.pkl"
+
 @ex.config
 def config():
     train_split = "train"
@@ -100,7 +108,7 @@ def config():
     valid_pkl="/n/scratch2/ms994/validSeizureData.pkl"
     test_pkl="/n/scratch2/ms994/testSeizureData.pkl"
     mode = er.EdfDatasetSegmentedSampler.DETECT_MODE
-    max_bckg_samps_per_file = 40
+    max_bckg_samps_per_file = 30
     resample_imbalanced_method = None
     max_samples=None
     regenerate_data=False
@@ -115,6 +123,13 @@ def config():
 
 
 @ex.named_config
+def predict_mode_knn_server():
+    mode=er.EdfDatasetSegmentedSampler.PREDICT_MODE
+    train_pkl="/home/msaqib/trainPredictSeizureData.pkl"
+    valid_pkl="/home/msaqib/validPredictSeizureData.pkl"
+    test_pkl="/home/msaqib/testPredictSeizureData.pkl"
+
+@ex.named_config
 def predict_mode():
     mode=er.EdfDatasetSegmentedSampler.PREDICT_MODE
     train_pkl="/n/scratch2/ms994/trainPredictSeizureData.pkl"
@@ -122,8 +137,8 @@ def predict_mode():
     test_pkl="/n/scratch2/ms994/testPredictSeizureData.pkl"
 
 @ex.capture
-def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds):
-    return er.EdfDatasetSegments(pre_cooldown=pre_cooldown, post_cooldown=post_cooldown, sample_time=sample_time, num_seconds=num_seconds,)
+def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds, n_process):
+    return er.EdfDatasetSegments(pre_cooldown=pre_cooldown, post_cooldown=post_cooldown, sample_time=sample_time, num_seconds=num_seconds, n_process=n_process)
 
 
 @ex.capture
@@ -138,13 +153,29 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file,use_simple_ha
     test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, )[:]
 
     if include_simple_coherence:
-        trainCoherData = np.stack([datum.values for datum in [datum[0] for datum in wfdata.CoherenceTransformer(train_edss, n_process=n_process, is_pandas=False)[:]]])
-        validCoherData = np.stack([datum.values for datum in [datum[0] for datum in wfdata.CoherenceTransformer(valid_edss, n_process=n_process, is_pandas=False)[:]]])
-        testCoherData = np.stack([datum.values for datum in  [datum[0] for datum in wfdata.CoherenceTransformer(test_edss, n_process=n_process, is_pandas=False)[:]]])
+        def simple_edss(edss):
+            '''
+            Use only a few columns so that we don't make 21*20 coherence pairs
+            '''
+            all_channels = util_funcs.get_common_channel_names()
+            subset_channels = constants.SYMMETRIC_COLUMN_SUBSET
+            subset_channels = [all_channels.index(channel) for channel in subset_channels]
+            return [(datum[0][:, subset_channels], datum[1]) for datum in edss]
+        trainCoherData = np.stack([datum.values for datum in [datum[0] for datum in wfdata.CoherenceTransformer(simple_edss(train_edss), columns_to_use=constants.SYMMETRIC_COLUMN_SUBSET, n_process=n_process, is_pandas=False)[:]]])
+        validCoherData = np.stack([datum.values for datum in [datum[0] for datum in wfdata.CoherenceTransformer(simple_edss(valid_edss), columns_to_use=constants.SYMMETRIC_COLUMN_SUBSET, n_process=n_process, is_pandas=False)[:]]])
+        testCoherData = np.stack([datum.values for datum in  [datum[0] for datum in wfdata.CoherenceTransformer(simple_edss(test_edss), columns_to_use=constants.SYMMETRIC_COLUMN_SUBSET, n_process=n_process, is_pandas=False)[:]]])
     if use_simple_hand_engineered_features:
-        trainSHED = wfdata.SimpleHandEngineeredDataset(train_edss, n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
-        validSHED = wfdata.SimpleHandEngineeredDataset(valid_edss, n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
-        testSHED = wfdata.SimpleHandEngineeredDataset(test_edss, n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
+        def simple_edss(edss):
+            '''
+            Use only a few columns so that we don't make 21*20 coherence pairs
+            '''
+            all_channels = util_funcs.get_common_channel_names()
+            subset_channels = constants.SYMMETRIC_COLUMN_SUBSET
+            subset_channels = [all_channels.index(channel) for channel in subset_channels]
+            return [(datum[0][:, subset_channels], datum[1]) for datum in edss]
+        trainSHED = wfdata.SimpleHandEngineeredDataset(simple_edss(train_edss), n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
+        validSHED = wfdata.SimpleHandEngineeredDataset(simple_edss(valid_edss), n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
+        testSHED = wfdata.SimpleHandEngineeredDataset(simple_edss(test_edss), n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
 
     train_edss = read.Flattener(read.EdfFFTDatasetTransformer(train_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
     valid_edss = read.Flattener(read.EdfFFTDatasetTransformer(valid_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
@@ -191,9 +222,9 @@ def getGridsearch(valid_indices, clf_step, parameters, n_process, use_random_cv,
     else:
         scorer = make_scorer(f1_score)
     if use_random_cv:
-        return RandomizedSearchCV(pipeline, parameters, cv=valid_indices,
+        return RandomizedSearchCV(pipeline, Dict(parameters), cv=valid_indices,
                             scoring=scorer, n_jobs=n_process, n_iter=num_random_choices)
-    return GridSearchCV(pipeline, parameters, cv=valid_indices,
+    return GridSearchCV(pipeline, Dict(parameters), cv=valid_indices,
                         scoring=scorer, n_jobs=n_process)
 
 

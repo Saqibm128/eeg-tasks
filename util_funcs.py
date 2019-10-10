@@ -18,6 +18,8 @@ from imblearn.under_sampling import RandomUnderSampler
 
 root_path = "/home/ms994/" if "EEG_ROOT" not in os.environ.keys() else os.environ["EEG_ROOT"]
 
+
+
 class ImbalancedClassResampler():
     SMOTE = "SMOTE"
     RANDOM_UNDERSAMPLE = "RANDOM_UNDERSAMPLE"
@@ -260,12 +262,12 @@ def switch_to_general_superset():
     config.update(config["tuh_eeg_all"])
     return config
 
-def read_config(path=path.join(root_path,"dbmi_eeg_clustering/config.json")):
+def read_config(path=path.join(root_path,"dbmi_eeg_clustering/config.json" if "CONFIG_PATH" not in os.environ.keys() else os.environ["CONFIG_PATH"])):
     global config
     if config is None:
         config = json.load(open(path, "rb"))
     return config
-
+root_path = "/home/ms994/" if "EEG_ROOT" not in read_config() else read_config()["EEG_ROOT"]
 
 if __name__ == "__main__":
     print(read_config())
