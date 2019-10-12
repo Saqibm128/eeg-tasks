@@ -28,7 +28,7 @@ ex = sacred.Experiment(name="seizure_predict_traditional_ml")
 
 
 
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 @ex.named_config
@@ -101,7 +101,7 @@ def config():
     clf_step = None
     clf_name = ''
     num_files = None
-    freq_bins = constants.FREQ_BANDS  # bands for alpha, beta, theta, delta
+    freq_bins=[0,3.5,7.5,14,20,25,40]
     n_process = 7
     precache = True
     train_pkl="/n/scratch2/ms994/trainSeizureData.pkl"
@@ -152,44 +152,45 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file,use_simple_ha
     valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, )[:]
     test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, )[:]
 
+    def simple_edss(edss):
+        '''
+        Use only a few columns so that we don't make 21*20 coherence pairs
+        '''
+        all_channels = util_funcs.get_common_channel_names()
+        subset_channels = constants.SYMMETRIC_COLUMN_SUBSET
+        subset_channels = [all_channels.index(channel) for channel in subset_channels]
+        return [(datum[0][:, subset_channels], datum[1]) for datum in edss]
     if include_simple_coherence:
-        def simple_edss(edss):
-            '''
-            Use only a few columns so that we don't make 21*20 coherence pairs
-            '''
-            all_channels = util_funcs.get_common_channel_names()
-            subset_channels = constants.SYMMETRIC_COLUMN_SUBSET
-            subset_channels = [all_channels.index(channel) for channel in subset_channels]
-            return [(datum[0][:, subset_channels], datum[1]) for datum in edss]
         trainCoherData = np.stack([datum.values for datum in [datum[0] for datum in wfdata.CoherenceTransformer(simple_edss(train_edss), columns_to_use=constants.SYMMETRIC_COLUMN_SUBSET, n_process=n_process, is_pandas=False)[:]]])
         validCoherData = np.stack([datum.values for datum in [datum[0] for datum in wfdata.CoherenceTransformer(simple_edss(valid_edss), columns_to_use=constants.SYMMETRIC_COLUMN_SUBSET, n_process=n_process, is_pandas=False)[:]]])
         testCoherData = np.stack([datum.values for datum in  [datum[0] for datum in wfdata.CoherenceTransformer(simple_edss(test_edss), columns_to_use=constants.SYMMETRIC_COLUMN_SUBSET, n_process=n_process, is_pandas=False)[:]]])
     if use_simple_hand_engineered_features:
-        def simple_edss(edss):
-            '''
-            Use only a few columns so that we don't make 21*20 coherence pairs
-            '''
-            all_channels = util_funcs.get_common_channel_names()
-            subset_channels = constants.SYMMETRIC_COLUMN_SUBSET
-            subset_channels = [all_channels.index(channel) for channel in subset_channels]
-            return [(datum[0][:, subset_channels], datum[1]) for datum in edss]
-        trainSHED = wfdata.SimpleHandEngineeredDataset(simple_edss(train_edss), n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
-        validSHED = wfdata.SimpleHandEngineeredDataset(simple_edss(valid_edss), n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
-        testSHED = wfdata.SimpleHandEngineeredDataset(simple_edss(test_edss), n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "approx_entropy", "num_peaks"], vectorize="full")[:]
+        trainSHED = wfdata.SimpleHandEngineeredDataset(simple_edss(train_edss), n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "entropy", "num_peaks"], vectorize="full")[:]
+        validSHED = wfdata.SimpleHandEngineeredDataset(simple_edss(valid_edss), n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "entropy", "num_peaks"], vectorize="full")[:]
+        testSHED = wfdata.SimpleHandEngineeredDataset(simple_edss(test_edss), n_process=n_process, is_pandas_data=False, features=[tsf.abs_energy, tsf.sample_entropy, lambda x: tsf.number_cwt_peaks(x, int(constants.COMMON_FREQ/25))], f_names=["abs_energy", "entropy", "num_peaks"], vectorize="full")[:]
 
     train_edss = read.Flattener(read.EdfFFTDatasetTransformer(train_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
     valid_edss = read.Flattener(read.EdfFFTDatasetTransformer(valid_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
     test_edss = read.Flattener(read.EdfFFTDatasetTransformer(test_edss, freq_bins=freq_bins, is_pandas_data=False), n_process=n_process)[:]
+    def split_tuples(data):
+        return np.stack([datum[0] for datum in data]), np.stack([datum[1] for datum in data])
+    train_edss, train_labels = split_tuples(train_edss)
+    valid_edss, valid_labels = split_tuples(valid_edss)
+    test_edss, test_labels = split_tuples(test_edss)
+
+
     if include_simple_coherence:
         train_edss = np.hstack([train_edss, trainCoherData])
         valid_edss = np.hstack([valid_edss, validCoherData])
         test_edss = np.hstack([test_edss, testCoherData])
 
     if use_simple_hand_engineered_features:
-        train_edss = np.hstack([train_edss, trainSHED])
-        valid_edss = np.hstack([valid_edss, validSHED])
-        test_edss = np.hstack([test_edss, testSHED])
-    return train_edss, valid_edss, test_edss
+        train_edss = np.hstack([train_edss, np.stack(trainSHED)])
+        valid_edss = np.hstack([valid_edss, np.stack(validSHED)])
+        test_edss = np.hstack([test_edss, np.stack(testSHED)])
+
+
+    return (train_edss, train_labels), (valid_edss, valid_labels), (test_edss, test_labels)
 
 @ex.capture
 def getImbResampler(imbalanced_resampler):
@@ -237,19 +238,17 @@ def getFeatureScores(gridsearch, clf_name):
 
 
 @ex.main
-def main(train_pkl, valid_pkl, test_pkl, train_split, test_split, clf_name, precache, regenerate_data, use_xgboost, num_random_choices=10):
+def main(train_pkl, valid_pkl, test_pkl, train_split, mode, imbalanced_resampler, test_split, clf_name, precache, regenerate_data, use_xgboost, num_random_choices=10):
     if path.exists(train_pkl) and precache:
         testData, testLabels = pkl.load(open(test_pkl, 'rb'))
         trainData, trainLabels = pkl.load(open(train_pkl, 'rb'))
         validData, validLabels = pkl.load(open(valid_pkl, 'rb'))
     else:
         train_edss, valid_edss, test_edss = get_data()
-        trainData = np.stack([datum[0] for datum in train_edss])
-        trainLabels = np.stack([datum[1] for datum in train_edss])
-        validData = np.stack([datum[0] for datum in valid_edss])
-        validLabels = np.stack([datum[1] for datum in valid_edss])
-        testData = np.stack([datum[0] for datum in test_edss])
-        testLabels = np.stack([datum[1] for datum in test_edss])
+        trainData, trainLabels = train_edss
+        validData, validLabels = valid_edss
+        testData, testLabels = test_edss
+
 
         pkl.dump((trainData, trainLabels), open(train_pkl, 'wb'))
         pkl.dump((validData, validLabels), open(valid_pkl, 'wb'))
@@ -299,11 +298,12 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, test_split, clf_name, prec
     # print("auc: ", auc(y_pred, testGenders))
     toSaveDict = Dict()
     toSaveDict.getFeatureScores = getFeatureScores(gridsearch)
+    toSaveDict.gridsearch = gridsearch
     toSaveDict.best_params_ = gridsearch.best_params_
 
-    fn = "predictGender{}.pkl".format(clf_name)
+    fn = "predictGender{}_{}_{}.pkl".format(clf_name, mode, imbalanced_resampler if imbalanced_resampler is not None else "noresample")
     pkl.dump(toSaveDict, open(fn, 'wb'))
-    ex.add_artifact(fn)
+    # ex.add_artifact(fn)
 
     return {'test_scores': {
         'f1': f1_score(y_pred, testLabels),

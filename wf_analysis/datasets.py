@@ -39,6 +39,7 @@ class SimpleHandEngineeredDataset(util_funcs.MultiProcessingDataset):
 
     def __getitem__(self, i):
         if self.should_use_mp(i):
+            print("starting simple handEngineeredData")
             return self.getItemSlice(i)
         rawData, ann = self.edfRawData[i]
         if self.max_size is not None and max(rawData.index) < self.max_size:
@@ -120,7 +121,7 @@ class EdfDWTDatasetTransformer(util_funcs.MultiProcessingDataset):
             :self.max_coef]
 
 class CoherenceTransformer(util_funcs.MultiProcessingDataset):
-    def __init__(self, edfRawData, n_process=None, coherence_all=True, coherence_pairs=None, average_coherence=True, coherence_bins=None, columns_to_use=util_funcs.get_common_channel_names(), is_pandas=True):
+    def __init__(self, edfRawData, n_process=None, coherence_all=True, coherence_pairs=None, average_coherence=True, coherence_bins=None, columns_to_use=util_funcs.get_common_channel_names(), is_pandas=True, is_tuple_data=True):
         """
 
         Parameters
@@ -154,11 +155,17 @@ class CoherenceTransformer(util_funcs.MultiProcessingDataset):
         self.coherence_bins = coherence_bins
         self.columns_to_use = columns_to_use
         self.is_pandas = is_pandas
+        self.is_tuple_data = is_tuple_data
     def __len__(self):
         return len(self.edfRawData)
     def __getitem__(self, i):
         if self.should_use_mp(i):
+            print("starting simple coherence")
             return self.getItemSlice(i)
+        if self.is_tuple_data:
+            raw_data, ann = self.edfRawData[i]
+        else:
+            raw_data = self.edfRawData[i]
         if self.coherence_all:
             coherence_pairs = []
             if self.is_pandas:
@@ -168,21 +175,21 @@ class CoherenceTransformer(util_funcs.MultiProcessingDataset):
                         column_2 = self.columns_to_use[j]
                         coherence_pairs.append((column_1, column_2))
             else:
-                for k in range(len(self.columns_to_use) - 1):
-                    for j in range(k + 1, len(self.columns_to_use)):
+                for k in range(raw_data.shape[1] - 1):
+                    for j in range(k + 1, raw_data.shape[1]):
                         coherence_pairs.append((j, k))
 
         else:
             coherence_pairs = self.coherence_pairs
-        raw_data, ann = self.edfRawData[i]
+
         if self.average_coherence:
             toReturn = pd.Series()
             if self.is_pandas:
                 for column_1, column_2 in coherence_pairs:
-                    toReturn["coherence {}".format((column_1, column_2))] =  np.mean(coherence(raw_data[column_1], raw_data[column_2], fs=constants.COMMON_FREQ)[1])
+                    toReturn["coherence {}".format((column_1, column_2))] =  np.mean(coherence(raw_data[column_1], raw_data[column_2], fs=constants.COMMON_FREQ, nperseg=constants.COMMON_FREQ/4)[1])
             else:
                 for column_1, column_2 in coherence_pairs:
-                    toReturn["coherence {}".format((column_1, column_2))] =  np.mean(coherence(raw_data.T[column_1], raw_data.T[column_2], fs=constants.COMMON_FREQ)[1])
+                    toReturn["coherence {}".format((column_1, column_2))] =  np.mean(coherence(raw_data.T[column_1], raw_data.T[column_2], fs=constants.COMMON_FREQ, nperseg=constants.COMMON_FREQ/4)[1])
         else:
             raise NotImplemented("yet")
         return toReturn, ann
