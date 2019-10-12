@@ -28,7 +28,7 @@ ex = sacred.Experiment(name="seizure_predict_traditional_ml")
 
 
 
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 
 @ex.named_config
