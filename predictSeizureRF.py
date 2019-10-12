@@ -108,7 +108,7 @@ def config():
     valid_pkl="/n/scratch2/ms994/validSeizureData.pkl"
     test_pkl="/n/scratch2/ms994/testSeizureData.pkl"
     mode = er.EdfDatasetSegmentedSampler.DETECT_MODE
-    max_bckg_samps_per_file = 30
+    max_bckg_samps_per_file = 100
     resample_imbalanced_method = None
     max_samples=None
     regenerate_data=False
