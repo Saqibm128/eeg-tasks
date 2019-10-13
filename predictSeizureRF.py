@@ -35,9 +35,9 @@ ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 def rf():
     parameters = {
         'rf__criterion': ["gini", "entropy"],
-        'rf__n_estimators': [50, 100, 200, 400, 600, 1200],
-        'rf__max_features': ['auto', 'log2', 2, 3, 4, 5, 6, 7, 8, 12, 16],
-        'rf__max_depth': [None, 4, 8, 12], #smaller max depth, gradient boosting, more max features
+        'rf__n_estimators': [50, 100, 200, 400, 600, ],
+        'rf__max_features': ['auto', 'log2', 2, 3, 4, 5, 6, 8, 10, 20, 30],
+        'rf__max_depth': [None, 1, 2, 3, 4, 8,], #smaller max depth, gradient boosting, more max features
         'rf__min_samples_split': [2, 4, 8],
         'rf__n_jobs': [1],
         'rf__min_weight_fraction_leaf': [0, 0.2, 0.5],
@@ -49,14 +49,12 @@ def rf():
 @ex.named_config
 def xgboost():
     parameters = {
-        "xgboost__max_depth": [3,4,5,6],
+        "xgboost__max_depth": [2,3,4,5,6,10,12],
         "xgboost__learning_rate":[0.1,0.2],
         "xgboost__gamma":[0,0.1,0.2],
-        "xgboost__alpha":[0,0.1,0.2],
-        "xgboost__lambda":[0,0.1,0.2],
-        "xgboost__top_k":[0,1,2,4,8,16],
-        "xgboost__feature_selector":["cyclic", "shuffle"],
-        "xgboost__rf__n_estimators":[100,200,300,400,600],
+        "xgboost__reg_alpha":[0,0.1,0.2],
+        "xgboost__reg_lambda":[0,0.1,0.2,1,2,5],
+        "xgboost__n_estimators":[100,200,300,400,600],
     }
     clf_name = "xgboost"
     clf_step = (clf_name, xgb.XGBRegressor(objective='binary:logistic',))
@@ -89,6 +87,12 @@ def knn_server():
     train_pkl="/home/msaqib/trainSeizureData.pkl"
     valid_pkl="/home/msaqib/validSeizureData.pkl"
     test_pkl="/home/msaqib/testSeizureData.pkl"
+@ex.named_config
+def four_second_windows():
+    train_pkl="/home/msaqib/trainSeizureData_4.pkl"
+    valid_pkl="/home/msaqib/validSeizureData_4.pkl"
+    test_pkl="/home/msaqib/testSeizureData_4.pkl"
+    num_seconds=4
 
 @ex.config
 def config():
@@ -142,15 +146,15 @@ def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds
 
 
 @ex.capture
-def get_data(mode, max_samples, n_process, max_bckg_samps_per_file,use_simple_hand_engineered_features, ref="01_tcp_ar", num_files=None, freq_bins=[0,3.5,7.5,14,20,25,40],  include_simple_coherence=True,):
+def get_data(mode, max_samples, n_process, max_bckg_samps_per_file,use_simple_hand_engineered_features, num_seconds, ref="01_tcp_ar", num_files=None, freq_bins=[0,3.5,7.5,14,20,25,40],  include_simple_coherence=True,):
     eds = getDataSampleGenerator()
     train_label_files_segs = eds.get_train_split()
     test_label_files_segs = eds.get_test_split()
     valid_label_files_segs = eds.get_valid_split()
 
-    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, )[:]
-    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, )[:]
-    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, )[:]
+    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, gap=num_seconds*pd.Timedelta(seconds=1))[:]
+    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, gap=num_seconds*pd.Timedelta(seconds=1))[:]
+    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, gap=num_seconds*pd.Timedelta(seconds=1))[:]
 
     def simple_edss(edss):
         '''
@@ -234,6 +238,8 @@ def getFeatureScores(gridsearch, clf_name):
     if clf_name == "lr":
         return gridsearch.best_estimator_.named_steps[clf_name].coef_
     elif clf_name == "rf":
+        return gridsearch.best_estimator_.named_steps[clf_name].feature_importances_
+    elif clf_name == "xgboost":
         return gridsearch.best_estimator_.named_steps[clf_name].feature_importances_
 
 
