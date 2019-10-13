@@ -87,18 +87,23 @@ def knn_server():
     train_pkl="/home/msaqib/trainSeizureData.pkl"
     valid_pkl="/home/msaqib/validSeizureData.pkl"
     test_pkl="/home/msaqib/testSeizureData.pkl"
+
 @ex.named_config
 def four_second_windows_knn():
     train_pkl="/home/msaqib/trainSeizureData_4.pkl"
     valid_pkl="/home/msaqib/validSeizureData_4.pkl"
     test_pkl="/home/msaqib/testSeizureData_4.pkl"
     num_seconds=4
+    sample_time=16
+
 @ex.named_config
 def four_second_windows_predict():
-    train_pkl="/home/ms994/trainPredictSeizureData_4.pkl"
-    valid_pkl="/home/ms994/validPredictSeizureData_4.pkl"
-    test_pkl="/home/ms994/testPredictSeizureData_4.pkl"
+    train_pkl="/n/scratch2/ms994/trainPredictSeizureData_4.pkl"
+    valid_pkl="/n/scratch2/ms994/validPredictSeizureData_4.pkl"
+    test_pkl="/n/scratch2/ms994/testPredictSeizureData_4.pkl"
     num_seconds=4
+    sample_time=16
+
 
 @ex.config
 def config():
@@ -158,9 +163,10 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file,use_simple_ha
     test_label_files_segs = eds.get_test_split()
     valid_label_files_segs = eds.get_valid_split()
 
-    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, gap=num_seconds*pd.Timedelta(seconds=1))[:]
-    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, gap=num_seconds*pd.Timedelta(seconds=1))[:]
-    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, gap=num_seconds*pd.Timedelta(seconds=1))[:]
+    #increased n_process to deal with io processing
+    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))[:]
+    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))[:]
+    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))[:]
     def simple_edss(edss):
         '''
         Use only a few columns so that we don't make 21*20 coherence pairs
@@ -198,8 +204,10 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file,use_simple_ha
         valid_edss = np.hstack([valid_edss, np.stack(validSHED)])
         test_edss = np.hstack([test_edss, np.stack(testSHED)])
 
-
-    return (train_edss, train_labels), (valid_edss, valid_labels), (test_edss, test_labels)
+    #some of the features are returning nans (assuming there is a log that may not play well?)
+    return (np.nan_to_num(train_edss), train_labels), \
+        (np.nan_to_num(valid_edss), valid_labels), \
+        (np.nan_to_num(test_edss), test_labels)
 
 @ex.capture
 def getImbResampler(imbalanced_resampler):
@@ -249,7 +257,7 @@ def getFeatureScores(gridsearch, clf_name):
 
 
 @ex.main
-def main(train_pkl, valid_pkl, test_pkl, train_split, mode, imbalanced_resampler, test_split, clf_name, precache, regenerate_data, use_xgboost, num_random_choices=10):
+def main(train_pkl, valid_pkl, test_pkl, train_split, mode, num_seconds, imbalanced_resampler, test_split, clf_name, precache, regenerate_data, use_xgboost, num_random_choices=10):
     if path.exists(train_pkl) and precache:
         testData, testLabels = pkl.load(open(test_pkl, 'rb'))
         trainData, trainLabels = pkl.load(open(train_pkl, 'rb'))
@@ -312,9 +320,9 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, mode, imbalanced_resampler
     toSaveDict.gridsearch = gridsearch
     toSaveDict.best_params_ = gridsearch.best_params_
 
-    fn = "predictGender{}_{}_{}.pkl".format(clf_name, mode, imbalanced_resampler if imbalanced_resampler is not None else "noresample")
+    fn = "predictGender{}_{}_{}_{}.pkl".format(clf_name, mode, num_seconds, imbalanced_resampler if imbalanced_resampler is not None else "noresample")
     pkl.dump(toSaveDict, open(fn, 'wb'))
-    # ex.add_artifact(fn)
+    ex.add_artifact(fn)
 
     return {'test_scores': {
         'f1': f1_score(y_pred, testLabels),
