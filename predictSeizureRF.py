@@ -88,10 +88,16 @@ def knn_server():
     valid_pkl="/home/msaqib/validSeizureData.pkl"
     test_pkl="/home/msaqib/testSeizureData.pkl"
 @ex.named_config
-def four_second_windows():
+def four_second_windows_knn():
     train_pkl="/home/msaqib/trainSeizureData_4.pkl"
     valid_pkl="/home/msaqib/validSeizureData_4.pkl"
     test_pkl="/home/msaqib/testSeizureData_4.pkl"
+    num_seconds=4
+@ex.named_config
+def four_second_windows_predict():
+    train_pkl="/home/ms994/trainPredictSeizureData_4.pkl"
+    valid_pkl="/home/ms994/validPredictSeizureData_4.pkl"
+    test_pkl="/home/ms994/testPredictSeizureData_4.pkl"
     num_seconds=4
 
 @ex.config
@@ -155,7 +161,6 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file,use_simple_ha
     train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, gap=num_seconds*pd.Timedelta(seconds=1))[:]
     valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, gap=num_seconds*pd.Timedelta(seconds=1))[:]
     test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=n_process, gap=num_seconds*pd.Timedelta(seconds=1))[:]
-
     def simple_edss(edss):
         '''
         Use only a few columns so that we don't make 21*20 coherence pairs

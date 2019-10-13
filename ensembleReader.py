@@ -227,7 +227,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
                 if label == "bckg":
                     num_bckg_samps_per_file += 1
                 self.sampleInfo[currentIndex].token_file_path = token_file_path
-                self.sampleInfo[currentIndex].sample_num = (time_period ) / self.gap
+                self.sampleInfo[currentIndex].sample_num = (time_period) / self.gap
                 self.sampleInfo[currentIndex].sample_width = self.gap
                 currentIndex += 1
 
@@ -242,7 +242,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         indexData = self.sampleInfo[i]
         data = read.edf_eeg_2_df(indexData.token_file_path,
                                  resample=self.resample,
-                                 start=pd.Timedelta(indexData.sample_num * self.gap),
+                                 start=indexData.sample_num * self.gap,
                                  max_length=self.gap)
 
         data = data.loc[pd.Timedelta(seconds=0):self.gap].iloc[0:-1]
@@ -302,7 +302,7 @@ def seizure_series_annotate_times(raw_ann,
     preseizure_cooldown_times = []
     postseizure_cooldown_times = []
     possible_sample_times = []
-    timeInd = pd.timedelta_range(freq=pd.Timedelta(seconds=num_seconds), start=0, periods=raw_ann.end.max())
+    timeInd = pd.timedelta_range(freq=pd.Timedelta(seconds=num_seconds), start=0, end=raw_ann.end.max() * pd.Timedelta(seconds=1))
     labelTimeSeries = pd.Series(index=timeInd)
 
     preseizure_predict_times = []

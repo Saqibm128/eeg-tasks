@@ -14,6 +14,8 @@ from scipy.signal import butter, lfilter
 import pywt
 from wf_analysis import filters
 from addict import Dict
+import time
+from random import random
 
 class EdfStandardScaler(util_funcs.MultiProcessingDataset):
     """
@@ -566,6 +568,9 @@ def expand_tse_file(ann_y, ts_index=None, dtype=np.float32, fully_expand=True, t
             seconds=row['start']):pd.Timedelta(seconds=row['end'])].fillna(row['label'], inplace=True), axis=1)
     return ann_y_t
 
+file_list = set()
+file_list_lock = mp.Lock()
+
 def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None):
     """ Transforms from EDF to pd.df, with channel labels as columns.
         This does not attempt to concatenate multiple time series but only takes
@@ -592,7 +597,17 @@ def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None
         index is time, columns is waveform channel label
 
     """
-    with pyedflib.EdfReader(path, check_file_size=pyedflib.DO_NOT_CHECK_FILE_SIZE) as reader:
+    global file_list, file_list_lock
+    waiting_for_path = True
+    while waiting_for_path: #hack around pyedflib having access to only one file handle at a time, if file is open, don't do anything
+        file_list_lock.acquire()
+        if path not in file_list:
+            file_list.add(path)
+            waiting_for_path = False
+        file_list_lock.release()
+
+
+    with pyedflib.EdfReader(path, check_file_size=pyedflib.CHECK_FILE_SIZE) as reader:
         channel_names = [headerDict['label']
                          for headerDict in reader.getSignalHeaders()]
         sample_rates = [headerDict['sample_rate']
@@ -607,7 +622,7 @@ def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None
             if max_length is None: #read everything
                 signal_data = reader.readSignal(i, start=start_count_native_freq)
             else:
-                numStepsToRead = int(np.ceil(max_length / pd.Timedelta(seconds=1/sample_rates[i]))) + 5 #adding a fudge factor of 5 cuz y not.
+                numStepsToRead = int(np.ceil(max_length / pd.Timedelta(seconds=1/sample_rates[i]))) + 5 #adding a fudge factor of 5 for any off by 1 errors
                 signal_data = reader.readSignal(i, start=start_count_native_freq, n=numStepsToRead)
 
             signal_data = pd.Series(
@@ -625,6 +640,13 @@ def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None
     data = data.astype(dtype)
     if resample is not None:
         data = data.resample(resample).mean()
+
+    waiting_for_path = True
+    file_list_lock.acquire()
+    file_list.remove(path)
+    file_list_lock.release()
+
+
     return data
 
 
