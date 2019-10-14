@@ -104,6 +104,14 @@ def four_second_windows_predict():
     num_seconds=4
     sample_time=16
 
+@ex.named_config
+def four_second_windows_predict_knn():
+    train_pkl="/home/msaqib/trainPredictSeizureData_4.pkl"
+    valid_pkl="/home/msaqib/validPredictSeizureData_4.pkl"
+    test_pkl="/home/msaqib/testPredictSeizureData_4.pkl"
+    num_seconds=4
+    sample_time=16
+
 
 @ex.config
 def config():
