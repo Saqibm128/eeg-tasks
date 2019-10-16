@@ -50,9 +50,9 @@ def rf():
 @ex.named_config
 def svc():
     parameters = {
-        'svc__C':[1, 0.5, 1.5, 2, 4],
+        'svc__C':[1, 0.5, 1.5, 2, 4,8],
         'svc__kernel':['linear', 'rbf', "poly", 'sigmoid', 'precomputed'],
-        'svc__gamma':[1,2,3,5,10, 'auto', 'scale'],
+        'svc__gamma':[1,2,3,5,10,20, 'auto', 'scale'],
         'svc__shrinking': [True, False],
         'svc__probability': [True, False],
         'svc__max_iter': [50]
@@ -152,7 +152,7 @@ def config():
     resample_imbalanced_method = None
     max_samples=None
     regenerate_data=False
-    imbalanced_resampler = None
+    imbalanced_resampler = "rul"
     pre_cooldown=4
     post_cooldown=None
     sample_time=4
@@ -170,7 +170,7 @@ def predict_mode_knn_server():
     test_pkl="/home/msaqib/testPredictSeizureData.pkl"
 
 @ex.named_config
-def predict_mode():
+def detect_mode():
     mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
 
 @ex.named_config
@@ -320,10 +320,10 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, mode, num_seconds, imbalan
 
     trainValidData = np.vstack([trainDataResampled, validDataResampled])
     trainValidLabels = np.hstack([trainLabelsResampled, validLabelsResampled])
-    trainValidData = trainValidData.astype(float32)
-    trainValidData[trainValidData == inf] = 0
-    testData = testData.astype(float32)
-    testData[testData == inf] = 0
+    trainValidData = trainValidData.astype(np.float32)
+    trainValidData[trainValidData == np.inf] = 0
+    testData = testData.astype(np.float32)
+    testData[testData == np.inf] = 0
 
     trainValidData = np.nan_to_num(trainValidData.astype(np.float32))
     testData = np.nan_to_num(testData.astype(np.float32))
