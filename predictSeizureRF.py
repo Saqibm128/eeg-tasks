@@ -284,6 +284,8 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, mode, num_seconds, imbalan
     if regenerate_data:
         return
 
+
+
     print("Starting ", clf_name)
 
     #resample separately to avoid any data leaking between splits
@@ -291,12 +293,14 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, mode, num_seconds, imbalan
     validDataResampled, validLabelsResampled = resample_x_y(validData, validLabels)
 
 
+
     # if use_xgboost:
     #     return xgboost_flow(trainDataResampled, trainLabelsResampled, validDataResampled, validLabelsResampled, testData, testLabels)
 
     trainValidData = np.vstack([trainDataResampled, validDataResampled])
     trainValidLabels = np.hstack([trainLabelsResampled, validLabelsResampled])
-
+    trainValidData = np.nan_to_num(trainValidData.astype(np.float32))
+    testData = np.nan_to_num(testData.astype(np.float32))
 
     valid_indices = [[[i for i in range(len(trainLabelsResampled))], [i + len(trainLabelsResampled) for i in range(len(validLabelsResampled))]]]
     gridsearch = getGridsearch(valid_indices)
