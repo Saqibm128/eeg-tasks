@@ -17,6 +17,7 @@ from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef, classification_report, mean_squared_error
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
 import wf_analysis.datasets as wfdata
 import pickle as pkl
 import sacred
@@ -45,6 +46,22 @@ def rf():
     }
     clf_name = "rf"
     clf_step = ('rf', RandomForestClassifier())
+
+@ex.named_config
+def svc():
+    parameters = {
+        'svc__C':[1, 0.5, 1.5, 2, 4],
+        'svc__kernel':['linear', 'rbf', "poly", 'sigmoid', 'precomputed'],
+        'svc__gamma':[1,2,3,5,10, 'auto', 'scale'],
+        'svc__shrinking': [True, False],
+        'svc__probability': [True, False],
+        'svc__max_iter': [50]
+    }
+    # parameters.append(parameters[0].copy())
+    # parameters[1]["kernel"] = "poly"
+    # parameters[1]["degree"] = [1,2,3,4,6,8,12,16]
+    clf_name = "svc"
+    clf_step = ('svc', SVC())
 
 @ex.named_config
 def xgboost():
@@ -142,7 +159,7 @@ def config():
     num_seconds=1
     mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
     use_xgboost = False
-    use_simple_hand_engineered_features=False
+    use_simple_hand_engineered_features=True
 
 
 @ex.named_config
@@ -248,7 +265,7 @@ def getGridsearch(valid_indices, clf_step, parameters, n_process, use_random_cv,
     else:
         scorer = make_scorer(f1_score)
     if use_random_cv:
-        return RandomizedSearchCV(pipeline, Dict(parameters), cv=valid_indices,
+        return RandomizedSearchCV(pipeline, parameters, cv=valid_indices,
                             scoring=scorer, n_jobs=n_process, n_iter=num_random_choices)
     return GridSearchCV(pipeline, Dict(parameters), cv=valid_indices,
                         scoring=scorer, n_jobs=n_process)
