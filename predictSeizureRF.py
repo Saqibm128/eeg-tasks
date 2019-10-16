@@ -171,6 +171,10 @@ def predict_mode_knn_server():
 
 @ex.named_config
 def predict_mode():
+    mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
+
+@ex.named_config
+def predict_mode():
     mode=er.EdfDatasetSegmentedSampler.PREDICT_MODE
     train_pkl="/n/scratch2/ms994/trainPredictSeizureData.pkl"
     valid_pkl="/n/scratch2/ms994/validPredictSeizureData.pkl"
