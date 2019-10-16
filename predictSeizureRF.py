@@ -341,7 +341,11 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, mode, num_seconds, imbalan
     print("F1_score: ", f1_score(y_pred, testLabels))
     print("accuracy: ", accuracy_score(y_pred, testLabels))
     print("MCC: ", matthews_corrcoef(y_pred, testLabels))
-    print("AUC: ", roc_auc_score(y_pred, testLabels))
+    try:
+        auc = roc_auc_score(y_pred, testLabels)
+        print("AUC: ", auc)
+    except Exception:
+        auc = "cannot be calculated"
 
     # print("auc: ", auc(y_pred, testGenders))
     toSaveDict = Dict()
@@ -357,7 +361,7 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, mode, num_seconds, imbalan
         'f1': f1_score(y_pred, testLabels),
         'acc': accuracy_score(y_pred, testLabels),
         'mcc': matthews_corrcoef(y_pred, testLabels),
-        'auc': roc_auc_score(y_pred, testLabels),
+        'auc': auc,
         "classification_report": classification_report(testLabels, y_pred, output_dict=True),
         "best_params":  gridsearch.best_params_
     }}
