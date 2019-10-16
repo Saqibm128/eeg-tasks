@@ -320,6 +320,11 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, mode, num_seconds, imbalan
 
     trainValidData = np.vstack([trainDataResampled, validDataResampled])
     trainValidLabels = np.hstack([trainLabelsResampled, validLabelsResampled])
+    trainValidData = trainValidData.astype(float32)
+    trainValidData[trainValidData == inf] = 0
+    testData = testData.astype(float32)
+    testData[testData == inf] = 0
+
     trainValidData = np.nan_to_num(trainValidData.astype(np.float32))
     testData = np.nan_to_num(testData.astype(np.float32))
 
