@@ -51,11 +51,11 @@ def rf():
 def svc():
     parameters = {
         'svc__C':[1, 0.5, 1.5, 2, 4,8],
-        'svc__kernel':['linear', 'rbf', "poly", 'sigmoid', 'precomputed'],
+        'svc__kernel':['linear', 'rbf', "poly", 'sigmoid'],
         'svc__gamma':[1,2,3,5,10,20, 'auto', 'scale'],
         'svc__shrinking': [True, False],
         'svc__probability': [True, False],
-        'svc__max_iter': [50]
+        'svc__max_iter': [1000]
     }
     # parameters.append(parameters[0].copy())
     # parameters[1]["kernel"] = "poly"
@@ -149,7 +149,6 @@ def config():
     test_pkl="/n/scratch2/ms994/testSeizureData.pkl"
     mode = er.EdfDatasetSegmentedSampler.DETECT_MODE
     max_bckg_samps_per_file = 100
-    resample_imbalanced_method = None
     max_samples=None
     regenerate_data=False
     imbalanced_resampler = "rul"
@@ -362,7 +361,7 @@ def main(train_pkl, valid_pkl, test_pkl, train_split, mode, num_seconds, imbalan
     toSaveDict.gridsearch = gridsearch
     toSaveDict.best_params_ = gridsearch.best_params_
 
-    fn = "predictGender{}_{}_{}_{}.pkl".format(clf_name, mode, num_seconds, imbalanced_resampler if imbalanced_resampler is not None else "noresample")
+    fn = "seizure{}_{}_{}_{}.pkl".format(clf_name, mode, num_seconds, imbalanced_resampler if imbalanced_resampler is not None else "noresample")
     pkl.dump(toSaveDict, open(fn, 'wb'))
     ex.add_artifact(fn)
 
