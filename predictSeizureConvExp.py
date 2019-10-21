@@ -10,107 +10,32 @@ import data_reader as read
 import constants
 import util_funcs
 from sklearn.model_selection import PredefinedSplit, GridSearchCV
-from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef
+from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef, classification_report
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
-from keras_models.dataGen import EdfDataGenerator
-from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like
+from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels
+from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like_pre_layers
 from keras import optimizers
+from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout
+from keras.models import Model
+from keras.utils import multi_gpu_model
 import pickle as pkl
 import sacred
 import keras
 import ensembleReader as er
 from keras.utils import multi_gpu_model
 from keras_models import train
-
+import constants
+from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import RandomUnderSampler
 import random
 import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
+from addict import Dict
 ex = sacred.Experiment(name="detect_seizure_in_eeg")
 
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
-
-
-
-
-
-@ex.named_config
-def debug():
-    num_files = 200
-    batch_size = 16
-    num_epochs = 20
-    max_num_samples = 2
-
-
-
-@ex.named_config
-def standardized_ensemble():
-    use_random_ensemble = True
-    precached_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_train_data_seizure.pkl"
-    precached_test_pkl = "/n/scratch2/ms994/standardized_simple_ensemble_test_data_seizure.pkl"
-
-    ensemble_sample_info_path = "/n/scratch2/ms994/standardized_edf_ensemble_sample_info_seizure.pkl"
-
-    max_num_samples = 40  # number of samples of eeg data segments per eeg.edf file
-    use_standard_scaler = True
-    use_filtering = True
-
-
-@ex.named_config
-def stop_on_training_loss():
-    early_stopping_on = "loss"
-
-@ex.config
-def config():
-    train_split = "train"
-    test_split = "dev_test"
-    ref = "01_tcp_ar"
-    n_process = 8
-    num_files = None
-    max_length = 4 * constants.COMMON_FREQ
-    batch_size = 64
-    start_offset_seconds = 0  # matters if we aren't doing random ensemble sampling
-    dropout = 0.25
-    use_early_stopping = True
-    patience = 10
-    model_name = randomString() + ".h5"
-    precached_pkl = "train_data.pkl"
-    precached_test_pkl = "test_data.pkl"
-    num_epochs = 1000
-    lr = 0.0002
-    validation_size = 0.2
-    test_size = 0.2
-    use_cached_pkl = True
-    use_vp = True
-    # for custom architectures
-    num_conv_spatial_layers = 4
-    num_conv_temporal_layers = 1
-    conv_spatial_filter = (3, 3)
-    num_spatial_filter = 100
-    conv_temporal_filter = (2, 5)
-    num_temporal_filter = 1
-    use_filtering = True
-    max_pool_size = (1, 3)
-    max_pool_stride = (1, 2)
-    use_batch_normalization = True
-    use_random_ensemble = False
-    max_num_samples = 10  # number of samples of eeg data segments per eeg.edf file
-    num_gpus = 1
-    use_self_train=False
-    early_stopping_on = "val_loss"
-    test_train_split_pkl_path = "train_test_split_info.pkl"
-    # if use_cached_pkl is false and this is true, just generates pickle files, doesn't make models or anything
-    regenerate_data = False
-    use_standard_scaler = False
-    ensemble_sample_info_path = "edf_ensemble_path.pkl"
-    fit_generator_verbosity = 2
-    steps_per_epoch = None
-    validation_steps = None
-    shuffle_generator = True
-    use_dl = True
-    use_inception_like=False
-
 
 # https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -118,6 +43,107 @@ def randomString(stringLength=16):
     letters = string.ascii_uppercase
     return ''.join(random.choice(letters) for i in range(stringLength))
 
+@ex.config
+def config():
+    model_name = "/n/scratch2/ms994/out/" + randomString() + ".h5" #set to rando string so we don't have to worry about collisions
+    mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
+    max_bckg_samps_per_file = 100
+    max_samples=None
+
+    imbalanced_resampler = "rul"
+    pre_cooldown=4
+    post_cooldown=None
+    sample_time=4
+    num_seconds=4
+    n_process=20
+    mode = er.EdfDatasetSegmentedSampler.DETECT_MODE
+
+
+    use_combined = True
+    use_random_ensemble = True
+
+    precache = True
+    regenerate_data = False
+    train_pkl = "/n/scratch2/ms994/train_seizure_data_4.pkl"
+    valid_pkl = "/n/scratch2/ms994/valid_seizure_data_4.pkl"
+    test_pkl = "/n/scratch2/ms994/test_seizure_data_4.pkl"
+    batch_size = 16
+
+    pre_layer_h = 100
+    num_lin_layer = 2
+
+    patience=5
+    early_stopping_on="val_loss"
+    fit_generator_verbosity = 2
+    num_layers = 3
+    num_filters = 10
+
+    max_bckg_samps_per_file = 30
+    max_samples=None
+    use_standard_scaler = False
+    use_filtering = True
+    ref = "01_tcp_ar"
+    combined_split = None
+    lr = 0.001
+
+    epochs=100
+
+@ex.capture
+def getImbResampler(imbalanced_resampler):
+    if imbalanced_resampler is None:
+        return None
+    elif imbalanced_resampler == "SMOTE":
+        return SMOTE()
+    elif imbalanced_resampler == "rul":
+        return RandomUnderSampler()
+
+@ex.capture
+def resample_x_y(x, y, imbalanced_resampler):
+    if imbalanced_resampler is None:
+        return x, y
+    else:
+        oldShape = x.shape
+        resampleX, resampleY = getImbResampler().fit_resample(x.reshape(x.shape[0], -1), y)
+        return resampleX.reshape(resampleX.shape[0], *oldShape[1:]), resampleY
+
+
+@ex.capture
+def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds, n_process):
+    return er.EdfDatasetSegments(pre_cooldown=pre_cooldown, post_cooldown=post_cooldown, sample_time=sample_time, num_seconds=num_seconds, n_process=n_process)
+
+
+@ex.capture
+def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds, ref="01_tcp_ar", num_files=None):
+    eds = getDataSampleGenerator()
+    train_label_files_segs = eds.get_train_split()
+    test_label_files_segs = eds.get_test_split()
+    valid_label_files_segs = eds.get_valid_split()
+
+    #increased n_process to deal with io processing
+    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))
+    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))
+    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))
+    return train_edss, valid_edss, test_edss
+
+@ex.capture
+def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_layers, num_filters):
+    input_time_size = num_seconds * constants.COMMON_FREQ
+    x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
+    y = Reshape((input_time_size, 21))(x) #remove channel dim
+    y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
+    y = TimeDistributed(Dropout(0.5))(y)
+
+    for i in range(num_lin_layer - 1):
+        y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
+        y = TimeDistributed(Dropout(0.5))(y)
+
+    y = Reshape((input_time_size, pre_layer_h, 1))(y) #add back in channel dim
+    _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=0, num_layers=num_layers, num_filters=num_filters)
+    y = Dropout(0.5)(y)
+    y_seizure = Dense(2, activation="softmax", name="seizure")(y)
+    model = Model(inputs=x, outputs=[y_seizure])
+    model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
+    return model
 
 @ex.capture
 def get_model_checkpoint(model_name, monitor='val_loss'):
@@ -128,337 +154,55 @@ def get_model_checkpoint(model_name, monitor='val_loss'):
 def get_early_stopping(patience, early_stopping_on):
     return EarlyStopping(patience=patience, verbose=1, monitor=early_stopping_on)
 
-
 @ex.capture
-def get_cb_list(use_early_stopping, model_name):
-    if use_early_stopping:
-        return [get_early_stopping(), get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
-    else:
-        return [get_model_checkpoint(), get_model_checkpoint("bin_acc_"+model_name, "val_binary_accuracy")]
-
-@ex.capture
-def get_data_generator(split, pkl_file, shuffle_generator=True, is_test=False, use_cached_pkl_dataset=True):
-    if use_cached_pkl_dataset and path.exists(pkl_file):
-        edf = pkl.load(open(pkl_file, 'rb'))
-    elif is_test:
-        edf = EdfDataGenerator(
-            get_base_dataset(
-                split=split,
-                is_test=is_test
-                ),
-            precache=True,
-            shuffle=shuffle_generator,
-            n_classes=2,
-            time_first=False
-            )
-        pkl.dump(edf, open(pkl_file, 'wb'))
-    else:
-        trainTokens, validTokens = get_train_valid_split()
-        trainEdf = EdfDataGenerator(get_base_dataset(
-            split=split,
-            is_test=False,
-            edfTokens=trainTokens
-        ),
-        precache=True,
-        shuffle=shuffle_generator,
-        n_classes=2,
-        time_first=False
-        )
-        validEdf = EdfDataGenerator(get_base_dataset(
-            split=split,
-            is_test=False,
-            edfTokens=validTokens
-        ),
-        precache=True,
-        shuffle=shuffle_generator,
-        n_classes=2,
-        time_first=False
-        )
-        edf = trainEdf, validEdf
-        pkl.dump(edf, open(pkl_file, 'wb'))
-    return edf
-
-cached_train_test_split = None
-@ex.capture
-def get_train_valid_split():
-    global cached_train_test_split
-    if cached_train_test_split is None:
-        edfTokens = read.get_all_token_file_names("train", "01_tcp_ar")
-        trainTokens, validTokens, _a, _b = cta.train_test_split_on_combined(edfTokens, edfTokens, 0.1, stratify=False)
-        cached_train_test_split = trainTokens, validTokens
-    else:
-        trainTokens, validTokens = cached_train_test_split
-    return trainTokens, validTokens
-
-@ex.capture
-def get_base_dataset(split,
-                     ref,
-                     n_process,
-                     num_files,
-                     max_num_samples,
-                     max_length,
-                     start_offset_seconds,
-                     ensemble_sample_info_path,
-                     use_standard_scaler,
-                     use_filtering,
-                     edfTokens = None,
-                     use_cached_pkl_dataset=True,
-                     is_test=False,
-                     is_valid=False):
-    edfData = er.EdfDatasetEnsembler(
-        split,
-        ref,
-        n_process=n_process,
-        edf_tokens=edfTokens,
-        max_length=max_length * pd.Timedelta(seconds=constants.COMMON_DELTA),
-        use_numpy=True,
-        num_files=num_files,
-        max_num_samples=max_num_samples,
-        filter=use_filtering
-    )
-    labels = read.SeizureLabelReader(sampleInfo=edfData.sampleInfo, n_process=n_process)
-    labels.self_assign_to_sample_info(convert_to_int=True) #ugly code, changes the variable of edfData inside another object :(
-
-    samplingInfo = edfData.sampleInfo
-    if use_standard_scaler:
-        edfData = read.EdfStandardScaler(
-            edfData, dataset_includes_label=True, n_process=n_process)
-    basename = path.basename(ensemble_sample_info_path)
-    dirname = path.dirname(ensemble_sample_info_path)
-    ensemble_sample_info_path = (dirname + "/test_" + \
-        basename) if is_test else ensemble_sample_info_path
-    ensemble_sample_info_path = (dirname + "/valid_" + \
-        basename) if is_valid else ensemble_sample_info_path
-    if use_cached_pkl_dataset and path.exists(ensemble_sample_info_path):
-        edfData.sampleInfo = pkl.load(
-            open(ensemble_sample_info_path, 'rb'))
-        ex.add_resource(ensemble_sample_info_path)
-    else:
-        pkl.dump(samplingInfo, open(ensemble_sample_info_path, 'wb'))
-        ex.add_artifact(ensemble_sample_info_path)
-    edfData.verbosity = 50
-    return edfData
-
-
-@ex.capture
-def get_model(dropout, max_length, lr, use_vp, num_spatial_filter, use_batch_normalization, max_pool_size, use_inception_like, output_activation="softmax", num_gpus=1, num_outputs=2):
-    if use_vp:
-        model = vp_conv2d(
-            dropout=dropout,
-            input_shape=(21, max_length, 1),
-            filter_size=num_spatial_filter,
-            max_pool_size=max_pool_size,
-            use_batch_normalization=use_batch_normalization,
-            output_activation=output_activation,
-            num_outputs=num_outputs
-            )
-
-    elif use_inception_like:
-        model = get_inception_like(
-            output_activation=output_activation,
-            num_outputs=num_outputs)
-    else:
-        model = get_custom_model(
-            output_activation=output_activation,
-            num_outputs=num_outputs)
-    if num_gpus != 1:
-        model = multi_gpu_model(model, num_gpus)
-    adam = optimizers.Adam(lr=lr)
-    model.compile(adam, loss="categorical_crossentropy",
-                  metrics=["binary_accuracy"])
-    return model
-
-@ex.capture
-def get_inception_like(max_length, num_conv_spatial_layers, num_spatial_filter, dropout, lr, output_activation='softmax', num_outputs=2):
-    model = inception_like((21, max_length, 1), num_layers=num_conv_spatial_layers, num_filters=num_spatial_filter, dropout=dropout, output_activation=output_activation, num_outputs=num_outputs)
-    adam = optimizers.Adam(lr=lr)
-    model.compile(adam, loss="categorical_crossentropy",
-                  metrics=["binary_accuracy"])
-    return model
-
-
-@ex.capture
-def get_custom_model(
-    dropout,
-    max_length,
-    lr,
-    use_batch_normalization,
-    num_conv_spatial_layers=1,
-    num_conv_temporal_layers=1,
-    conv_spatial_filter=(3, 3),
-    num_spatial_filter=100,
-    conv_temporal_filter=(2, 5),
-    num_temporal_filter=300,
-    max_pool_size=(2, 2),
-    max_pool_stride=(1, 2),
-    output_activation='softmax',
-    num_outputs=2
-):
-    model = conv2d_gridsearch(
-        dropout=dropout,
-        input_shape=(21, max_length, 1),
-        num_conv_spatial_layers=num_conv_spatial_layers,
-        num_conv_temporal_layers=num_conv_temporal_layers,
-        conv_spatial_filter=conv_spatial_filter,
-        num_spatial_filter=num_spatial_filter,
-        conv_temporal_filter=conv_temporal_filter,
-        num_temporal_filter=num_temporal_filter,
-        max_pool_size=max_pool_size,
-        max_pool_stride=max_pool_stride,
-        use_batch_normalization=use_batch_normalization,
-        output_activation=output_activation,
-        num_outputs=num_outputs
-    )
-    adam = optimizers.Adam(lr=lr)
-    model.compile(adam, loss="categorical_crossentropy",
-                  metrics=["binary_accuracy"])
-    return model
-
-
-
+def get_cb_list():
+    return [get_model_checkpoint(), get_early_stopping()]
 @ex.main
-def main(use_dl):
-    # if use_dl:
-    return dl()  # deep learning branch
-
-@ex.capture
-def get_train_valid_generator(train_split, precached_pkl):
-    return get_data_generator(train_split, pkl_file=precached_pkl, is_test=False)
-
-@ex.capture
-def get_test_generator(test_split, precached_test_pkl):
-    return get_data_generator(test_split, pkl_file=precached_test_pkl, shuffle_generator=False, is_test=True)
-
-@ex.capture
-def self_train(model, train_data_generator, valid_data_generator, num_epochs, patience, model_name, num_steps_each_eval):
-    starting_class_weights=np.array([1,20])
-    return train.model_run(
-        model=model,
-        patience=patience,
-        class_weights=starting_class_weights,
-        model_name=model_name,
-        trainDataGen=train_data_generator,
-        validDataGen=valid_data_generator,
-        num_steps_each_eval=256,
-        epochs=num_epochs,
-        update_amount=0.9,
-        verbosity=False)
+def main(train_pkl, valid_pkl, test_pkl, mode, num_seconds, imbalanced_resampler, precache, regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process):
+    if path.exists(train_pkl) and precache:
+        test_edss = pkl.load(open(test_pkl, 'rb'))
+        train_edss = pkl.load(open(train_pkl, 'rb'))
+        valid_edss = pkl.load(open(valid_pkl, 'rb'))
+    else:
+        train_edss, valid_edss, test_edss = get_data()
 
 
-@ex.capture
-def dl(train_split, test_split, num_epochs, use_self_train, lr, batch_size, n_process, validation_size, max_length, use_random_ensemble, ref, num_files, regenerate_data, model_name, use_standard_scaler, fit_generator_verbosity, validation_steps, steps_per_epoch, num_gpus, ensemble_sample_info_path):
-    trainDataGenerator, validDataGenerator = get_train_valid_generator()
-    # trainValidationDataGenerator.time_first = False
-    testDataGenerator = get_test_generator()
-    # trainValidationDataGenerator.n_classes=2
-    # trainDataGenerator, validDataGenerator = trainValidationDataGenerator.create_validation_train_split(validation_size)
+        pkl.dump(train_edss, open(train_pkl, 'wb'))
+        pkl.dump(valid_edss, open(valid_pkl, 'wb'))
+        pkl.dump(test_edss, open(test_pkl, 'wb'))
+
+    def split_tuples(data):
+        return np.stack([datum[0] for datum in data]), np.stack([datum[1] for datum in data])
+
+    trainData, trainLabels = split_tuples(train_edss[:])
+    validData, validLabels = split_tuples(valid_edss[:])
+    trainDataResampled, trainLabelsResampled = resample_x_y(trainData, trainLabels)
+    validDataResampled, validLabelsResampled = resample_x_y(validData, validLabels)
+    train_edss_resampled = list(zip(trainDataResampled, trainLabelsResampled))
+    valid_edss_resampled = list(zip(validDataResampled, validLabelsResampled))
+
     if regenerate_data:
         return
+    edg = EdfDataGenerator(train_edss_resampled, n_classes=2, precache=True, batch_size=batch_size)
+    valid_edg = EdfDataGenerator(valid_edss_resampled, n_classes=2, precache=True, batch_size=batch_size)
+    test_edg = EdfDataGenerator(test_edss[:], n_classes=2, precache=True, batch_size=batch_size, shuffle=False)
 
-    # return
     model = get_model()
+    history = model.fit_generator(edg, validation_data=valid_edg, callbacks=get_cb_list(), verbose=fit_generator_verbosity, epochs=epochs)
 
-    best_val_score = -100
-    trainDataGenerator.batch_size = batch_size
-    validDataGenerator.batch_size = batch_size
+    y_pred = model.predict_generator(test_edg)
 
-    if use_self_train:
-        history = self_train(train_data_generator=trainDataGenerator, valid_data_generator=validDataGenerator, model=model, num_steps_each_eval=256)
-    else:
-        history = model.fit_generator(
-            trainDataGenerator,
-            validation_steps=validation_steps,
-            steps_per_epoch=steps_per_epoch,
-            validation_data = validDataGenerator,
-            verbose=fit_generator_verbosity,
-            epochs=num_epochs,
-            callbacks=get_cb_list(),
-            class_weight={
-                0: 1,
-                1: 40,
-            }
-            )
-
-
-
-    testData = testDataGenerator.dataset
-    testData = np.stack(np.stack(testData)[:,0])
-    testData = testData.reshape((*testData.shape, 1)).transpose(0,2,1,3)
-    testEdfEnsembler = er.EdfDatasetEnsembler("dev_test", ref, generate_sample_info=False)
-    basename = path.basename(ensemble_sample_info_path)
-    dirname = path.dirname(ensemble_sample_info_path)
-    test_ensemble_sample_info_path = (dirname + "/test_" + \
-        basename)
-    testEdfEnsembler.sampleInfo = pkl.load(open(test_ensemble_sample_info_path, 'rb'))
-    if use_standard_scaler:
-        testGender = testEdfEnsembler.getEnsembledLabels()
-    else:
-        testGender = testEdfEnsembler.getEnsembledLabels()
-
-    model = keras.models.load_model(model_name)
-    if num_gpus > 1:
-        model = multi_gpu_model(model, num_gpus)
-
-
-    y_pred = model.predict(testData) #time second, feature first
-    print("pred shape", y_pred.shape)
-    print("test data shape", testData.shape)
-
+    results = Dict()
+    results.history = history.history
+    results.seizure.acc = accuracy_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
+    results.seizure.f1 = f1_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
+    results.seizure.classification_report = classification_report(np.array([data[1] for data in test_edg.dataset]).astype(int), y_pred.argmax(1), output_dict=True),
     try:
-        auc = roc_auc_score(testGender, y_pred.argmax(axis=1))
+        results.seizure.AUC = roc_auc_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
     except Exception:
-        print("Could not calculate auc")
-    f1 = f1_score(testGender, y_pred.argmax(axis=1))
-    accuracy = accuracy_score(testGender, y_pred.argmax(axis=1))
+        results.seizure.AUC = "failed to calculate"
 
-    toReturn = {
-        'history': history.history,
-        'val_scores': {
-            'min_val_loss': min(history.history['val_loss']),
-        },
-        'test_scores': {
-            'f1': f1,
-            'acc': accuracy,
-            'auc': auc
-        }}
-
-
-
-
-    label, average_pred = testEdfEnsembler.getEnsemblePrediction(
-        y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_EQUAL_VOTE)
-    label, average_over_all_pred = testEdfEnsembler.getEnsemblePrediction(
-        y_pred, mode=er.EdfDatasetEnsembler.ENSEMBLE_PREDICTION_OVER_EACH_SAMP)
-    pred = np.round(average_pred)
-    toReturn["ensemble_score"] = {
-        "equal_vote":{},
-        "over_all":{}
-    }
-    # try:
-    #     toReturn["ensemble_score"]["auc"] = roc_auc_score(label, pred) #keep auc,etc. here as well in top level for compatibility reasons when comparing
-    # except Exception:
-    #     print("AUC could not be calculated")
-    # toReturn["ensemble_score"]["acc"] = accuracy_score(label, pred)
-    # toReturn["ensemble_score"]["f1_score"] = f1_score(label, pred)
-    # toReturn["ensemble_score"]["discordance"] = np.abs(
-    #     pred - average_pred).mean()
-    # try:
-    #     toReturn["ensemble_score"]["equal_vote"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
-    # except Exception:
-    #     print("AUC could not be calculated")
-    # toReturn["ensemble_score"]["equal_vote"]["acc"] = accuracy_score(label, pred)
-    # toReturn["ensemble_score"]["equal_vote"]["f1_score"] = f1_score(label, pred)
-    # toReturn["ensemble_score"]["equal_vote"]["discordance"] = np.abs(
-    #     pred - average_pred).mean()
-    # pred = np.round(average_over_all_pred)
-    # try:
-    #     toReturn["ensemble_score"]["over_all"]["auc"] = roc_auc_score(label, pred) #keep auc here as well in top level for compatibility reasons when comparing
-    # toReturn["ensemble_score"]["over_all"]["acc"] = accuracy_score(label, pred)
-    # toReturn["ensemble_score"]["over_all"]["f1_score"] = f1_score(label, pred)
-    # toReturn["ensemble_score"]["over_all"]["discordance"] = np.abs(
-    #     pred - average_pred).mean()
-    return toReturn
-
+    return results.to_dict()
 
 
 if __name__ == "__main__":
