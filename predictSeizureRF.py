@@ -152,6 +152,7 @@ def config():
     max_samples=None
     regenerate_data=False
     imbalanced_resampler = "rul"
+    subset_channels=constants.SYMMETRIC_COLUMN_SUBSET
     pre_cooldown=4
     post_cooldown=None
     sample_time=4
@@ -160,6 +161,9 @@ def config():
     use_xgboost = False
     use_simple_hand_engineered_features=True
 
+@ex.named_config
+def use_all_channels_for_coherence():
+    subset_channels = util_funcs.get_common_channel_names() #returns all the channels
 
 @ex.named_config
 def predict_mode_knn_server():
@@ -185,7 +189,7 @@ def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds
 
 
 @ex.capture
-def get_data(mode, max_samples, n_process, max_bckg_samps_per_file,use_simple_hand_engineered_features, num_seconds, ref="01_tcp_ar", num_files=None, freq_bins=[0,3.5,7.5,14,20,25,40],  include_simple_coherence=True,):
+def get_data(mode, max_samples, n_process, subset_channels, max_bckg_samps_per_file,use_simple_hand_engineered_features, num_seconds, ref="01_tcp_ar", num_files=None, freq_bins=[0,3.5,7.5,14,20,25,40],  include_simple_coherence=True,):
     eds = getDataSampleGenerator()
     train_label_files_segs = eds.get_train_split()
     test_label_files_segs = eds.get_test_split()
@@ -200,7 +204,6 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file,use_simple_ha
         Use only a few columns so that we don't make 21*20 coherence pairs
         '''
         all_channels = util_funcs.get_common_channel_names()
-        subset_channels = constants.SYMMETRIC_COLUMN_SUBSET
         subset_channels = [all_channels.index(channel) for channel in subset_channels]
         return [(datum[0][:, subset_channels], datum[1]) for datum in edss]
     if include_simple_coherence:
