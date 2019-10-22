@@ -162,8 +162,11 @@ def config():
     use_simple_hand_engineered_features=True
 
 @ex.named_config
-def use_all_channels_for_coherence():
+def use_all_channels_for_coherence_detect_knn():
     subset_channels = util_funcs.get_common_channel_names() #returns all the channels
+    train_pkl="/home/msaqib/trainSeizureData_expanded.pkl"
+    valid_pkl="/home/msaqib/validSeizureData_expanded.pkl"
+    test_pkl="/home/msaqib/testSeizureData_expanded.pkl"
 
 @ex.named_config
 def predict_mode_knn_server():
