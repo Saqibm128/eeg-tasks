@@ -78,7 +78,7 @@ def config():
     num_layers = 3
     num_filters = 10
 
-    max_bckg_samps_per_file = 30
+    max_bckg_samps_per_file = 20
     max_samples=None
     use_standard_scaler = False
     use_filtering = True
