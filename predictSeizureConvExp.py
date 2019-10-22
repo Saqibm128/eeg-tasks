@@ -143,6 +143,8 @@ def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_layers, num_filte
     y_seizure = Dense(2, activation="softmax", name="seizure")(y)
     model = Model(inputs=x, outputs=[y_seizure])
     model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
+    print(model.summary())
+    
     return model
 
 @ex.capture
