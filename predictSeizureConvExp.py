@@ -167,9 +167,9 @@ def main(train_pkl, valid_pkl, test_pkl, mode, num_seconds, imbalanced_resampler
         train_edss, valid_edss, test_edss = get_data()
 
 
-        pkl.dump(train_edss, open(train_pkl, 'wb'))
-        pkl.dump(valid_edss, open(valid_pkl, 'wb'))
-        pkl.dump(test_edss, open(test_pkl, 'wb'))
+        pkl.dump(train_edss[:], open(train_pkl, 'wb'))
+        pkl.dump(valid_edss[:], open(valid_pkl, 'wb'))
+        pkl.dump(test_edss[:], open(test_pkl, 'wb'))
 
     def split_tuples(data):
         return np.stack([datum[0] for datum in data]), np.stack([datum[1] for datum in data])
