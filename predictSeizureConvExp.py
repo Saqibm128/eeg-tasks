@@ -156,10 +156,10 @@ def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_layers, num_filte
     else:
         y = x
     if use_inception:
-        _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=0, num_layers=num_layers, num_filters=num_filters)
+        _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=0,  max_pool_stride=max_pool_stride, num_layers=num_layers, num_filters=num_filters, use_batch_normalization=True)
     else:
-        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=0, num_layers=num_layers, num_filters=num_filters)
-    y = Dropout(0.5)(y)
+        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, max_pool_stride=max_pool_stride, dropout=0, num_conv_spatial_layers=num_layers, num_spatial_filter=num_filters, use_batch_normalization=True)
+    # y = Dropout(0.5)(y)
     y_seizure = Dense(2, activation="softmax", name="seizure")(y)
     model = Model(inputs=x, outputs=[y_seizure])
     model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
