@@ -116,6 +116,7 @@ def inception_like(input_shape, num_layers=4, max_pool_size=(1,2), max_pool_stri
 
 def conv2d_gridsearch_pre_layers(
     dropout=0.25,
+    x = None,
     input_shape=(None),
     num_conv_spatial_layers=1,
     num_conv_temporal_layers=1,
@@ -128,8 +129,11 @@ def conv2d_gridsearch_pre_layers(
     use_batch_normalization=False):
 
     max_temporal_filter=max(num_temporal_filter, num_spatial_filter*3)
-    input = Input(shape=input_shape)
-    x = input
+    if x is None:
+        input = Input(shape=input_shape)
+        x = input
+    else:
+        input = x
 
     #should act to primarily convolve space, with some convolving of time
     for i in range(num_conv_spatial_layers):
