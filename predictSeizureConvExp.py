@@ -129,22 +129,26 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
 def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_layers, num_filters):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
-    y = Reshape((input_time_size, 21))(x) #remove channel dim
-    y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
-    y = TimeDistributed(Dropout(0.5))(y)
+    if num_lin_layer != 0:
+        y = Reshape((input_time_size, 21))(x) #remove channel dim
 
-    for i in range(num_lin_layer - 1):
         y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
         y = TimeDistributed(Dropout(0.5))(y)
 
-    y = Reshape((input_time_size, pre_layer_h, 1))(y) #add back in channel dim
+        for i in range(num_lin_layer - 1):
+            y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
+            y = TimeDistributed(Dropout(0.5))(y)
+
+        y = Reshape((input_time_size, pre_layer_h, 1))(y) #add back in channel dim
+    else:
+        y = x
     _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=0, num_layers=num_layers, num_filters=num_filters)
     y = Dropout(0.5)(y)
     y_seizure = Dense(2, activation="softmax", name="seizure")(y)
     model = Model(inputs=x, outputs=[y_seizure])
     model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
     print(model.summary())
-    
+
     return model
 
 @ex.capture
