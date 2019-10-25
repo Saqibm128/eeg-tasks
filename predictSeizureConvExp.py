@@ -33,7 +33,7 @@ import random
 import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from addict import Dict
-ex = sacred.Experiment(name="detect_seizure_in_eeg")
+ex = sacred.Experiment(name="seizure_conv_exp")
 
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
@@ -61,6 +61,7 @@ def config():
     max_bckg_samps_per_file = 100
     max_samples=None
     max_pool_stride = (2,2)
+    steps_per_epoch = None
 
     imbalanced_resampler = "rul"
     pre_cooldown=4
@@ -86,10 +87,11 @@ def config():
     num_lin_layer = 2
 
     patience=5
-    early_stopping_on="val_loss"
+    early_stopping_on="val_binary_accuracy"
     fit_generator_verbosity = 2
     num_layers = 3
     num_filters = 10
+    num_post_cnn_layers = 2
 
     max_bckg_samps_per_file = 20
     max_samples=None
@@ -139,16 +141,15 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     return train_edss, valid_edss, test_edss
 
 @ex.capture
-def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_layers, num_filters, max_pool_stride, use_inception):
+def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, num_layers, num_filters, max_pool_stride, use_inception):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
         y = Reshape((input_time_size, 21))(x) #remove channel dim
 
-        y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
-        y = TimeDistributed(Dropout(0.5))(y)
 
-        for i in range(num_lin_layer - 1):
+
+        for i in range(num_lin_layer):
             y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
             y = TimeDistributed(Dropout(0.5))(y)
 
@@ -156,20 +157,23 @@ def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_layers, num_filte
     else:
         y = x
     if use_inception:
-        _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=0,  max_pool_stride=max_pool_stride, num_layers=num_layers, num_filters=num_filters, use_batch_normalization=True)
+        _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=0,  max_pool_stride=max_pool_stride, num_layers=num_layers, num_filters=num_filters)
     else:
         _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, max_pool_stride=max_pool_stride, dropout=0, num_conv_spatial_layers=num_layers, num_spatial_filter=num_filters, use_batch_normalization=True)
     # y = Dropout(0.5)(y)
+    for i in range(num_post_cnn_layers):
+        y = Dense(pre_layer_h, activation='relu')(y)
+        y = Dropout(0.5)(y)
     y_seizure = Dense(2, activation="softmax", name="seizure")(y)
     model = Model(inputs=x, outputs=[y_seizure])
-    model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
+    model.compile(optimizers.Adam(lr=lr), loss=["binary_crossentropy"], metrics=["binary_accuracy"])
     print(model.summary())
 
     return model
 
 @ex.capture
-def get_model_checkpoint(model_name, monitor='val_loss'):
-    return ModelCheckpoint(model_name, monitor=monitor, save_best_only=True, verbose=1)
+def get_model_checkpoint(model_name, early_stopping_on):
+    return ModelCheckpoint(model_name, monitor=early_stopping_on, save_best_only=True, verbose=1)
 
 
 @ex.capture
@@ -180,7 +184,7 @@ def get_early_stopping(patience, early_stopping_on):
 def get_cb_list():
     return [get_model_checkpoint(), get_early_stopping()]
 @ex.main
-def main(train_pkl, valid_pkl, test_pkl, mode, num_seconds, imbalanced_resampler, precache, regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process):
+def main(train_pkl, valid_pkl, test_pkl, mode, num_seconds, imbalanced_resampler, precache, regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch):
     if path.exists(train_pkl) and precache:
         test_edss = pkl.load(open(test_pkl, 'rb'))
         train_edss = pkl.load(open(train_pkl, 'rb'))
@@ -210,7 +214,11 @@ def main(train_pkl, valid_pkl, test_pkl, mode, num_seconds, imbalanced_resampler
     test_edg = EdfDataGenerator(test_edss[:], n_classes=2, precache=True, batch_size=batch_size, shuffle=False)
 
     model = get_model()
-    history = model.fit_generator(edg, validation_data=valid_edg, callbacks=get_cb_list(), verbose=fit_generator_verbosity, epochs=epochs)
+    if steps_per_epoch is None:
+        history = model.fit_generator(edg, validation_data=valid_edg, callbacks=get_cb_list(), verbose=fit_generator_verbosity, epochs=epochs)
+    else:
+        history = model.fit_generator(edg, validation_data=valid_edg, callbacks=get_cb_list(), verbose=fit_generator_verbosity, epochs=epochs, steps_per_epoch=steps_per_epoch)
+
 
     y_pred = model.predict_generator(test_edg)
 
