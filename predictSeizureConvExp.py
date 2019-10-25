@@ -60,7 +60,7 @@ def config():
     mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
     max_bckg_samps_per_file = 100
     max_samples=None
-    max_pool_stride = (2,2)
+    max_pool_stride = (2,1)
 
     imbalanced_resampler = "rul"
     pre_cooldown=4
@@ -139,7 +139,7 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     return train_edss, valid_edss, test_edss
 
 @ex.capture
-def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_layers, num_filters, max_pool_stride, use_inception):
+def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_layers, num_filters, max_pool_stride, use_inception, max_pool_stride):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -158,7 +158,7 @@ def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_layers, num_filte
     if use_inception:
         _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=0, num_layers=num_layers, num_filters=num_filters)
     else:
-        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=0, num_layers=num_layers, num_filters=num_filters)
+        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=0, num_conv_spatial_layers=num_layers, max_pool_stride=max_pool_stride, num_filters=num_filters)
     y = Dropout(0.5)(y)
     y_seizure = Dense(2, activation="softmax", name="seizure")(y)
     model = Model(inputs=x, outputs=[y_seizure])

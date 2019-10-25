@@ -129,7 +129,6 @@ def four_second_windows_predict_knn():
     num_seconds=4
     sample_time=16
 
-
 @ex.config
 def config():
     train_split = "train"
@@ -152,7 +151,7 @@ def config():
     max_samples=None
     regenerate_data=False
     imbalanced_resampler = "rul"
-    subset_channels=constants.SYMMETRIC_COLUMN_SUBSET
+    complex_feature_channels=constants.SYMMETRIC_COLUMN_SUBSET
     pre_cooldown=4
     post_cooldown=None
     sample_time=4
@@ -160,13 +159,16 @@ def config():
     mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
     use_xgboost = False
     use_simple_hand_engineered_features=True
+    random_under_sample_data_gen = False
 
 @ex.named_config
 def use_all_channels_for_coherence_detect_knn():
-    subset_channels = util_funcs.get_common_channel_names() #returns all the channels
+    complex_feature_channels = util_funcs.get_common_channel_names() #returns all the channels
     train_pkl="/home/msaqib/trainSeizureData_expanded.pkl"
     valid_pkl="/home/msaqib/validSeizureData_expanded.pkl"
     test_pkl="/home/msaqib/testSeizureData_expanded.pkl"
+    random_under_sample_data_gen = True
+    use_simple_hand_engineered_features = False
 
 @ex.named_config
 def predict_mode_knn_server():
@@ -192,22 +194,22 @@ def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds
 
 
 @ex.capture
-def get_data(mode, max_samples, n_process, subset_channels, max_bckg_samps_per_file,use_simple_hand_engineered_features, num_seconds, ref="01_tcp_ar", num_files=None, freq_bins=[0,3.5,7.5,14,20,25,40],  include_simple_coherence=True,):
+def get_data(mode, max_samples, n_process, complex_feature_channels, max_bckg_samps_per_file,use_simple_hand_engineered_features, random_under_sample_data_gen, num_seconds, ref="01_tcp_ar", num_files=None, freq_bins=[0,3.5,7.5,14,20,25,40],  include_simple_coherence=True,):
     eds = getDataSampleGenerator()
     train_label_files_segs = eds.get_train_split()
     test_label_files_segs = eds.get_test_split()
     valid_label_files_segs = eds.get_valid_split()
 
     #increased n_process to deal with io processing
-    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))[:]
-    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))[:]
-    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))[:]
+    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, random_under_sample=random_under_sample_data_gen, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*2), gap=num_seconds*pd.Timedelta(seconds=1))[:]
+    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, random_under_sample=random_under_sample_data_gen, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*2), gap=num_seconds*pd.Timedelta(seconds=1))[:]
+    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, random_under_sample=random_under_sample_data_gen, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*2), gap=num_seconds*pd.Timedelta(seconds=1))[:]
     def simple_edss(edss):
         '''
         Use only a few columns so that we don't make 21*20 coherence pairs
         '''
         all_channels = util_funcs.get_common_channel_names()
-        subset_channels = [all_channels.index(channel) for channel in subset_channels]
+        subset_channels = [all_channels.index(channel) for channel in complex_feature_channels]
         return [(datum[0][:, subset_channels], datum[1]) for datum in edss]
     if include_simple_coherence:
         trainCoherData = np.stack([datum.values for datum in [datum[0] for datum in wfdata.CoherenceTransformer(simple_edss(train_edss), columns_to_use=constants.SYMMETRIC_COLUMN_SUBSET, n_process=n_process, is_pandas=False)[:]]])
@@ -237,6 +239,9 @@ def get_data(mode, max_samples, n_process, subset_channels, max_bckg_samps_per_f
         train_edss = np.hstack([train_edss, np.stack(trainSHED)])
         valid_edss = np.hstack([valid_edss, np.stack(validSHED)])
         test_edss = np.hstack([test_edss, np.stack(testSHED)])
+
+
+    print("Data Shape:", train_edss.shape)
 
     #some of the features are returning nans (assuming there is a log that may not play well?)
     return (np.nan_to_num(train_edss), train_labels), \

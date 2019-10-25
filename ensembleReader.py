@@ -9,6 +9,7 @@ import multiprocessing as mp
 from addict import Dict
 from sklearn.model_selection import train_test_split
 import random
+from numpy.random import choice
 
 class EnsemblerSequence():
     '''
@@ -179,6 +180,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         use_numpy=True,
         lp_cutoff=1,
         hp_cutoff=50,
+        random_under_sample=False,
         order_filt=5,
         mode=DETECT_MODE,
         resample=pd.Timedelta(seconds=constants.COMMON_DELTA),
@@ -200,6 +202,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         self.sampleInfo = Dict()
         self.gap = gap
         self.num_samples = num_samples
+        self.random_under_sample = random_under_sample
         # self.num_splits_per_sample = num_splits_per_sample
         currentIndex = 0
         for token_file_path, segment in self.segment_file_tuples:
@@ -230,6 +233,33 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
                 self.sampleInfo[currentIndex].sample_num = (time_period) / self.gap
                 self.sampleInfo[currentIndex].sample_width = self.gap
                 currentIndex += 1
+        if self.random_under_sample:
+            self.balance()
+
+    def balance(self):
+        copiedSelfSampleInfo = Dict()
+        oldIndicesByLabels = Dict()
+        allLabels = Dict()
+        for i in range(len(self)):
+            label = self.sampleInfo[i].label
+            if label not in oldIndicesByLabels.keys():
+                oldIndicesByLabels[label] = []
+                allLabels[label] = 0
+            oldIndicesByLabels[label].append(i)
+            allLabels[label] += 1
+
+        min_label_count = min([allLabels[label] for label in allLabels.keys()])
+        newInd = 0
+        for label in oldIndicesByLabels.keys():
+            oldIndicesByLabels[label] = choice(oldIndicesByLabels[label], size=min_label_count, replace=False)
+            for oldInd in oldIndicesByLabels[label]:
+                copiedSelfSampleInfo[newInd] = self.sampleInfo[oldInd]
+                newInd += 1
+        self.sampleInfo = copiedSelfSampleInfo
+
+
+
+
 
 
     def __len__(self):
@@ -446,7 +476,7 @@ class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):
         Parameters
         ----------
         pred_labels : ndarray
-            array of dim n_classes by n_instances
+            array of dim n_oldIndicesByLabels by n_instances
         mode : str
             describes how prediction should be done
 
