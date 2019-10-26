@@ -65,8 +65,14 @@ def make_args_for_conv(args):
 
     if "num_conv_temporal_layers" in passed_args.keys() and \
         passed_args["num_conv_temporal_layers"] + passed_args["num_layers"] > 6:
-        passed_args["num_layers"] = 6 - passed_args["num_layers"]
+        passed_args["num_layers"] = 6 - passed_args["num_layers"] #don't do too many layers
 
+    if "steps_per_epoch" in passed_args.keys() and passed_args["steps_per_epoch"] is not None:
+         passed_args["patience"] = 500 /   passed_args["steps_per_epoch"]
+
+
+    if "use_inception" in passed_args.keys() and passed_args["use_inception"]:
+        passed_args["num_filters"] = passed_args["num_filters"]/5 #if using inception, don't do an insane number of filters
     return passed_args
 
 
@@ -86,7 +92,8 @@ def run_pythia_hyperopt():
                     "num_conv_temporal_layers": hp.choice("num_conv_temporal_layers", [1,2,3])
                 }, {
                     'use_inception': False,
-                    "use_batch_normalization": hp.choice("use_batch_normalization", [True, False])
+                    "use_batch_normalization": hp.choice("use_batch_normalization", [True, False]),
+                    "num_temporal_filter": hp.choice("num_temporal_filter", [30,40,50,60])
                 } ]),
         "steps_per_epoch_opts": hp.choice('steps_per_epoch_opts', [
             {
@@ -98,7 +105,6 @@ def run_pythia_hyperopt():
                 "steps_per_epoch": None,
                 "patience": 5,
                 "epochs": 100
-
             },
         ]),
         "max_pool_opts": hp.choice("max_pool_opts", [
@@ -109,23 +115,20 @@ def run_pythia_hyperopt():
             {
                 "max_pool_size": (3,3),
                 "max_pool_stride": hp.choice("max_pool_stride_33", [(3,2), (3,1)])
-            },
-            {
-                "max_pool_size": (4,3),
-                "max_pool_stride": hp.choice("max_pool_stride_43", [(3,2), (3,1)])
-            },
+            }
 
         ]),
         "regenerate_data": False,
+        "hyperopt_run" : True,
         # "use_standard_scaler": hp.choice("use_standard_scaler", [True, False]),
         "hyperopt_run": True,
         "cnn_dropout": hp.choice("cnn_dropout", [0, 0.25, 0.5]),
         "linear_dropout": hp.choice("linear_dropout", [0, 0.25, 0.5]),
         "num_lin_layer": hp.choice("num_lin_layer", [0,1,2]),
         "num_post_cnn_layers": hp.choice("num_post_cnn_layers", [0,1,2]),
-        "pre_layer_h": hp.choice("pre_layer_h", [32, 64, 128]),
-        "num_filters": hp.choice("num_filters", [10,20,30]),
-        "num_layers": hp.choice("num_layers", [1,2,3,4]),
+        "pre_layer_h": hp.choice("pre_layer_h", [32, 64]),
+        "num_filters": hp.choice("num_filters", [10,20,30,40]),
+        "num_layers": hp.choice("num_layers", [2,3,4]),
     }
     trials = Trials()
     best = fmin(objective, space, algo=tpe.suggest, max_evals=int(parse_args.num_runs), trials=trials)

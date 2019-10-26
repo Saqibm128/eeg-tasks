@@ -123,7 +123,7 @@ def conv2d_gridsearch_pre_layers(
     conv_spatial_filter=(3,3),
     num_spatial_filter=100,
     conv_temporal_filter=(1,3),
-    num_temporal_filter=300,
+    num_temporal_filter=10,
     max_pool_size=(2,2),
     max_pool_stride=(1,2),
     use_batch_normalization=False):

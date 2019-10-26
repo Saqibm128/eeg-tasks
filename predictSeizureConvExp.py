@@ -36,7 +36,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from addict import Dict
 ex = sacred.Experiment(name="seizure_conv_exp")
 
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -96,6 +96,7 @@ def config():
     fit_generator_verbosity = 2
     num_layers = 3
     num_filters = 10
+    num_temporal_filter=10
     num_post_cnn_layers = 2
     hyperopt_run = False
 
@@ -149,7 +150,7 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     return train_edss, valid_edss, test_edss
 
 @ex.capture
-def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, num_layers, num_filters, max_pool_stride, use_inception, cnn_dropout, linear_dropout, max_pool_size, conv_spatial_filter, conv_temporal_filter, num_conv_temporal_layers, use_batch_normalization):
+def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, num_layers, num_filters, max_pool_stride, use_inception, cnn_dropout, linear_dropout, max_pool_size, conv_spatial_filter, conv_temporal_filter, num_conv_temporal_layers, num_temporal_filter, use_batch_normalization):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -167,7 +168,7 @@ def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, 
     if use_inception:
         _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=cnn_dropout, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_layers=num_layers, num_filters=num_filters)
     else:
-        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, conv_spatial_filter=conv_spatial_filter, conv_temporal_filter=conv_temporal_filter, num_conv_temporal_layers=num_conv_temporal_layers, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, dropout=cnn_dropout, num_conv_spatial_layers=num_layers, num_spatial_filter=num_filters, use_batch_normalization=use_batch_normalization)
+        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, conv_spatial_filter=conv_spatial_filter, conv_temporal_filter=conv_temporal_filter, num_conv_temporal_layers=num_conv_temporal_layers, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, dropout=cnn_dropout, num_conv_spatial_layers=num_layers, num_spatial_filter=num_filters, num_temporal_filter=num_temporal_filter, use_batch_normalization=use_batch_normalization)
     # y = Dropout(0.5)(y)
     for i in range(num_post_cnn_layers):
         y = Dense(pre_layer_h, activation='relu')(y)
