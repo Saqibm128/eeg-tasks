@@ -5,6 +5,7 @@ from sklearn.pipeline import Pipeline
 import clinical_text_analysis as cta
 import pandas as pd
 import numpy as np
+import numpy.random as random
 from os import path
 import data_reader as read
 import constants
@@ -35,7 +36,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from addict import Dict
 ex = sacred.Experiment(name="seizure_conv_exp")
 
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -60,8 +61,13 @@ def config():
     mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
     max_bckg_samps_per_file = 100
     max_samples=None
+    max_pool_size = (2,2)
     max_pool_stride = (2,2)
     steps_per_epoch = None
+
+    conv_spatial_filter=(3,3)
+    conv_temporal_filter=(1,3)
+    num_conv_temporal_layers=1
 
     imbalanced_resampler = "rul"
     pre_cooldown=4
@@ -71,10 +77,9 @@ def config():
     num_seconds=4
     n_process=20
     mode = er.EdfDatasetSegmentedSampler.DETECT_MODE
+    cnn_dropout = 0
+    linear_dropout = 0.5
 
-
-    use_combined = True
-    use_random_ensemble = True
 
     precache = True
     regenerate_data = False
@@ -92,6 +97,9 @@ def config():
     num_layers = 3
     num_filters = 10
     num_post_cnn_layers = 2
+    hyperopt_run = False
+
+    use_batch_normalization = True
 
     max_bckg_samps_per_file = 20
     max_samples=None
@@ -141,7 +149,7 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     return train_edss, valid_edss, test_edss
 
 @ex.capture
-def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, num_layers, num_filters, max_pool_stride, use_inception):
+def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, num_layers, num_filters, max_pool_stride, use_inception, cnn_dropout, linear_dropout, max_pool_size, conv_spatial_filter, conv_temporal_filter, num_conv_temporal_layers, use_batch_normalization):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -151,19 +159,19 @@ def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, 
 
         for i in range(num_lin_layer):
             y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
-            y = TimeDistributed(Dropout(0.5))(y)
+            y = TimeDistributed(Dropout(linear_dropout))(y)
 
         y = Reshape((input_time_size, pre_layer_h, 1))(y) #add back in channel dim
     else:
         y = x
     if use_inception:
-        _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=0,  max_pool_stride=max_pool_stride, num_layers=num_layers, num_filters=num_filters)
+        _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=cnn_dropout, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_layers=num_layers, num_filters=num_filters)
     else:
-        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, max_pool_stride=max_pool_stride, dropout=0, num_conv_spatial_layers=num_layers, num_spatial_filter=num_filters, use_batch_normalization=True)
+        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, conv_spatial_filter=conv_spatial_filter, conv_temporal_filter=conv_temporal_filter, num_conv_temporal_layers=num_conv_temporal_layers, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, dropout=cnn_dropout, num_conv_spatial_layers=num_layers, num_spatial_filter=num_filters, use_batch_normalization=use_batch_normalization)
     # y = Dropout(0.5)(y)
     for i in range(num_post_cnn_layers):
         y = Dense(pre_layer_h, activation='relu')(y)
-        y = Dropout(0.5)(y)
+        y = Dropout(linear_dropout)(y)
     y_seizure = Dense(2, activation="softmax", name="seizure")(y)
     model = Model(inputs=x, outputs=[y_seizure])
     model.compile(optimizers.Adam(lr=lr), loss=["binary_crossentropy"], metrics=["binary_accuracy"])
@@ -184,18 +192,29 @@ def get_early_stopping(patience, early_stopping_on):
 def get_cb_list():
     return [get_model_checkpoint(), get_early_stopping()]
 @ex.main
-def main(train_pkl, valid_pkl, test_pkl, mode, num_seconds, imbalanced_resampler, precache, regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch):
+def main(train_pkl, valid_pkl, test_pkl, use_standard_scaler, mode, num_seconds, imbalanced_resampler, precache, regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch):
     if path.exists(train_pkl) and precache:
         test_edss = pkl.load(open(test_pkl, 'rb'))
         train_edss = pkl.load(open(train_pkl, 'rb'))
         valid_edss = pkl.load(open(valid_pkl, 'rb'))
     else:
         train_edss, valid_edss, test_edss = get_data()
+        train_edss = train_edss[:]
+        valid_edss = valid_edss[:]
+        test_edss = test_edss[:]
 
 
         pkl.dump(train_edss[:], open(train_pkl, 'wb'))
         pkl.dump(valid_edss[:], open(valid_pkl, 'wb'))
         pkl.dump(test_edss[:], open(test_pkl, 'wb'))
+
+    if use_standard_scaler:
+        train_edss = read.EdfStandardScaler(
+            train_edss, dataset_includes_label=True, n_process=n_process)[:]
+        valid_edss = read.EdfStandardScaler(
+            valid_edss, dataset_includes_label=True, n_process=n_process)[:]
+        test_edss = read.EdfStandardScaler(
+            test_edss, dataset_includes_label=True, n_process=n_process)[:]
 
     def split_tuples(data):
         return np.stack([datum[0] for datum in data]), np.stack([datum[1] for datum in data])
