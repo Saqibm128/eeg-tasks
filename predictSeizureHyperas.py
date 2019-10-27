@@ -72,7 +72,7 @@ def make_args_for_conv(args):
 
 
     if "use_inception" in passed_args.keys() and passed_args["use_inception"]:
-        passed_args["num_filters"] = passed_args["num_filters"]/5 #if using inception, don't do an insane number of filters
+        passed_args["num_filters"] = int(passed_args["num_filters"]/3) #if using inception, don't do an insane number of filters
     return passed_args
 
 
@@ -126,6 +126,7 @@ def run_pythia_hyperopt():
         "linear_dropout": hp.choice("linear_dropout", [0, 0.25, 0.5]),
         "num_lin_layer": hp.choice("num_lin_layer", [0,1,2]),
         "num_post_cnn_layers": hp.choice("num_post_cnn_layers", [0,1,2]),
+        "num_post_lin_h": hp.choice("num_post_lin_h", [10,20]),
         "pre_layer_h": hp.choice("pre_layer_h", [32, 64]),
         "num_filters": hp.choice("num_filters", [10,20,30,40]),
         "num_layers": hp.choice("num_layers", [2,3,4]),

@@ -15,7 +15,7 @@ from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
-from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels
+from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels, RULEdfDataGenerator
 from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like_pre_layers, conv2d_gridsearch_pre_layers
 from keras import optimizers
 from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout
@@ -33,6 +33,8 @@ from imblearn.under_sampling import RandomUnderSampler
 import random
 import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.utils import multi_gpu_model
+
 from addict import Dict
 ex = sacred.Experiment(name="seizure_conv_exp")
 
@@ -59,7 +61,6 @@ def no_stride_channels():
 def config():
     model_name = "/n/scratch2/ms994/out/" + randomString() + ".h5" #set to rando string so we don't have to worry about collisions
     mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
-    max_bckg_samps_per_file = 100
     max_samples=None
     max_pool_size = (2,2)
     max_pool_stride = (2,2)
@@ -67,6 +68,7 @@ def config():
 
     conv_spatial_filter=(3,3)
     conv_temporal_filter=(1,3)
+    num_gpus=1
     num_conv_temporal_layers=1
 
     imbalanced_resampler = "rul"
@@ -86,7 +88,7 @@ def config():
     train_pkl = "/n/scratch2/ms994/train_seizure_data_4.pkl"
     valid_pkl = "/n/scratch2/ms994/valid_seizure_data_4.pkl"
     test_pkl = "/n/scratch2/ms994/test_seizure_data_4.pkl"
-    batch_size = 16
+    batch_size = 32
 
     pre_layer_h = 100
     num_lin_layer = 2
@@ -100,9 +102,11 @@ def config():
     num_post_cnn_layers = 2
     hyperopt_run = False
 
+    num_post_lin_h = 5
+
     use_batch_normalization = True
 
-    max_bckg_samps_per_file = 20
+    max_bckg_samps_per_file = 100
     max_samples=None
     use_standard_scaler = False
     use_filtering = True
@@ -150,7 +154,7 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     return train_edss, valid_edss, test_edss
 
 @ex.capture
-def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, num_layers, num_filters, max_pool_stride, use_inception, cnn_dropout, linear_dropout, max_pool_size, conv_spatial_filter, conv_temporal_filter, num_conv_temporal_layers, num_temporal_filter, use_batch_normalization):
+def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, num_post_lin_h, num_layers, num_filters, max_pool_stride, use_inception, cnn_dropout, linear_dropout, num_gpus, max_pool_size, conv_spatial_filter, conv_temporal_filter, num_conv_temporal_layers, num_temporal_filter, use_batch_normalization):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -171,10 +175,12 @@ def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, 
         _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, conv_spatial_filter=conv_spatial_filter, conv_temporal_filter=conv_temporal_filter, num_conv_temporal_layers=num_conv_temporal_layers, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, dropout=cnn_dropout, num_conv_spatial_layers=num_layers, num_spatial_filter=num_filters, num_temporal_filter=num_temporal_filter, use_batch_normalization=use_batch_normalization)
     # y = Dropout(0.5)(y)
     for i in range(num_post_cnn_layers):
-        y = Dense(pre_layer_h, activation='relu')(y)
+        y = Dense(num_post_lin_h, activation='relu')(y)
         y = Dropout(linear_dropout)(y)
     y_seizure = Dense(2, activation="softmax", name="seizure")(y)
     model = Model(inputs=x, outputs=[y_seizure])
+    if num_gpus > 1:
+        model = multi_gpu_model(model, num_gpus)
     model.compile(optimizers.Adam(lr=lr), loss=["binary_crossentropy"], metrics=["binary_accuracy"])
     print(model.summary())
 
