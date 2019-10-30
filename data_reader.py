@@ -3,6 +3,7 @@ import numpy as np
 import itertools
 import pyedflib
 from os import path
+import sys, os
 import util_funcs
 from util_funcs import read_config, get_abs_files, get_annotation_types, get_data_split, get_reference_node_types, np_rolling_window
 import multiprocessing as mp
@@ -623,7 +624,11 @@ def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None
                 signal_data = reader.readSignal(i, start=start_count_native_freq)
             else:
                 numStepsToRead = int(np.ceil(max_length / pd.Timedelta(seconds=1/sample_rates[i]))) + 5 #adding a fudge factor of 5 for any off by 1 errors
+                if "messy_read_outputs" in read_config() and read_config()["messy_read_outputs"]:
+                    sys.stdout = open(os.devnull, "w")
                 signal_data = reader.readSignal(i, start=start_count_native_freq, n=numStepsToRead)
+                if "messy_read_outputs" in read_config() and read_config()["messy_read_outputs"]:
+                    sys.stdout = sys.__stdout__
 
             signal_data = pd.Series(
                 signal_data,

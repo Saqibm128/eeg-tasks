@@ -1,0 +1,31 @@
+Traceback (most recent call last):
+  File "predictSeizureHyperas.py", line 25, in <module>
+    from predictSeizureConvExp import ex
+  File "/home/ms994/dbmi_eeg_clustering/predictSeizureConvExp.py", line 5, in <module>
+    import clinical_text_analysis as cta
+  File "/home/ms994/dbmi_eeg_clustering/clinical_text_analysis.py", line 2, in <module>
+    from data_reader import convert_edf_path_to_txt, get_all_clinical_notes, get_all_token_file_names, get_token_file_names
+  File "/home/ms994/dbmi_eeg_clustering/data_reader.py", line 6, in <module>
+    import util_funcs
+  File "/home/ms994/dbmi_eeg_clustering/util_funcs.py", line 15, in <module>
+    from imblearn.over_sampling import SMOTE, ADASYN
+  File "/home/ms994/miniconda3/envs/keras-redo/lib/python3.7/site-packages/imblearn/__init__.py", line 37, in <module>
+    from . import keras
+  File "/home/ms994/miniconda3/envs/keras-redo/lib/python3.7/site-packages/imblearn/keras/__init__.py", line 4, in <module>
+    from ._generator import BalancedBatchGenerator
+  File "/home/ms994/miniconda3/envs/keras-redo/lib/python3.7/site-packages/imblearn/keras/_generator.py", line 40, in <module>
+    ParentClass, HAS_KERAS = import_keras()
+  File "/home/ms994/miniconda3/envs/keras-redo/lib/python3.7/site-packages/imblearn/keras/_generator.py", line 30, in import_keras
+    ParentClassKeras, has_keras_k = import_from_keras()
+  File "/home/ms994/miniconda3/envs/keras-redo/lib/python3.7/site-packages/imblearn/keras/_generator.py", line 18, in import_from_keras
+    import keras
+  File "/home/ms994/miniconda3/envs/keras-redo/lib/python3.7/site-packages/keras/__init__.py", line 3, in <module>
+    from . import utils
+  File "/home/ms994/miniconda3/envs/keras-redo/lib/python3.7/site-packages/keras/utils/__init__.py", line 5, in <module>
+    from . import io_utils
+  File "/home/ms994/miniconda3/envs/keras-redo/lib/python3.7/site-packages/keras/utils/io_utils.py", line 13, in <module>
+    import h5py
+  File "/home/ms994/miniconda3/envs/keras-redo/lib/python3.7/site-packages/h5py/__init__.py", line 45, in <module>
+    from . import h5a, h5d, h5ds, h5f, h5fd, h5g, h5r, h5s, h5t, h5p, h5z
+  File "h5py/h5f.pyx", line 1, in init h5py.h5f
+KeyboardInterrupt

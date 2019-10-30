@@ -8,6 +8,7 @@ import numpy as np
 import numpy.random as random
 from os import path
 import data_reader as read
+# from multiprocessing import Process
 import constants
 import util_funcs
 from sklearn.model_selection import PredefinedSplit, GridSearchCV
@@ -68,7 +69,7 @@ def config():
 
     conv_spatial_filter=(3,3)
     conv_temporal_filter=(1,3)
-    num_gpus=1
+    num_gpus=2
     num_conv_temporal_layers=1
 
     imbalanced_resampler = "rul"
@@ -101,6 +102,7 @@ def config():
     num_temporal_filter=10
     num_post_cnn_layers = 2
     hyperopt_run = False
+    make_model_in_parallel = False
 
     num_post_lin_h = 5
 
@@ -179,12 +181,19 @@ def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, 
         y = Dropout(linear_dropout)(y)
     y_seizure = Dense(2, activation="softmax", name="seizure")(y)
     model = Model(inputs=x, outputs=[y_seizure])
+    print(model.summary())
     if num_gpus > 1:
         model = multi_gpu_model(model, num_gpus)
     model.compile(optimizers.Adam(lr=lr), loss=["binary_crossentropy"], metrics=["binary_accuracy"])
-    print(model.summary())
 
     return model
+
+global_model = None
+
+@ex.capture
+def set_global_model():
+    global global_model
+    global_model = get_model()
 
 @ex.capture
 def get_model_checkpoint(model_name, early_stopping_on):
@@ -200,6 +209,8 @@ def get_cb_list():
     return [get_model_checkpoint(), get_early_stopping()]
 @ex.main
 def main(train_pkl, valid_pkl, test_pkl, use_standard_scaler, mode, num_seconds, imbalanced_resampler, precache, regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch):
+    model = get_model() #get the model first to see if the parameters passed in fail (negative dim size)
+
     if path.exists(train_pkl) and precache:
         test_edss = pkl.load(open(test_pkl, 'rb'))
         train_edss = pkl.load(open(train_pkl, 'rb'))
@@ -239,7 +250,6 @@ def main(train_pkl, valid_pkl, test_pkl, use_standard_scaler, mode, num_seconds,
     valid_edg = EdfDataGenerator(valid_edss_resampled, n_classes=2, precache=True, batch_size=batch_size)
     test_edg = EdfDataGenerator(test_edss[:], n_classes=2, precache=True, batch_size=batch_size, shuffle=False)
 
-    model = get_model()
     if steps_per_epoch is None:
         history = model.fit_generator(edg, validation_data=valid_edg, callbacks=get_cb_list(), verbose=fit_generator_verbosity, epochs=epochs)
     else:

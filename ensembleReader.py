@@ -10,6 +10,7 @@ from addict import Dict
 from sklearn.model_selection import train_test_split
 import random
 from numpy.random import choice
+from numpy.random import randint
 
 class EnsemblerSequence():
     '''
@@ -188,6 +189,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         gap = pd.Timedelta(seconds=1),
         num_samples=None,
         max_bckg_samps_per_file=None,
+        overlapping_augmentation=False,
         n_process=4
     ):
         self.mode = mode
@@ -203,6 +205,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         self.gap = gap
         self.num_samples = num_samples
         self.random_under_sample = random_under_sample
+        self.overlapping_augmentation = overlapping_augmentation
         # self.num_splits_per_sample = num_splits_per_sample
         currentIndex = 0
         for token_file_path, segment in self.segment_file_tuples:
@@ -270,9 +273,12 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         if self.should_use_mp(i):
             return self.getItemSlice(i)
         indexData = self.sampleInfo[i]
+        offset = 0
+        if self.overlapping_augmentation:
+            offset = randint(0, 50) #add some random overlap up to 25% of the whole segment sample
         data = read.edf_eeg_2_df(indexData.token_file_path,
                                  resample=self.resample,
-                                 start=indexData.sample_num * self.gap,
+                                 start=(indexData.sample_num + offset/200) * self.gap,
                                  max_length=self.gap)
 
         data = data.loc[pd.Timedelta(seconds=0):self.gap].iloc[0:-1]

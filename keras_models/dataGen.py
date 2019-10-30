@@ -3,6 +3,8 @@ import numpy as np
 import keras
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from addict import Dict
+from numpy.random import choice
 
 #Wrapper classes for batch training in Keras
 
@@ -179,6 +181,48 @@ class EdfDataGenerator(DataGenerator):
         elif self.class_type == "quantile":
             y = y
         return x, np.stack(y)
+
+
+class RULEdfDataGenerator(EdfDataGenerator):
+    '''
+    Similar to EdfDataGenerator but runs random under_sampling each run
+    '''
+    def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
+                 n_classes=10, class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True):
+        super().__init__(dataset=dataset, mask_value=mask_value, labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
+                     n_classes=n_classes, class_type=class_type, shuffle=shuffle, max_length=max_length, time_first=time_first, precache=precache, xy_tuple_form=xy_tuple_form)
+        self.full_indexes = self.list_IDs
+        self.on_epoch_end()
+    def on_epoch_end(self):
+
+        'Updates indexes after each epoch and balances such that all data is used per epoch'
+        if self.labels is not None:
+            copiedSelfSampleInfo = Dict()
+            oldIndicesByLabels = Dict()
+            allLabels = Dict()
+            for i in range(len(self.labels)):
+                label = self.labels[i]
+                if label not in oldIndicesByLabels.keys():
+                    oldIndicesByLabels[label] = []
+                    allLabels[label] = 0
+                oldIndicesByLabels[label].append(i)
+                allLabels[label] += 1
+
+            min_label_count = min([allLabels[label] for label in allLabels.keys()])
+            print(allLabels)
+            print(min_label_count)
+            newInd = 0
+            self.list_IDs = []
+            for label in oldIndicesByLabels.keys():
+                oldIndicesByLabels[label] = choice(oldIndicesByLabels[label], size=min_label_count, replace=False)
+                for oldInd in oldIndicesByLabels[label]:
+                    self.list_IDs.append(oldInd)
+
+
+        self.indexes = np.arange(len(self.list_IDs))
+        if self.shuffle == True:
+            np.random.shuffle(self.indexes)
+
 
 class DataGenMultipleLabels(EdfDataGenerator):
     '''
