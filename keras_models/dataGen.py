@@ -5,6 +5,8 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from addict import Dict
 from numpy.random import choice
+import multiprocessing as mp
+import time
 
 #Wrapper classes for batch training in Keras
 
@@ -101,7 +103,7 @@ class DataGenerator(keras.utils.Sequence):
 class EdfDataGenerator(DataGenerator):
     'Can accept EdfDataset and any of its intermediates to make data (i.e. sftft)'
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=10, class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True):
+                 n_classes=10, class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, use_background_process=False):
 
         super().__init__(list_IDs=list(range(len(dataset))), labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
                      n_classes=n_classes, shuffle=shuffle)
@@ -113,6 +115,10 @@ class EdfDataGenerator(DataGenerator):
         self.time_first = time_first
         self.xy_tuple_form = xy_tuple_form
         self.class_type=class_type
+        self.use_background_process=use_background_process
+        if self.use_background_process:
+            self.manager = mp.Manager()
+            self.queue = self.manager.Queue()
 
         if precache: #just populate self.labels too if we are precaching anyways
             self.dataset = dataset[:]
@@ -121,6 +127,19 @@ class EdfDataGenerator(DataGenerator):
         self.precache = precache
         if type(self.labels) == list:
             self.labels = np.array(self.labels)
+
+    def background_population(self):
+        for i in range(len(self)):
+            while self.queue.full():
+                time.sleep(0.1)
+            self.queue.put(self.__getitem__(i, accessed_by_background=True))
+            print(i)
+
+
+    def start_background(self):
+        #use if u want to run train_on_batch
+        self.process = mp.Process(target=self.background_population)
+        self.process.start()
 
     def create_validation_train_split(self, validation_size=0.1):
         '''
@@ -158,8 +177,13 @@ class EdfDataGenerator(DataGenerator):
 
         return x, y
 
-    def __getitem__(self, index):
+    def __getitem__(self, index, accessed_by_background=False):
         'Generate one batch of data'
+        if not accessed_by_background and self.use_background_process:
+            while self.queue.empty():
+                time.sleep(0.1)
+            return self.queue.get()
+
         indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
 
         list_IDs_temp = [self.list_IDs[k] for k in indexes]
@@ -188,9 +212,9 @@ class RULEdfDataGenerator(EdfDataGenerator):
     Similar to EdfDataGenerator but runs random under_sampling each run
     '''
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=10, class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True):
+                 n_classes=10, class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, **kwargs):
         super().__init__(dataset=dataset, mask_value=mask_value, labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
-                     n_classes=n_classes, class_type=class_type, shuffle=shuffle, max_length=max_length, time_first=time_first, precache=precache, xy_tuple_form=xy_tuple_form)
+                     n_classes=n_classes, class_type=class_type, shuffle=shuffle, max_length=max_length, time_first=time_first, precache=precache, xy_tuple_form=xy_tuple_form, **kwargs)
         self.full_indexes = self.list_IDs
         self.on_epoch_end()
     def on_epoch_end(self):
@@ -209,8 +233,6 @@ class RULEdfDataGenerator(EdfDataGenerator):
                 allLabels[label] += 1
 
             min_label_count = min([allLabels[label] for label in allLabels.keys()])
-            print(allLabels)
-            print(min_label_count)
             newInd = 0
             self.list_IDs = []
             for label in oldIndicesByLabels.keys():
@@ -229,9 +251,9 @@ class DataGenMultipleLabels(EdfDataGenerator):
     To be able to deal with cases where neural net can predict for multiple things at once
     '''
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=(2, 2), class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2, shuffle_channels=False):
+                 n_classes=(2, 2), class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2, shuffle_channels=False, **kwargs):
         super().__init__( dataset, mask_value, labels, batch_size, dim, n_channels,
-                     n_classes, class_type, shuffle, max_length, time_first, precache=precache, xy_tuple_form=xy_tuple_form)
+                     n_classes, class_type, shuffle, max_length, time_first, precache=precache, xy_tuple_form=xy_tuple_form, **kwargs)
 
         assert num_labels >= 2
         assert num_labels == len(n_classes)
@@ -243,8 +265,12 @@ class DataGenMultipleLabels(EdfDataGenerator):
         if self.precache:
             self.dataset = dataset[:]
 
-    def __getitem__(self, index):
+    def __getitem__(self, index, accessed_by_background=False):
         'Generate one batch of data'
+        if not accessed_by_background and self.use_background_process:
+            while self.queue.empty():
+                time.sleep(0.1)
+            return self.queue.get()
         indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
 
         list_IDs_temp = [self.list_IDs[k] for k in indexes]
@@ -272,7 +298,12 @@ class DataGenMultipleLabels(EdfDataGenerator):
 
 
     def get_x_y(self, i):
-        data = [self.dataset[j] for j in i]
+        if self.precache:
+            data = [self.dataset[j] for j in i]
+        else:
+            print("Using mp with dataset of size {}".format(len(i)))
+            data = self.dataset[i]
+
         if self.xy_tuple_form:
             x = [datum[0] for datum in data]
             instanceLabels = [datum[1] for datum in data]
@@ -280,7 +311,10 @@ class DataGenMultipleLabels(EdfDataGenerator):
             for class_i in range(self.num_labels):
                 labels.append([instanceLabel[class_i] for instanceLabel in instanceLabels])
         else:
-            x = data
+            if len(data[0]) == 1:
+                x = data
+            else:
+                x = [datum[0] for datum in data]
             labels = []
             for class_i in range(self.num_labels):
                 labels.append([self.labels[class_i][j] for j in i])
@@ -302,3 +336,37 @@ class DataGenMultipleLabels(EdfDataGenerator):
             y_labels.append(y)
 
         return x, y_labels
+
+class RULDataGenMultipleLabels(DataGenMultipleLabels):
+    def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
+                 n_classes=(2, 2), class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2, shuffle_channels=False, **kwargs):
+        super().__init__(dataset=dataset, mask_value=mask_value, labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
+                     n_classes=n_classes, class_type=class_type, shuffle=shuffle, max_length=max_length, time_first=time_first, precache=precache, xy_tuple_form=xy_tuple_form, num_labels=num_labels, shuffle_channels=shuffle_channels, **kwargs)
+        self.on_epoch_end()
+
+    def on_epoch_end(self):
+        'Updates indexes after each epoch and balances such that all data is used per epoch'
+        if self.labels is not None:
+            copiedSelfSampleInfo = Dict()
+            oldIndicesByLabels = Dict()
+            allLabels = Dict()
+            for i in range(len(self.labels[0])):
+                label = self.labels[0][i] #use the first label
+                if label not in oldIndicesByLabels.keys():
+                    oldIndicesByLabels[label] = []
+                    allLabels[label] = 0
+                oldIndicesByLabels[label].append(i)
+                allLabels[label] += 1
+
+            min_label_count = min([allLabels[label] for label in allLabels.keys()])
+            newInd = 0
+            self.list_IDs = []
+            for label in oldIndicesByLabels.keys():
+                oldIndicesByLabels[label] = choice(oldIndicesByLabels[label], size=min_label_count, replace=False)
+                for oldInd in oldIndicesByLabels[label]:
+                    self.list_IDs.append(oldInd)
+
+
+        self.indexes = np.arange(len(self.list_IDs))
+        if self.shuffle == True:
+            np.random.shuffle(self.indexes)

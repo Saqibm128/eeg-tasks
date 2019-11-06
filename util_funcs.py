@@ -72,6 +72,13 @@ class MultiProcessingDataset():
 
 
     """
+    # def background_caching(self):
+    #     self.
+    # def start_background_caching(self):
+    #     self.manager = mp.Manager()
+    #     self.queue = self.manager.Queue()
+    #     self.get_process = mp.Process(target=background_caching, )
+    #     self.background_data = [i for i in range(len(self))]
     def should_use_mp(self, i):
         return type(i) == slice
 
