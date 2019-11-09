@@ -255,7 +255,7 @@ class DataGenMultipleLabels(EdfDataGenerator):
         super().__init__( dataset, mask_value, labels, batch_size, dim, n_channels,
                      n_classes, class_type, shuffle, max_length, time_first, precache=precache, xy_tuple_form=xy_tuple_form, **kwargs)
 
-        assert num_labels >= 2
+        # assert num_labels >= 2
         assert num_labels == len(n_classes)
         assert xy_tuple_form or len(labels) == num_labels
         self.num_labels = num_labels
@@ -301,13 +301,18 @@ class DataGenMultipleLabels(EdfDataGenerator):
         if self.precache:
             data = [self.dataset[j] for j in i]
         else:
-            print("Using mp with dataset of size {}".format(len(i)))
+            # print("Using mp with dataset of size {}".format(len(i)))
             data = self.dataset[i]
 
         if self.xy_tuple_form:
             x = [datum[0] for datum in data]
             instanceLabels = [datum[1] for datum in data]
             labels = []
+            try:
+                len(instanceLabels[0])
+            except Exception:
+                for i in range(len(instanceLabels)):
+                    instanceLabels[i] = [instanceLabels[i]] #make into array-like
             for class_i in range(self.num_labels):
                 labels.append([instanceLabel[class_i] for instanceLabel in instanceLabels])
         else:

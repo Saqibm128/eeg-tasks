@@ -19,7 +19,7 @@ import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels, RULEdfDataGenerator
 from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like_pre_layers, conv2d_gridsearch_pre_layers
 from keras import optimizers
-from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout
+from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM
 from keras.models import Model
 from keras.utils import multi_gpu_model
 import pickle as pkl
@@ -103,6 +103,8 @@ def config():
     num_post_cnn_layers = 2
     hyperopt_run = False
     make_model_in_parallel = False
+    randomly_reorder_channels = False
+    random_channel_ordering = get_random_channel_ordering()
 
     num_post_lin_h = 5
 
@@ -116,6 +118,8 @@ def config():
     combined_split = None
     lr = 0.001
 
+    lstm = False
+
     epochs=100
 
 @ex.capture
@@ -126,6 +130,12 @@ def getImbResampler(imbalanced_resampler):
         return SMOTE()
     elif imbalanced_resampler == "rul":
         return RandomUnderSampler()
+
+
+def get_random_channel_ordering():
+    channel_ordering = [i for i in range(len(util_funcs.get_common_channel_names()))]
+    np.random.shuffle(channel_ordering)
+    return channel_ordering
 
 @ex.capture
 def resample_x_y(x, y, imbalanced_resampler):
@@ -156,7 +166,27 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     return train_edss, valid_edss, test_edss
 
 @ex.capture
-def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, num_post_lin_h, num_layers, num_filters, max_pool_stride, use_inception, cnn_dropout, linear_dropout, num_gpus, max_pool_size, conv_spatial_filter, conv_temporal_filter, num_conv_temporal_layers, num_temporal_filter, use_batch_normalization):
+def get_model(
+    num_seconds,
+    lr,
+    pre_layer_h,
+    num_lin_layer,
+    num_post_cnn_layers,
+    num_post_lin_h,
+    num_layers,
+    num_filters,
+    max_pool_stride,
+    use_inception,
+    cnn_dropout,
+    linear_dropout,
+    num_gpus,
+    max_pool_size,
+    conv_spatial_filter,
+    conv_temporal_filter,
+    num_conv_temporal_layers,
+    num_temporal_filter,
+    use_batch_normalization,
+    use_lstm):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -179,7 +209,11 @@ def get_model(num_seconds, lr, pre_layer_h, num_lin_layer, num_post_cnn_layers, 
     for i in range(num_post_cnn_layers):
         y = Dense(num_post_lin_h, activation='relu')(y)
         y = Dropout(linear_dropout)(y)
-    y_seizure = Dense(2, activation="softmax", name="seizure")(y)
+    if not use_lstm:
+        y_seizure = Dense(2, activation="softmax", name="seizure")(y)
+    else:
+        y = Reshape((int(y.shape[1]), int(y.shape[2]) * int(y.shape[3])))(y)
+        y_seizure = LSTM(2)(y)
     model = Model(inputs=x, outputs=[y_seizure])
     print(model.summary())
     if num_gpus > 1:
@@ -207,6 +241,17 @@ def get_early_stopping(patience, early_stopping_on):
 @ex.capture
 def get_cb_list():
     return [get_model_checkpoint(), get_early_stopping()]
+
+@ex.capture
+def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
+    if randomly_reorder_channels:
+        newData = []
+        for datum_pair in data:
+            datum_pair_first = datum_pair[0][:,random_channel_ordering]
+            newData.append((datum_pair_first, datum_pair[1]))
+        return newData
+    else:
+        return data
 @ex.main
 def main(train_pkl, valid_pkl, test_pkl, use_standard_scaler, mode, num_seconds, imbalanced_resampler, precache, regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch):
     model = get_model() #get the model first to see if the parameters passed in fail (negative dim size)
@@ -226,6 +271,9 @@ def main(train_pkl, valid_pkl, test_pkl, use_standard_scaler, mode, num_seconds,
         pkl.dump(valid_edss[:], open(valid_pkl, 'wb'))
         pkl.dump(test_edss[:], open(test_pkl, 'wb'))
 
+
+
+
     if use_standard_scaler:
         train_edss = read.EdfStandardScaler(
             train_edss, dataset_includes_label=True, n_process=n_process)[:]
@@ -243,6 +291,10 @@ def main(train_pkl, valid_pkl, test_pkl, use_standard_scaler, mode, num_seconds,
     validDataResampled, validLabelsResampled = resample_x_y(validData, validLabels)
     train_edss_resampled = list(zip(trainDataResampled, trainLabelsResampled))
     valid_edss_resampled = list(zip(validDataResampled, validLabelsResampled))
+
+    train_edss_resampled = reorder_channels(train_edss_resampled)
+    valid_edss_resampled = reorder_channels(valid_edss_resampled)
+    test_edss = reorder_channels(test_edss)
 
     if regenerate_data:
         return
