@@ -132,14 +132,13 @@ def conv2d_gridsearch_pre_layers(
     num_conv_spatial_layers=1,
     num_conv_temporal_layers=1,
     conv_spatial_filter=(3,3),
-    num_spatial_filter=100,
+    num_spatial_filter=10,
     conv_temporal_filter=(1,3),
     num_temporal_filter=10,
     max_pool_size=(2,2),
     max_pool_stride=(1,2),
     use_batch_normalization=False):
 
-    max_temporal_filter=max(num_temporal_filter, num_spatial_filter*3)
     if x is None:
         input = Input(shape=input_shape)
         x = input
@@ -148,25 +147,18 @@ def conv2d_gridsearch_pre_layers(
 
     #should act to primarily convolve space, with some convolving of time
     for i in range(num_conv_spatial_layers):
-        if i == 2:
-            num_spatial_filter *= 3 #match van_putten magic
+        if use_batch_normalization:
+            x = BatchNormalization()(x)
         x = Conv2D(num_spatial_filter, conv_spatial_filter, input_shape=input_shape, padding='same', activation='relu')(x)
         x = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(x) #don't break! 2^4 = 16
         x = Dropout(dropout)(x)
+    for i in range(num_conv_temporal_layers):
         if use_batch_normalization:
             x = BatchNormalization()(x)
-    for i in range(num_conv_temporal_layers):
         x = Conv2D(num_temporal_filter, conv_temporal_filter, padding='same', activation='relu')(x)
         x = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(x)
         x = Dropout(dropout)(x)
-        if use_batch_normalization:
-            x = BatchNormalization()(x)
-
-    # final conv layer to match VP arch, then flatten and run through dense output
-    x = Conv2D(num_temporal_filter, (1,3), padding='same', activation='relu')(x)
-    if use_batch_normalization:
-        x = BatchNormalization()(x)
-    x = Flatten()(x)
+    # x = Flatten()(x)
     return input, x
 
 def conv2d_gridsearch(
@@ -198,7 +190,7 @@ def conv2d_gridsearch(
         max_pool_stride=max_pool_stride,
         use_batch_normalization=use_batch_normalization)
 
-    x = Dense(activation=output_activation, units=num_outputs)(x)
+    x = Dense(activation=output_activation, units=num_outputs)(Flatten(x))
     return Model(input=input, outputs=x)
 
 def vp_conv2d(dropout=0.25, input_shape=(None), filter_size=100, use_batch_normalization=False, max_pool_size=(1,2), output_activation="", num_outputs=2):

@@ -11,6 +11,7 @@ import data_reader as read
 # from multiprocessing import Process
 import constants
 import util_funcs
+import functools
 from sklearn.model_selection import PredefinedSplit, GridSearchCV
 from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef, classification_report
 from sklearn.ensemble import RandomForestClassifier
@@ -19,8 +20,8 @@ import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels, RULEdfDataGenerator
 from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like_pre_layers, conv2d_gridsearch_pre_layers
 from keras import optimizers
-from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM
-from keras.models import Model
+from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM, Flatten
+from keras.models import Model, load_model
 from keras.utils import multi_gpu_model
 import pickle as pkl
 import sacred
@@ -69,7 +70,7 @@ def config():
 
     conv_spatial_filter=(3,3)
     conv_temporal_filter=(1,3)
-    num_gpus=2
+    num_gpus=1
     num_conv_temporal_layers=1
 
     imbalanced_resampler = "rul"
@@ -98,12 +99,12 @@ def config():
     early_stopping_on="val_binary_accuracy"
     fit_generator_verbosity = 2
     num_layers = 3
-    num_filters = 10
-    num_temporal_filter=10
+    num_filters = 1
+    num_temporal_filter=1
     num_post_cnn_layers = 2
     hyperopt_run = False
     make_model_in_parallel = False
-    randomly_reorder_channels = False
+    randomly_reorder_channels = False #use if we want to try to mess around with EEG order
     random_channel_ordering = get_random_channel_ordering()
 
     num_post_lin_h = 5
@@ -118,7 +119,7 @@ def config():
     combined_split = None
     lr = 0.001
 
-    lstm = False
+    use_lstm = False
 
     epochs=100
 
@@ -210,6 +211,7 @@ def get_model(
         y = Dense(num_post_lin_h, activation='relu')(y)
         y = Dropout(linear_dropout)(y)
     if not use_lstm:
+        y = Flatten()(y)
         y_seizure = Dense(2, activation="softmax", name="seizure")(y)
     else:
         y = Reshape((int(y.shape[1]), int(y.shape[2]) * int(y.shape[3])))(y)
@@ -252,10 +254,10 @@ def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
         return newData
     else:
         return data
-@ex.main
-def main(train_pkl, valid_pkl, test_pkl, use_standard_scaler, mode, num_seconds, imbalanced_resampler, precache, regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch):
-    model = get_model() #get the model first to see if the parameters passed in fail (negative dim size)
 
+@ex.capture
+@functools.lru_cache(10)
+def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process):
     if path.exists(train_pkl) and precache:
         test_edss = pkl.load(open(test_pkl, 'rb'))
         train_edss = pkl.load(open(train_pkl, 'rb'))
@@ -301,12 +303,21 @@ def main(train_pkl, valid_pkl, test_pkl, use_standard_scaler, mode, num_seconds,
     edg = EdfDataGenerator(train_edss_resampled, n_classes=2, precache=True, batch_size=batch_size)
     valid_edg = EdfDataGenerator(valid_edss_resampled, n_classes=2, precache=True, batch_size=batch_size)
     test_edg = EdfDataGenerator(test_edss[:], n_classes=2, precache=True, batch_size=batch_size, shuffle=False)
+    return edg, valid_edg, test_edg
+@ex.main
+def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch):
+    model = get_model() #get the model first to see if the parameters passed in fail (negative dim size)
 
+    edg, valid_edg, test_edg = get_data_generators()
+    if regenerate_data:
+        return
+        
     if steps_per_epoch is None:
         history = model.fit_generator(edg, validation_data=valid_edg, callbacks=get_cb_list(), verbose=fit_generator_verbosity, epochs=epochs)
     else:
         history = model.fit_generator(edg, validation_data=valid_edg, callbacks=get_cb_list(), verbose=fit_generator_verbosity, epochs=epochs, steps_per_epoch=steps_per_epoch)
 
+    model = load_model(model_name)
 
     y_pred = model.predict_generator(test_edg)
 

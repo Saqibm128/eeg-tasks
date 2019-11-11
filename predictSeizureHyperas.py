@@ -84,16 +84,16 @@ def run_pythia_hyperopt():
                 {
                     'use_inception': False,
                     "use_batch_normalization": True,
-                    "num_temporal_filter": hp.choice("num_temporal_filter", [30,40,50,60]),
+                    # "num_temporal_filter": hp.choice("num_temporal_filter", [30,40,50,60]),
                     "conv_spatial_filter": hp.choice('conv_spatial_filter', [
-                        (3,3), (4,4), (5,5)
+                        (3,3), (4,4), (2,2)
                     ]),
-                    "conv_temporal_filter": hp.choice("conv_temporal_filter", [(1,3), (1,4), (1,5), (2,3),(2,4), (2,5),]),
-                    "num_conv_temporal_layers": hp.randint("num_conv_temporal_layers", 3)
+                    # "conv_temporal_filter": hp.choice("conv_temporal_filter", [(1,3), (1,4), (1,5), (2,3),(2,4), (2,5),]),
+                    "num_conv_temporal_layers": 0
                 } ]),
         "steps_per_epoch_opts": hp.choice('steps_per_epoch_opts', [
             {
-                "steps_per_epoch": hp.choice("steps_per_epoch", [10,20,40,50]),
+                "steps_per_epoch": hp.choice("steps_per_epoch", [20,40]),
                 "patience": 30,
                 "epochs": 1000
             },
@@ -106,27 +106,29 @@ def run_pythia_hyperopt():
         "batch_size": 32,
         "max_pool_opts": hp.choice("max_pool_opts", [
             {
-                "max_pool_size": (2,2),
-                "max_pool_stride": hp.choice("max_pool_stride_22", [(2,2), (2,1)])
+                "max_pool_size": (2,1),
+                "max_pool_stride": hp.choice("max_pool_stride_21", [(2,1)])
             },
             {
-                "max_pool_size": (3,3),
-                "max_pool_stride": hp.choice("max_pool_stride_33", [(3,2), (3,1)])
+                "max_pool_size": (2,2),
+                "max_pool_stride": hp.choice("max_pool_stride_22", [(2,2)])
             }
-
         ]),
         "regenerate_data": False,
         "hyperopt_run" : True,
         # "use_standard_scaler": hp.choice("use_standard_scaler", [True, False]),
         "hyperopt_run": True,
-        "cnn_dropout": hp.choice("cnn_dropout", [0, 0.25, 0.5]),
+        "cnn_dropout": hp.choice("cnn_dropout", [0, 0.1, 0.25, 0.5]),
         "linear_dropout": hp.choice("linear_dropout", [0, 0.25, 0.5]),
         "num_lin_layer": hp.randint("num_lin_layer", 2),
-        "num_post_cnn_layers": hp.randint("num_post_cnn_layers", 2),
-        "num_post_lin_h": hp.choice("num_post_lin_h", [5,10,20,25]),
+        "num_post_cnn_layers": 0,
+        # "num_post_cnn_layers": hp.randint("num_post_cnn_layers", 2),
+        # "num_post_lin_h": hp.choice("num_post_lin_h", [5,10,20,25]),
         "pre_layer_h": hp.choice("pre_layer_h", [32,64]),
-        "num_filters": hp.choice("num_filters", [5,10,15,20,25]),
-        "num_layers": hp.choice("num_layers", [2,3]),
+        "num_filters": hp.choice("num_filters", [1,2,3]),
+        "num_layers": hp.choice("num_layers", [1,2,3]),
+        # "use_lstm": hp.choice("use_lstm", [True, False])
+        "use_lstm":False
     }
     trials = Trials()
     best = fmin(objective, space, algo=tpe.suggest, max_evals=int(parse_args.num_runs), trials=trials)
