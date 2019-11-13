@@ -136,7 +136,10 @@ def conv2d_gridsearch_pre_layers(
     conv_temporal_filter=(1,3),
     num_temporal_filter=10,
     max_pool_size=(2,2),
-    max_pool_stride=(1,2),
+    max_pool_stride=(2,2),
+    time_convolutions_first=False,
+    max_pool_size_time=None,
+    max_pool_stride_time=None,
     use_batch_normalization=False):
 
     if x is None:
@@ -144,7 +147,20 @@ def conv2d_gridsearch_pre_layers(
         x = input
     else:
         input = x
+    if max_pool_size_time is None:
+        max_pool_size_time = max_pool_size
 
+    def get_time_layers(x):
+        for i in range(num_conv_temporal_layers):
+            if use_batch_normalization:
+                x = BatchNormalization()(x)
+            x = Conv2D(num_temporal_filter, conv_temporal_filter, padding='same', activation='relu')(x)
+            x = MaxPool2D(pool_size=max_pool_size_time, strides=max_pool_stride_time)(x)
+            x = Dropout(dropout)(x)
+        return x
+
+    if time_convolutions_first:
+        x = get_time_layers(x)
     #should act to primarily convolve space, with some convolving of time
     for i in range(num_conv_spatial_layers):
         if use_batch_normalization:
@@ -152,12 +168,9 @@ def conv2d_gridsearch_pre_layers(
         x = Conv2D(num_spatial_filter, conv_spatial_filter, input_shape=input_shape, padding='same', activation='relu')(x)
         x = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(x) #don't break! 2^4 = 16
         x = Dropout(dropout)(x)
-    for i in range(num_conv_temporal_layers):
-        if use_batch_normalization:
-            x = BatchNormalization()(x)
-        x = Conv2D(num_temporal_filter, conv_temporal_filter, padding='same', activation='relu')(x)
-        x = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(x)
-        x = Dropout(dropout)(x)
+    if not time_convolutions_first:
+        x = get_time_layers(x)
+
     # x = Flatten()(x)
     return input, x
 

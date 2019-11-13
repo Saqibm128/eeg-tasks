@@ -1,5 +1,6 @@
 from sacred.observers import MongoObserver
-import pickle as pkl
+try: import cPickle as pkl
+except: import pickle as pkl
 from addict import Dict
 from sklearn.pipeline import Pipeline
 import clinical_text_analysis as cta
@@ -120,6 +121,8 @@ def config():
     lr = 0.001
 
     use_lstm = False
+    use_time_layers_first = False
+    max_pool_size_time = None
 
     epochs=100
 
@@ -187,7 +190,9 @@ def get_model(
     num_conv_temporal_layers,
     num_temporal_filter,
     use_batch_normalization,
-    use_lstm):
+    use_lstm,
+    use_time_layers_first,
+    max_pool_size_time):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -205,7 +210,20 @@ def get_model(
     if use_inception:
         _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=cnn_dropout, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_layers=num_layers, num_filters=num_filters)
     else:
-        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, conv_spatial_filter=conv_spatial_filter, conv_temporal_filter=conv_temporal_filter, num_conv_temporal_layers=num_conv_temporal_layers, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, dropout=cnn_dropout, num_conv_spatial_layers=num_layers, num_spatial_filter=num_filters, num_temporal_filter=num_temporal_filter, use_batch_normalization=use_batch_normalization)
+        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1),
+                                            x=y,
+                                            conv_spatial_filter=conv_spatial_filter,
+                                            conv_temporal_filter=conv_temporal_filter,
+                                            num_conv_temporal_layers=num_conv_temporal_layers,
+                                            max_pool_size=max_pool_size,
+                                            max_pool_stride=max_pool_stride,
+                                            dropout=cnn_dropout,
+                                            num_conv_spatial_layers=num_layers,
+                                            num_spatial_filter=num_filters,
+                                            num_temporal_filter=num_temporal_filter,
+                                            use_batch_normalization=use_batch_normalization,
+                                            max_pool_size_time=max_pool_size_time,
+                                            time_convolutions_first=use_time_layers_first)
     # y = Dropout(0.5)(y)
     for i in range(num_post_cnn_layers):
         y = Dense(num_post_lin_h, activation='relu')(y)
@@ -311,7 +329,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     edg, valid_edg, test_edg = get_data_generators()
     if regenerate_data:
         return
-        
+
     if steps_per_epoch is None:
         history = model.fit_generator(edg, validation_data=valid_edg, callbacks=get_cb_list(), verbose=fit_generator_verbosity, epochs=epochs)
     else:

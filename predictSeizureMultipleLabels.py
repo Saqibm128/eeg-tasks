@@ -107,6 +107,9 @@ def config():
     randomly_reorder_channels = False #use if we want to try to mess around with EEG order
     random_channel_ordering = get_random_channel_ordering()
 
+    patient_weight = -1
+    seizure_weight = 1
+
     num_post_lin_h = 5
 
     use_batch_normalization = True
@@ -121,6 +124,8 @@ def config():
     lr = 0.005
 
     use_lstm = False
+    use_time_layers_first = False
+    max_pool_size_time = None
 
     epochs=100
 
@@ -191,7 +196,11 @@ def get_model(
     num_conv_temporal_layers,
     num_temporal_filter,
     use_batch_normalization,
-    use_lstm):
+    use_lstm,
+    use_time_layers_first,
+    max_pool_size_time,
+    patient_weight,
+    seizure_weight):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -209,7 +218,20 @@ def get_model(
     if use_inception:
         _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=cnn_dropout, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_layers=num_layers, num_filters=num_filters)
     else:
-        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1), x=y, conv_spatial_filter=conv_spatial_filter, conv_temporal_filter=conv_temporal_filter, num_conv_temporal_layers=num_conv_temporal_layers, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, dropout=cnn_dropout, num_conv_spatial_layers=num_layers, num_spatial_filter=num_filters, num_temporal_filter=num_temporal_filter, use_batch_normalization=use_batch_normalization)
+        _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1),
+                                            x=y,
+                                            conv_spatial_filter=conv_spatial_filter,
+                                            conv_temporal_filter=conv_temporal_filter,
+                                            num_conv_temporal_layers=num_conv_temporal_layers,
+                                            max_pool_size=max_pool_size,
+                                            max_pool_stride=max_pool_stride,
+                                            dropout=cnn_dropout,
+                                            num_conv_spatial_layers=num_layers,
+                                            num_spatial_filter=num_filters,
+                                            num_temporal_filter=num_temporal_filter,
+                                            use_batch_normalization=use_batch_normalization,
+                                            max_pool_size_time=max_pool_size_time,
+                                            time_convolutions_first=use_time_layers_first)
     # y = Dropout(0.5)(y)
     for i in range(num_post_cnn_layers):
         y = Dense(num_post_lin_h, activation='relu')(y)
@@ -233,8 +255,8 @@ def get_model(
         patient_model = multi_gpu_model(patient_model, num_gpus)
 
     seizure_model.compile(optimizers.Adam(lr=lr), loss=["binary_crossentropy"], metrics=["binary_accuracy"])
-    seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["binary_crossentropy", "categorical_crossentropy"], loss_weights=[1,-1], metrics=["categorical_accuracy"])
-    patient_model.compile(optimizers.Adam(lr=lr), loss=["binary_crossentropy"], metrics=["categorical_accuracy"])
+    seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["binary_crossentropy", "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight], metrics=["categorical_accuracy"])
+    patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
 
     return seizure_model, seizure_patient_model, patient_model
 
@@ -277,15 +299,21 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
     validPatientInd = []
     patientInd = []
     if path.exists(train_pkl) and precache:
+        print("Loading data")
         test_edss = pkl.load(open(test_pkl, 'rb'))
+        print("loaded test")
         train_edss = pkl.load(open(train_pkl, 'rb'))
+        print("loaded train")
         valid_edss = pkl.load(open(valid_pkl, 'rb'))
+        print("Loading data completed")
+
         patientInd = [datum[1][1] for datum in train_edss]
         seizureLabels = [datum[1][0] for datum in train_edss]
         validPatientInd = [datum[1][1] for datum in valid_edss]
         validSeizureLabels = [datum[1][0] for datum in valid_edss]
         allPatients = list(set([datum[1][1] for datum in train_edss]))
     else:
+        print("(Re)generating data")
         train_edss, valid_edss, test_edss = get_data()
         tkn_file_paths = [train_edss.sampleInfo[key].token_file_path for key in train_edss.sampleInfo.keys()]
         patients = [read.parse_edf_token_path_structure(tkn_file_path)[1] for tkn_file_path in tkn_file_paths]
@@ -322,14 +350,15 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
     valid_edss = reorder_channels(valid_edss)
     test_edss = reorder_channels(test_edss)
 
-    edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=True, labels=[seizureLabels, patientInd], xy_tuple_form=False, n_classes=(2, len(allPatients)),)
-    valid_edg = RULDataGenMultipleLabels(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], xy_tuple_form=False, n_classes=(2, len(allPatients)), shuffle=False)
+    edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=True, labels=[seizureLabels, patientInd], n_classes=(2, len(allPatients)),)
+    valid_edg = RULDataGenMultipleLabels(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False)
     test_edg = EdfDataGenerator(test_edss[:], n_classes=2, precache=True, batch_size=batch_size, shuffle=False)
     return edg, valid_edg, test_edg, len(allPatients)
 @ex.main
 def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience):
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
 
+    print("Creating models")
     seizure_model, seizure_patient_model, patient_model = get_model(num_patients=len_all_patients)
 
     if regenerate_data:
@@ -348,6 +377,9 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     num_epochs = epochs
     training_seizure_accs = []
     valid_seizure_accs = []
+    train_patient_accs = []
+    training_seizure_loss = []
+    valid_seizure_loss = []
     oldPatientWeights = patient_model.layers[-1].get_weights()
     oldNonPatientWeights = [layer.get_weights() for layer in seizure_model.layers[:-1]]
     best_model_acc = 100
@@ -364,9 +396,15 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         valid_predictions_full = []
         valid_predictions = []
 
+        train_seizure_loss_epoch = []
+
         seizure_accs = []
-        patient_accs = []
-        for j in range(len(edg)):
+        patient_accs_epoch = []
+        # for j in range(len(edg)):
+        if steps_per_epoch is None:
+            steps_per_epoch = len(edg)
+        for j in range(steps_per_epoch):
+
             train_batch = edg[j]
             loss, seizure_loss, patient_loss, seizure_acc, patient_acc = seizure_patient_model.train_on_batch(train_batch[0], train_batch[1])
             seizure_accs.append(seizure_acc)
@@ -375,7 +413,9 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             #keep the other nonpatient weights which try not to predict for patient!
             oldNonPatientWeights = [layer.get_weights() for layer in seizure_model.layers[:-1]]
             patient_loss, patient_acc = patient_model.train_on_batch(train_batch[0], train_batch[1][1])
-            patient_accs.append(patient_acc)
+            patient_accs_epoch.append(patient_acc)
+
+            train_seizure_loss_epoch.append(seizure_loss)
 
             #get weights that try to predict for patient
             oldPatientWeights = patient_model.layers[-1].get_weights()
@@ -383,8 +423,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             #set weights that don't ruin seizure prediction
             for layer_num, layer in enumerate(seizure_model.layers[:-1]):
                 seizure_model.layers[layer_num].set_weights(oldNonPatientWeights[layer_num])
-            if (j % 5) == 0:
-                print("epoch: {} batch: {}/{}, seizure acc: {}, patient acc: {}, loss: {}".format(i, j, len(edg), np.mean(seizure_accs), np.mean(patient_accs), loss))
+            if (j % 100) == 0:
+                print("epoch: {} batch: {}/{}, seizure acc: {}, patient acc: {}, loss: {}".format(i, j, len(edg), np.mean(seizure_accs), np.mean(patient_accs_epoch), loss))
     #     valid_edg.start_background()
 
         for j in range(len(valid_edg)):
@@ -394,21 +434,33 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             valid_labels_full.append(valid_batch[1][0])
             valid_predictions.append(val_batch_predictions.argmax(1))
             valid_predictions_full.append(val_batch_predictions)
+
+
         valid_labels = np.hstack(valid_labels)
-        val_predictions = np.hstack(valid_predictions)
+        valid_predictions = np.hstack(valid_predictions)
+
+        print("debug: valid_labels.shape {}, valid_predictions.shape {}".format(valid_labels.shape, valid_predictions.shape))
+        print("We predicted {} seizures in the validation split, there were actually {}".format(valid_predictions.sum(), valid_labels.sum()))
+        print("We predicted {} seizure/total in the validation split, there were actually {}".format(valid_predictions.sum()/len(valid_predictions), valid_labels.sum()/len(valid_labels)))
+
+
 
         valid_labels_full = np.vstack(valid_labels_full)
         valid_predictions_full = np.vstack(valid_predictions_full)
 
+
         try:
-            auc = roc_auc_score(val_predictions, valid_labels)
+            auc = roc_auc_score(valid_predictions, valid_labels)
         except Exception:
             auc = "undefined"
-        valid_acc =  accuracy_score(val_predictions, valid_labels)
+        valid_acc =  accuracy_score(valid_predictions, valid_labels)
         valid_seizure_accs.append(valid_acc)
+        train_patient_accs.append(np.mean(patient_accs_epoch))
         valid_loss = log_loss(valid_labels_full, valid_predictions_full)
+        training_seizure_loss.append(np.mean(train_seizure_loss_epoch))
+        valid_seizure_loss.append(valid_loss)
 
-        print("end epoch: {}, f1: {}, auc: {}, acc: {}, loss: {}\n".format(i, f1_score(val_predictions, valid_labels), auc, valid_acc, valid_loss))
+        print("end epoch: {}, f1: {}, auc: {}, acc: {}, loss: {}\n".format(i, f1_score(valid_predictions, valid_labels), auc, valid_acc, valid_loss))
         if (valid_loss < best_model_acc):
             patience_left = patience
             best_model_acc = valid_loss
@@ -424,7 +476,6 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 
         training_seizure_accs.append(np.mean(seizure_accs))
-        # train_ordered_enqueuer.stop()
 
         edg.on_epoch_end()
         valid_edg.on_epoch_end()
@@ -433,14 +484,21 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
     y_pred = model.predict_generator(test_edg)
 
+    print("We predicted {} seizures in the test split, there were actually {}".format(y_pred.argmax(1).sum(), np.array([data[1] for data in test_edg.dataset]).astype(int).sum()))
+    print("We predicted {} seizure/total in the test split, there were actually {}".format(y_pred.argmax(1).sum()/len(y_pred.argmax(1)), np.array([data[1] for data in test_edg.dataset]).astype(int).sum()/len(np.array([data[1] for data in test_edg.dataset]).astype(int))))
+
     results = Dict()
     results.history = {
         "binary_accuracy": training_seizure_accs,
-        "val_binary_accuracy": valid_seizure_accs
+        "val_binary_accuracy": valid_seizure_accs,
+        "seizure_loss": training_seizure_loss,
+        "valid_seizure_loss": valid_seizure_loss,
+        "patient_acc": train_patient_accs,
+
     }
     results.seizure.acc = accuracy_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
     results.seizure.f1 = f1_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
-    results.seizure.classification_report = classification_report(np.array([data[1] for data in test_edg.dataset]).astype(int), y_pred.argmax(1), output_dict=True),
+    results.seizure.classification_report = classification_report(np.array([data[1] for data in test_edg.dataset]).astype(int), y_pred.argmax(1), output_dict=True)
     try:
         results.seizure.AUC = roc_auc_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
     except Exception:

@@ -221,7 +221,6 @@ class RULEdfDataGenerator(EdfDataGenerator):
 
         'Updates indexes after each epoch and balances such that all data is used per epoch'
         if self.labels is not None:
-            copiedSelfSampleInfo = Dict()
             oldIndicesByLabels = Dict()
             allLabels = Dict()
             for i in range(len(self.labels)):
@@ -233,7 +232,6 @@ class RULEdfDataGenerator(EdfDataGenerator):
                 allLabels[label] += 1
 
             min_label_count = min([allLabels[label] for label in allLabels.keys()])
-            newInd = 0
             self.list_IDs = []
             for label in oldIndicesByLabels.keys():
                 oldIndicesByLabels[label] = choice(oldIndicesByLabels[label], size=min_label_count, replace=False)
@@ -344,15 +342,16 @@ class DataGenMultipleLabels(EdfDataGenerator):
 
 class RULDataGenMultipleLabels(DataGenMultipleLabels):
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=(2, 2), class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2, shuffle_channels=False, **kwargs):
+                 n_classes=(2, 2), class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2, shuffle_channels=False, class_ratio=1, **kwargs):
         super().__init__(dataset=dataset, mask_value=mask_value, labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
                      n_classes=n_classes, class_type=class_type, shuffle=shuffle, max_length=max_length, time_first=time_first, precache=precache, xy_tuple_form=xy_tuple_form, num_labels=num_labels, shuffle_channels=shuffle_channels, **kwargs)
+        self.class_ratio = class_ratio
+        self.full_indexes = self.list_IDs
         self.on_epoch_end()
 
     def on_epoch_end(self):
         'Updates indexes after each epoch and balances such that all data is used per epoch'
         if self.labels is not None:
-            copiedSelfSampleInfo = Dict()
             oldIndicesByLabels = Dict()
             allLabels = Dict()
             for i in range(len(self.labels[0])):
@@ -364,7 +363,6 @@ class RULDataGenMultipleLabels(DataGenMultipleLabels):
                 allLabels[label] += 1
 
             min_label_count = min([allLabels[label] for label in allLabels.keys()])
-            newInd = 0
             self.list_IDs = []
             for label in oldIndicesByLabels.keys():
                 oldIndicesByLabels[label] = choice(oldIndicesByLabels[label], size=min_label_count, replace=False)
@@ -373,5 +371,5 @@ class RULDataGenMultipleLabels(DataGenMultipleLabels):
 
 
         self.indexes = np.arange(len(self.list_IDs))
-        if self.shuffle == True:
-            np.random.shuffle(self.indexes)
+        np.random.shuffle(self.indexes)
+        # raise Exception()
