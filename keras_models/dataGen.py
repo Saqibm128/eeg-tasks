@@ -306,11 +306,12 @@ class DataGenMultipleLabels(EdfDataGenerator):
             x = [datum[0] for datum in data]
             instanceLabels = [datum[1] for datum in data]
             labels = []
-            try:
-                len(instanceLabels[0])
-            except Exception:
-                for i in range(len(instanceLabels)):
-                    instanceLabels[i] = [instanceLabels[i]] #make into array-like
+            if self.num_labels == 1:
+                try:
+                    len(instanceLabels[0])
+                except Exception: #exception in scenarios if n_class is 1
+                    for i in range(len(instanceLabels)):
+                        instanceLabels[i] = [instanceLabels[i]] #make into array-like
             for class_i in range(self.num_labels):
                 labels.append([instanceLabel[class_i] for instanceLabel in instanceLabels])
         else:

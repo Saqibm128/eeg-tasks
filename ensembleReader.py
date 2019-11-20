@@ -183,6 +183,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         hp_cutoff=50,
         random_under_sample=False,
         order_filt=5,
+        include_seizure_type=False,
         mode=DETECT_MODE,
         resample=pd.Timedelta(seconds=constants.COMMON_DELTA),
         # num_splits_per_sample= None,
@@ -203,6 +204,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         self.order_filt = order_filt
         self.sampleInfo = Dict()
         self.gap = gap
+        self.include_seizure_type = include_seizure_type
         self.num_samples = num_samples
         self.random_under_sample = random_under_sample
         self.overlapping_augmentation = overlapping_augmentation
@@ -232,6 +234,9 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
 
                 if label == "bckg":
                     num_bckg_samps_per_file += 1
+
+                if self.include_seizure_type:
+                    self.sampleInfo[currentIndex].label = (self.sampleInfo[currentIndex].label, label)
                 self.sampleInfo[currentIndex].token_file_path = token_file_path
                 self.sampleInfo[currentIndex].sample_num = (time_period) / self.gap
                 self.sampleInfo[currentIndex].sample_width = self.gap

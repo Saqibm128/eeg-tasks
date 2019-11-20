@@ -21,11 +21,11 @@
     "max_bckg_samps_per_file" : 100,
     "max_pool_size" : [
         2,
-        1
+        2
     ],
     "max_pool_stride" : [
         2,
-        1
+        2
     ],
     "max_samples" : null,
     "mode" : "DETECT",

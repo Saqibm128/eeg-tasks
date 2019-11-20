@@ -1,7 +1,6 @@
 {
     "batch_size" : 32,
     "cnn_dropout" : 0.1,
-    "combined_split" : null,
     "conv_spatial_filter" : [
         4,
         4
@@ -21,13 +20,12 @@
     "max_bckg_samps_per_file" : 100,
     "max_pool_size" : [
         2,
-        1
+        2
     ],
     "max_pool_stride" : [
         2,
-        1
+        2
     ],
-    "max_samples" : null,
     "mode" : "DETECT",
     "n_process" : 20,
     "num_conv_temporal_layers" : 3,
@@ -41,7 +39,6 @@
     "num_seconds" : 4,
     "num_temporal_filter" : 1,
     "patience" : 5,
-    "post_cooldown" : null,
     "pre_cooldown" : 4,
     "pre_layer_h" : 64,
     "precache" : true,
@@ -49,7 +46,6 @@
     "regenerate_data" : false,
     "randomly_reorder_channels": false,
     "sample_time" : 4,
-    "steps_per_epoch" : null,
     "use_batch_normalization" : true,
     "use_filtering" : true,
     "use_inception" : false,

@@ -13,7 +13,7 @@ import constants
 import util_funcs
 import functools
 from sklearn.model_selection import PredefinedSplit, GridSearchCV
-from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef, classification_report, log_loss
+from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef, classification_report, log_loss, confusion_matrix
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
@@ -254,8 +254,8 @@ def get_model(
         seizure_patient_model = multi_gpu_model(seizure_patient_model, num_gpus)
         patient_model = multi_gpu_model(patient_model, num_gpus)
 
-    seizure_model.compile(optimizers.Adam(lr=lr), loss=["binary_crossentropy"], metrics=["binary_accuracy"])
-    seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["binary_crossentropy", "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight], metrics=["categorical_accuracy"])
+    seizure_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["binary_accuracy"])
+    seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight], metrics=["categorical_accuracy"])
     patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
 
     return seizure_model, seizure_patient_model, patient_model
@@ -354,6 +354,12 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
     valid_edg = RULDataGenMultipleLabels(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False)
     test_edg = EdfDataGenerator(test_edss[:], n_classes=2, precache=True, batch_size=batch_size, shuffle=False)
     return edg, valid_edg, test_edg, len(allPatients)
+
+@ex.capture
+def false_alarms_per_hour(fp, total_samps, num_seconds):
+    num_chances_per_hour = 60 * 60 / num_seconds
+    return (fp / total_samps) * num_chances_per_hour
+
 @ex.main
 def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience):
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
@@ -387,7 +393,6 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
     for i in range(num_epochs):
         if patience_left == 0:
-            print("Early Stopping!")
             continue
     #     edg.start_background()
 
@@ -406,7 +411,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         for j in range(steps_per_epoch):
 
             train_batch = edg[j]
-            loss, seizure_loss, patient_loss, seizure_acc, patient_acc = seizure_patient_model.train_on_batch(train_batch[0], train_batch[1])
+            data_x = train_batch[0]
+            data_x = data_x.astype(np.float32)
+            data_x = np.nan_to_num(data_x)
+            loss, seizure_loss, patient_loss, seizure_acc, patient_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1])
             seizure_accs.append(seizure_acc)
             #old patient weights are trying to predict for patient, try to do the prediction!
             patient_model.layers[-1].set_weights(oldPatientWeights)
@@ -429,15 +437,18 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
         for j in range(len(valid_edg)):
             valid_batch = valid_edg[i]
-            val_batch_predictions = seizure_model.predict_on_batch(valid_batch[0])
+            data_x = valid_batch[0]
+            data_x = data_x.astype(np.float32)
+            data_x = np.nan_to_num(data_x) #ssome weird issue with incorrect data conversion
+            val_batch_predictions = seizure_model.predict_on_batch(data_x)
             valid_labels.append(valid_batch[1][0].argmax(1))
             valid_labels_full.append(valid_batch[1][0])
             valid_predictions.append(val_batch_predictions.argmax(1))
             valid_predictions_full.append(val_batch_predictions)
 
 
-        valid_labels = np.hstack(valid_labels)
-        valid_predictions = np.hstack(valid_predictions)
+        valid_labels = np.nan_to_num(np.hstack(valid_labels).astype(np.float32))
+        valid_predictions = np.nan_to_num(np.hstack(valid_predictions).astype(np.float32))
 
         print("debug: valid_labels.shape {}, valid_predictions.shape {}".format(valid_labels.shape, valid_predictions.shape))
         print("We predicted {} seizures in the validation split, there were actually {}".format(valid_predictions.sum(), valid_labels.sum()))
@@ -445,8 +456,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 
 
-        valid_labels_full = np.vstack(valid_labels_full)
-        valid_predictions_full = np.vstack(valid_predictions_full)
+        valid_labels_full = np.nan_to_num(np.vstack(valid_labels_full).astype(np.float32))
+        valid_predictions_full = np.nan_to_num(np.vstack(valid_predictions_full).astype(np.float32))
 
 
         try:
@@ -472,6 +483,9 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
                 print("failed saving\n")
         else:
             patience_left -= 1
+            if patience_left == 0:
+                print("Early Stopping!")
+
 
 
 
@@ -499,6 +513,9 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     results.seizure.acc = accuracy_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
     results.seizure.f1 = f1_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
     results.seizure.classification_report = classification_report(np.array([data[1] for data in test_edg.dataset]).astype(int), y_pred.argmax(1), output_dict=True)
+    results.seizure.confusion_matrix = confusion_matrix(np.array([data[1] for data in test_edg.dataset]).astype(int), y_pred.argmax(1),)
+    total_samps = sum(sum(results.seizure.confusion_matrix))
+    results.seizure.false_alarms_per_hour = false_alarms_per_hour(results.seizure.confusion_matrix[0][1], total_samps=total_samps)
     try:
         results.seizure.AUC = roc_auc_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
     except Exception:
