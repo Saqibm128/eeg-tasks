@@ -59,6 +59,12 @@ def no_stride_channels():
     '''
     max_pool_stride = (1,1)
 
+@ex.named_config
+def knn():
+    train_pkl = "/home/msaqib/train_multiple_labels_seizure_data_4.pkl"
+    valid_pkl = "/home/msaqib/valid_multiple_labels_seizure_data_4.pkl"
+    test_pkl = "/home/msaqib/test_multiple_labels_seizure_data_4.pkl"
+
 @ex.config
 def config():
     model_name = "/n/scratch2/ms994/out/" + randomString() + ".h5" #set to rando string so we don't have to worry about collisions
@@ -106,6 +112,7 @@ def config():
     make_model_in_parallel = False
     randomly_reorder_channels = False #use if we want to try to mess around with EEG order
     random_channel_ordering = get_random_channel_ordering()
+    include_seizure_labels = False
 
     patient_weight = -1
     seizure_weight = 1
@@ -160,7 +167,7 @@ def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds
 
 
 @ex.capture
-def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds, max_bckg_samps_per_file_test, ref="01_tcp_ar", num_files=None):
+def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds, max_bckg_samps_per_file_test, include_seizure_labels, ref="01_tcp_ar", num_files=None):
     if max_bckg_samps_per_file_test is None:
         max_bckg_samps_per_file_test = max_bckg_samps_per_file
     eds = getDataSampleGenerator()
@@ -169,9 +176,9 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     valid_label_files_segs = eds.get_valid_split()
 
     #increased n_process to deal with io processing
-    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))
-    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))
-    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1))
+    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_labels=include_seizure_labels)
+    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_labels=include_seizure_labels)
+    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_labels=include_seizure_labels)
     return train_edss, valid_edss, test_edss
 
 @ex.capture
@@ -292,7 +299,7 @@ def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
         return data
 
 @ex.capture
-def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process):
+def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_labels):
     allPatients = []
     seizureLabels = []
     validSeizureLabels = []
@@ -322,10 +329,17 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
         seizureLabels = [train_edss.sampleInfo[key].label for key in train_edss.sampleInfo.keys()]
         validSeizureLabels = [valid_edss.sampleInfo[key].label for key in valid_edss.sampleInfo.keys()]
         validPatientInd = [0 for i in range(len(validSeizureLabels))]
-        for i in range(len(seizureLabels)):
-            train_edss.sampleInfo[i].label = (seizureLabels[i], patientInd[i])
-        for i in range(len(validSeizureLabels)):
-            valid_edss.sampleInfo[i].label = (validSeizureLabels[i], 0) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
+        if not include_seizure_labels:
+            for i in range(len(seizureLabels)):
+                train_edss.sampleInfo[i].label = (seizureLabels[i], patientInd[i])
+            for i in range(len(validSeizureLabels)):
+                valid_edss.sampleInfo[i].label = (validSeizureLabels[i], 0) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
+        else:
+            if not include_seizure_labels:
+                for i in range(len(seizureLabels)):
+                    train_edss.sampleInfo[i].label = (seizureLabels[i][0], patientInd[i], seizureLabels[i][1])
+                for i in range(len(validSeizureLabels)):
+                    valid_edss.sampleInfo[i].label = (validSeizureLabels[i][0], 0, seizureLabels[i][1]) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
 
         train_edss = train_edss[:]
         valid_edss = valid_edss[:]

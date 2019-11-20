@@ -13,3 +13,6 @@ SIMPLE_CONV2D_MAP = [
     [0           , "EEG T5-REF", "EEG P3-REF", "EEG PZ-REF", "EEG P4-REF", "EEG T6-REF", 0           ],
     [0           ,         0   , "EEG O1-REF", 0           , "EEG O2-REF", 0           , 0           ],
 ]
+
+SEIZURE_SUBTYPES = ["BCKG", "FNSZ", "GNSZ", "SPSZ", "CPSZ", "ABSZ", "TNSZ", "CNSZ", "TCSZ", "ATSZ", "MYSZ"]
+]

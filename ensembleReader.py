@@ -236,7 +236,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
                     num_bckg_samps_per_file += 1
 
                 if self.include_seizure_type:
-                    self.sampleInfo[currentIndex].label = (self.sampleInfo[currentIndex].label, label)
+                    self.sampleInfo[currentIndex].label = (self.sampleInfo[currentIndex].label, label) #attach the specific label on the EDSS
                 self.sampleInfo[currentIndex].token_file_path = token_file_path
                 self.sampleInfo[currentIndex].sample_num = (time_period) / self.gap
                 self.sampleInfo[currentIndex].sample_width = self.gap
