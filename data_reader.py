@@ -131,6 +131,7 @@ class SeizureLabelReader(util_funcs.MultiProcessingDataset):
             sample_width = self.sampleInfo[i].sample_width
             label_file = convert_edf_path_to_tse(token_file_path)
             seiz_label = read_tse_file(label_file)
+            seiz_label = seiz_label
             if self.return_tse_data:
                 return seiz_label
             startTime = pd.Timedelta(sampleNum * sample_width).seconds
@@ -613,6 +614,9 @@ def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None
                          for headerDict in reader.getSignalHeaders()]
         sample_rates = [headerDict['sample_rate']
                         for headerDict in reader.getSignalHeaders()]
+        for headerDict in reader.getSignalHeaders():
+            if headerDict["dimension"] != "uV" and headerDict["label"] in util_funcs.get_common_channel_names():
+                raise Exception()
         start_time = pd.Timestamp(reader.getStartdatetime())
         all_channels = []
         for i, channel_name in enumerate(channel_names):

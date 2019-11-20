@@ -221,6 +221,8 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
                     continue
                 if (label != "bckg" and "sz" not in label and self.mode == EdfDatasetSegmentedSampler.DETECT_MODE):
                     continue #go to next, too close to seizure to be safe
+                if (label == "postsz" or label == "presz"):
+                    continue
 
                 # for split_num in range(num_splits_per_sample):
                 if self.mode == EdfDatasetSegmentedSampler.DETECT_MODE:
@@ -337,14 +339,16 @@ def seizure_series_annotate_times(raw_ann,
     possibleSeizureTrainTimes = []
     possibleNonseizureTrainTimes = []
     start_min = raw_ann.start.min()
-    end_max = raw_ann.end.max()
+    end_max = raw_ann.end.max() -  raw_ann.end.max() % num_seconds #deal with off by one error
+
     cooldown_times = []
     seizure_times = []
     preseizure_cooldown_times = []
     postseizure_cooldown_times = []
     possible_sample_times = []
-    timeInd = pd.timedelta_range(freq=pd.Timedelta(seconds=num_seconds), start=0, end=raw_ann.end.max() * pd.Timedelta(seconds=1))
+    timeInd = pd.timedelta_range(freq=pd.Timedelta(seconds=num_seconds), start=0, end=end_max * pd.Timedelta(seconds=1))
     labelTimeSeries = pd.Series(index=timeInd)
+
 
     preseizure_predict_times = []
     for i, label in raw_ann.iterrows():
@@ -377,6 +381,7 @@ def seizure_series_annotate_times(raw_ann,
 
     for i, seizure in seizure_times.iterrows():
         labelTimeSeries[pd.Timedelta(seconds=seizure.start):pd.Timedelta(seconds=seizure.end)] = seizure.label
+    labelTimeSeries = labelTimeSeries[pd.Timedelta(seconds=0):pd.Timedelta(seconds=end_max-num_seconds*2)]
     return labelTimeSeries
 
 class EdfDatasetEnsembler(util_funcs.MultiProcessingDataset):

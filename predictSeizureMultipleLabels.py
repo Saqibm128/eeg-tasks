@@ -176,9 +176,9 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     valid_label_files_segs = eds.get_valid_split()
 
     #increased n_process to deal with io processing
-    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_labels=include_seizure_labels)
-    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_labels=include_seizure_labels)
-    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_labels=include_seizure_labels)
+    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_labels)
+    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_labels)
+    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_labels)
     return train_edss, valid_edss, test_edss
 
 @ex.capture
@@ -328,6 +328,8 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
         patientInd = [allPatients.index(patient) for patient in patients]
         seizureLabels = [train_edss.sampleInfo[key].label for key in train_edss.sampleInfo.keys()]
         validSeizureLabels = [valid_edss.sampleInfo[key].label for key in valid_edss.sampleInfo.keys()]
+        testSeizureLabels = [test_edss.sampleInfo[key].label for key in test_edss.sampleInfo.keys()]
+
         validPatientInd = [0 for i in range(len(validSeizureLabels))]
         if not include_seizure_labels:
             for i in range(len(seizureLabels)):
@@ -335,11 +337,12 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
             for i in range(len(validSeizureLabels)):
                 valid_edss.sampleInfo[i].label = (validSeizureLabels[i], 0) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
         else:
-            if not include_seizure_labels:
-                for i in range(len(seizureLabels)):
-                    train_edss.sampleInfo[i].label = (seizureLabels[i][0], patientInd[i], seizureLabels[i][1])
-                for i in range(len(validSeizureLabels)):
-                    valid_edss.sampleInfo[i].label = (validSeizureLabels[i][0], 0, seizureLabels[i][1]) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
+            for i in range(len(seizureLabels)):
+                train_edss.sampleInfo[i].label = (seizureLabels[i][0], patientInd[i], constants.SEIZURE_SUBTYPES.index(seizureLabels[i][1].lower()))
+            for i in range(len(validSeizureLabels)):
+                valid_edss.sampleInfo[i].label = (validSeizureLabels[i][0], 0, constants.SEIZURE_SUBTYPES.index(validSeizureLabels[i][1].lower())) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
+            for i in range(len(testSeizureLabels)):
+                test_edss.sampleInfo[i].label = (testSeizureLabels[i][0], 0, constants.SEIZURE_SUBTYPES.index(testSeizureLabels[i][1].lower())) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
 
         train_edss = train_edss[:]
         valid_edss = valid_edss[:]
