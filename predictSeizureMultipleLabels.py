@@ -98,6 +98,8 @@ def config():
     test_pkl = "/n/scratch2/ms994/test_multiple_labels_seizure_data_4.pkl"
     batch_size = 32
 
+    # seizure_type = None
+
     pre_layer_h = 128
     num_lin_layer = 1
 
@@ -207,7 +209,8 @@ def get_model(
     use_time_layers_first,
     max_pool_size_time,
     patient_weight,
-    seizure_weight):
+    seizure_weight,
+    include_seizure_labels):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -240,20 +243,30 @@ def get_model(
                                             max_pool_size_time=max_pool_size_time,
                                             time_convolutions_first=use_time_layers_first)
     # y = Dropout(0.5)(y)
+    if not use_lstm:
+        y = Flatten()(y)
+
     for i in range(num_post_cnn_layers):
         y = Dense(num_post_lin_h, activation='relu')(y)
         y = Dropout(linear_dropout)(y)
     if not use_lstm:
-        y = Flatten()(y)
         y_seizure = Dense(2, activation="softmax", name="seizure")(y)
+        y_seizure_subtype = Dense(len(constants.SEIZURE_SUBTYPES), activation="softmax", name="seizure_subtype")(y)
         y_patient = Dense(num_patients, activation="softmax", name="patient")(y)
     else:
         y = Reshape((int(y.shape[1]), int(y.shape[2]) * int(y.shape[3])))(y)
         y_seizure = LSTM(2)(y)
+        y_seizure_subtype = LSTM(len(constants.SEIZURE_SUBTYPES))(y)
         y_patient = LSTM(num_patients)(y)
 
+
+
     seizure_model = Model(inputs=x, outputs=[y_seizure])
-    seizure_patient_model = Model(inputs=[x], outputs=[y_seizure, y_patient])
+    if include_seizure_labels:
+        seizure_patient_model = Model(inputs=[x], outputs=[y_seizure, y_patient,  y_seizure_subtype,])
+    else:
+        seizure_patient_model = Model(inputs=[x], outputs=[y_seizure, y_patient,])
+
     patient_model = Model(inputs=[x], outputs=[y_patient])
     print(seizure_patient_model.summary())
     if num_gpus > 1:
@@ -262,7 +275,11 @@ def get_model(
         patient_model = multi_gpu_model(patient_model, num_gpus)
 
     seizure_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["binary_accuracy"])
-    seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight], metrics=["categorical_accuracy"])
+    if include_seizure_labels:
+        seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight, seizure_weight], metrics=["categorical_accuracy"])
+    else:
+        seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight,], metrics=["categorical_accuracy"])
+
     patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
 
     return seizure_model, seizure_patient_model, patient_model
@@ -316,6 +333,9 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
 
         patientInd = [datum[1][1] for datum in train_edss]
         seizureLabels = [datum[1][0] for datum in train_edss]
+        if include_seizure_labels:
+            seizureSubtypes = [datum[1][2] for datum in train_edss]
+            validSeizureSubtypes = [datum[1][2] for datum in valid_edss]
         validPatientInd = [datum[1][1] for datum in valid_edss]
         validSeizureLabels = [datum[1][0] for datum in valid_edss]
         allPatients = list(set([datum[1][1] for datum in train_edss]))
@@ -367,9 +387,18 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
     valid_edss = reorder_channels(valid_edss)
     test_edss = reorder_channels(test_edss)
 
-    edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=True, labels=[seizureLabels, patientInd], n_classes=(2, len(allPatients)),)
-    valid_edg = RULDataGenMultipleLabels(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False)
-    test_edg = EdfDataGenerator(test_edss[:], n_classes=2, precache=True, batch_size=batch_size, shuffle=False)
+    if include_seizure_labels:
+        edg = RULDataGenMultipleLabels(train_edss, num_labels=3, precache=True, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureLabels], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
+        valid_edg = RULDataGenMultipleLabels(valid_edss, num_labels=3, precache=True, batch_size=batch_size, labels=[validSeizureLabels, validPatientInd, validSeizureLabels], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
+        test_edg = EdfDataGenerator(test_edss[:], n_classes=2, precache=True, batch_size=batch_size, shuffle=False)
+    else:
+        edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=True, labels=[seizureLabels, patientInd], batch_size=batch_size, n_classes=(2, len(allPatients)),)
+        valid_edg = RULDataGenMultipleLabels(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], batch_size=batch_size, xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False)
+        if len(test_edss[0][1]) > 1:
+            data = [datum[0] for datum in test_edss]
+            labels = [datum[1][0] for datum in test_edss]
+            test_edss = [(data[i], labels[i]) for i in range(len(data))]
+        test_edg = EdfDataGenerator(test_edss, n_classes=2, precache=True, batch_size=batch_size, shuffle=False)
     return edg, valid_edg, test_edg, len(allPatients)
 
 @ex.capture
@@ -405,7 +434,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     valid_seizure_loss = []
     oldPatientWeights = patient_model.layers[-1].get_weights()
     oldNonPatientWeights = [layer.get_weights() for layer in seizure_model.layers[:-1]]
-    best_model_acc = 100
+    best_model_loss = 100
     patience_left = patience
 
     for i in range(num_epochs):
@@ -489,12 +518,12 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         valid_seizure_loss.append(valid_loss)
 
         print("end epoch: {}, f1: {}, auc: {}, acc: {}, loss: {}\n".format(i, f1_score(valid_predictions, valid_labels), auc, valid_acc, valid_loss))
-        if (valid_loss < best_model_acc):
+        if (valid_loss < best_model_loss):
             patience_left = patience
-            best_model_acc = valid_loss
+            best_model_loss = valid_loss
             try:
                 seizure_model.save(model_name)
-                print("improved val score to {}".format(best_model_acc))
+                print("improved val score to {}".format(best_model_loss))
             except Exception as e:
                 print("{}\n".format(e))
                 print("failed saving\n")
