@@ -163,11 +163,12 @@ def conv2d_gridsearch_pre_layers(
         x = get_time_layers(x)
     #should act to primarily convolve space, with some convolving of time
     for i in range(num_conv_spatial_layers):
-        if use_batch_normalization:
-            x = BatchNormalization()(x)
         x = Conv2D(num_spatial_filter, conv_spatial_filter, input_shape=input_shape, padding='same', activation='relu')(x)
         x = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(x) #don't break! 2^4 = 16
-        x = Dropout(dropout)(x)
+        if dropout != 0:
+            x = Dropout(dropout)(x)
+        if use_batch_normalization:
+            x = BatchNormalization()(x)
     if not time_convolutions_first:
         x = get_time_layers(x)
 

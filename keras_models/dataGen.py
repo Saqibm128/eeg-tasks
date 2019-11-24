@@ -129,6 +129,7 @@ class EdfDataGenerator(DataGenerator):
             self.labels = np.array(self.labels)
 
     def background_population(self):
+        raise Exception("DEPRECATED. Use keras enqueuer")
         for i in range(len(self)):
             while self.queue.full():
                 time.sleep(0.1)

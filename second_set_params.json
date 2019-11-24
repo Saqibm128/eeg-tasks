@@ -1,6 +1,6 @@
 {
-    "batch_size" : 32,
-    "cnn_dropout" : 0.1,
+    "batch_size" : 64,
+    "cnn_dropout" : 0,
     "combined_split" : null,
     "conv_spatial_filter" : [
         4,
@@ -8,7 +8,7 @@
     ],
     "conv_temporal_filter" : [
         4,
-        2
+        4
     ],
     "early_stopping_on" : "val_binary_accuracy",
     "epochs" : 100,
@@ -21,11 +21,11 @@
     "max_bckg_samps_per_file" : 100,
     "max_pool_size" : [
         2,
-        2
+        1
     ],
     "max_pool_stride" : [
         2,
-        2
+        1
     ],
     "max_samples" : null,
     "mode" : "DETECT",
@@ -33,11 +33,11 @@
     "num_conv_temporal_layers" : 3,
     "num_filters" : 1,
     "num_gpus" : 1,
-    "num_layers" : 3,
+    "num_layers" : 4,
     "use_lstm": false,
     "num_lin_layer" : 0,
-    "num_post_cnn_layers" : 0,
-    "num_post_lin_h" : 10,
+    "num_post_cnn_layers" : 2,
+    "num_post_lin_h" : 100,
     "num_seconds" : 4,
     "num_temporal_filter" : 1,
     "patience" : 5,

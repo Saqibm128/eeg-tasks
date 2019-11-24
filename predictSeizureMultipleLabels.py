@@ -65,6 +65,18 @@ def knn():
     valid_pkl = "/home/msaqib/valid_multiple_labels_seizure_data_4.pkl"
     test_pkl = "/home/msaqib/test_multiple_labels_seizure_data_4.pkl"
 
+@ex.named_config
+def debug():
+    train_pkl = "/n/scratch2/ms994/debug_train_multiple_labels_seizure_data_4.pkl"
+    valid_pkl = "/n/scratch2/ms994/debug_valid_multiple_labels_seizure_data_4.pkl"
+    test_pkl = "/n/scratch2/ms994/debug_test_multiple_labels_seizure_data_4.pkl"
+    max_bckg_samps_per_file = 5 #limits number of samples we grab that are bckg to increase speed and reduce data size
+    max_bckg_samps_per_file_test = 5
+    max_samples=5000
+    include_seizure_type=True
+
+
+
 @ex.config
 def config():
     model_name = "/n/scratch2/ms994/out/" + randomString() + ".h5" #set to rando string so we don't have to worry about collisions
@@ -114,7 +126,7 @@ def config():
     make_model_in_parallel = False
     randomly_reorder_channels = False #use if we want to try to mess around with EEG order
     random_channel_ordering = get_random_channel_ordering()
-    include_seizure_labels = False
+    include_seizure_type = False
 
     patient_weight = -1
     seizure_weight = 1
@@ -169,7 +181,7 @@ def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds
 
 
 @ex.capture
-def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds, max_bckg_samps_per_file_test, include_seizure_labels, ref="01_tcp_ar", num_files=None):
+def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds, max_bckg_samps_per_file_test, include_seizure_type, ref="01_tcp_ar", num_files=None):
     if max_bckg_samps_per_file_test is None:
         max_bckg_samps_per_file_test = max_bckg_samps_per_file
     eds = getDataSampleGenerator()
@@ -178,9 +190,9 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     valid_label_files_segs = eds.get_valid_split()
 
     #increased n_process to deal with io processing
-    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_labels)
-    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_labels)
-    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_labels)
+    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
+    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
+    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
     return train_edss, valid_edss, test_edss
 
 @ex.capture
@@ -210,7 +222,7 @@ def get_model(
     max_pool_size_time,
     patient_weight,
     seizure_weight,
-    include_seizure_labels):
+    include_seizure_type):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -260,12 +272,14 @@ def get_model(
         y_patient = LSTM(num_patients)(y)
 
 
-
     seizure_model = Model(inputs=x, outputs=[y_seizure])
-    if include_seizure_labels:
+
+    if include_seizure_type:
         seizure_patient_model = Model(inputs=[x], outputs=[y_seizure, y_patient,  y_seizure_subtype,])
+        val_train_model = Model(inputs=x, outputs=[y_seizure, y_seizure_subtype])
     else:
         seizure_patient_model = Model(inputs=[x], outputs=[y_seizure, y_patient,])
+        val_train_model = seizure_model
 
     patient_model = Model(inputs=[x], outputs=[y_patient])
     print(seizure_patient_model.summary())
@@ -275,14 +289,13 @@ def get_model(
         patient_model = multi_gpu_model(patient_model, num_gpus)
 
     seizure_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["binary_accuracy"])
-    if include_seizure_labels:
+    if include_seizure_type:
         seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight, seizure_weight], metrics=["categorical_accuracy"])
     else:
         seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight,], metrics=["categorical_accuracy"])
 
     patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
-
-    return seizure_model, seizure_patient_model, patient_model
+    return seizure_model, seizure_patient_model, patient_model, val_train_model
 
 global_model = None
 
@@ -316,7 +329,7 @@ def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
         return data
 
 @ex.capture
-def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_labels):
+def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_type):
     allPatients = []
     seizureLabels = []
     validSeizureLabels = []
@@ -333,7 +346,7 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
 
         patientInd = [datum[1][1] for datum in train_edss]
         seizureLabels = [datum[1][0] for datum in train_edss]
-        if include_seizure_labels:
+        if include_seizure_type:
             seizureSubtypes = [datum[1][2] for datum in train_edss]
             validSeizureSubtypes = [datum[1][2] for datum in valid_edss]
         validPatientInd = [datum[1][1] for datum in valid_edss]
@@ -351,7 +364,7 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
         testSeizureLabels = [test_edss.sampleInfo[key].label for key in test_edss.sampleInfo.keys()]
 
         validPatientInd = [0 for i in range(len(validSeizureLabels))]
-        if not include_seizure_labels:
+        if not include_seizure_type:
             for i in range(len(seizureLabels)):
                 train_edss.sampleInfo[i].label = (seizureLabels[i], patientInd[i])
             for i in range(len(validSeizureLabels)):
@@ -362,7 +375,7 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
             for i in range(len(validSeizureLabels)):
                 valid_edss.sampleInfo[i].label = (validSeizureLabels[i][0], 0, constants.SEIZURE_SUBTYPES.index(validSeizureLabels[i][1].lower())) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
             for i in range(len(testSeizureLabels)):
-                test_edss.sampleInfo[i].label = (testSeizureLabels[i][0], 0, constants.SEIZURE_SUBTYPES.index(testSeizureLabels[i][1].lower())) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
+                test_edss.sampleInfo[i].label = (testSeizureLabels[i][0], 0, constants.SEIZURE_SUBTYPES.index(testSeizureLabels[i][1].lower())) #the network has too many parameters if you include test set patients (mutually exclusive) and the neural network should never choose test patients anyways
 
         train_edss = train_edss[:]
         valid_edss = valid_edss[:]
@@ -387,14 +400,14 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
     valid_edss = reorder_channels(valid_edss)
     test_edss = reorder_channels(test_edss)
 
-    if include_seizure_labels:
+    if include_seizure_type:
         edg = RULDataGenMultipleLabels(train_edss, num_labels=3, precache=True, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureLabels], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
-        valid_edg = RULDataGenMultipleLabels(valid_edss, num_labels=3, precache=True, batch_size=batch_size, labels=[validSeizureLabels, validPatientInd, validSeizureLabels], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
-        test_edg = EdfDataGenerator(test_edss[:], n_classes=2, precache=True, batch_size=batch_size, shuffle=False)
+        valid_edg = DataGenMultipleLabels(valid_edss, num_labels=3, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureLabels], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
+        test_edg = DataGenMultipleLabels(test_edss[:], num_labels=3, precache=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
     else:
-        edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=True, labels=[seizureLabels, patientInd], batch_size=batch_size, n_classes=(2, len(allPatients)),)
-        valid_edg = RULDataGenMultipleLabels(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], batch_size=batch_size, xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False)
-        if len(test_edss[0][1]) > 1:
+        edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=True, labels=[seizureLabels, patientInd], batch_size=batch_size, n_classes=(2, len(allPatients)),) #learning means we are more likely to be affected by batch size, both for OOM in gpu and as a hyperparamer
+        valid_edg = DataGenMultipleLabels(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], batch_size=batch_size*4, xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False) #batch size doesn't matter as much when we aren't learning but we still need batches to avoid OOM
+        if len(test_edss[0][1]) > 1: #we throw out the seizure type label
             data = [datum[0] for datum in test_edss]
             labels = [datum[1][0] for datum in test_edss]
             test_edss = [(data[i], labels[i]) for i in range(len(data))]
@@ -407,11 +420,11 @@ def false_alarms_per_hour(fp, total_samps, num_seconds):
     return (fp / total_samps) * num_chances_per_hour
 
 @ex.main
-def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience):
+def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type):
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
 
     print("Creating models")
-    seizure_model, seizure_patient_model, patient_model = get_model(num_patients=len_all_patients)
+    seizure_model, seizure_patient_model, patient_model, val_train_model = get_model(num_patients=len_all_patients)
 
     if regenerate_data:
         return
@@ -432,20 +445,36 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     train_patient_accs = []
     training_seizure_loss = []
     valid_seizure_loss = []
+
     oldPatientWeights = patient_model.layers[-1].get_weights()
     oldNonPatientWeights = [layer.get_weights() for layer in seizure_model.layers[:-1]]
     best_model_loss = 100
     patience_left = patience
+    if include_seizure_type:
+        subtype_accs = []
+        valid_seizure_subtype_accs = []
+        valid_seizure_subtype_loss = []
 
     for i in range(num_epochs):
         if patience_left == 0:
             continue
     #     edg.start_background()
 
-        valid_labels_full = []
-        valid_labels = []
+        valid_labels_full_epoch = []
+        valid_labels_epoch= []
         valid_predictions_full = []
         valid_predictions = []
+
+        if include_seizure_type:
+            subtype_epochs_accs = []
+            subtype_val_epoch_labels = []
+            subtype_val_predictions_epoch = []
+            subtype_val_epoch_labels_full = []
+            subtype_val_predictions_epoch_full = []
+
+
+
+
 
         train_seizure_loss_epoch = []
 
@@ -460,7 +489,12 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             data_x = train_batch[0]
             data_x = data_x.astype(np.float32)
             data_x = np.nan_to_num(data_x)
-            loss, seizure_loss, patient_loss, seizure_acc, patient_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1])
+            if include_seizure_type:
+                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1])
+                subtype_epochs_accs.append(subtype_acc)
+
+            else:
+                loss, seizure_loss, patient_loss, seizure_acc, patient_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1])
             seizure_accs.append(seizure_acc)
             #old patient weights are trying to predict for patient, try to do the prediction!
             patient_model.layers[-1].set_weights(oldPatientWeights)
@@ -478,7 +512,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             for layer_num, layer in enumerate(seizure_model.layers[:-1]):
                 seizure_model.layers[layer_num].set_weights(oldNonPatientWeights[layer_num])
             if (j % 100) == 0:
-                print("epoch: {} batch: {}/{}, seizure acc: {}, patient acc: {}, loss: {}".format(i, j, len(edg), np.mean(seizure_accs), np.mean(patient_accs_epoch), loss))
+                printEpochUpdateString = "epoch: {} batch: {}/{}, seizure acc: {}, patient acc: {}, loss: {}".format(i, j, len(edg), np.mean(seizure_accs), np.mean(patient_accs_epoch), loss)
+                if include_seizure_type:
+                    printEpochUpdateString += ", seizure subtype acc: {}".format(np.mean(subtype_epochs_accs))
+                print(printEpochUpdateString)
     #     valid_edg.start_background()
 
         for j in range(len(valid_edg)):
@@ -486,43 +523,72 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             data_x = valid_batch[0]
             data_x = data_x.astype(np.float32)
             data_x = np.nan_to_num(data_x) #ssome weird issue with incorrect data conversion
-            val_batch_predictions = seizure_model.predict_on_batch(data_x)
-            valid_labels.append(valid_batch[1][0].argmax(1))
-            valid_labels_full.append(valid_batch[1][0])
-            valid_predictions.append(val_batch_predictions.argmax(1))
-            valid_predictions_full.append(val_batch_predictions)
 
+            val_batch_predictions = val_train_model.predict_on_batch(data_x)
+            if include_seizure_type:
+                subtype_val_predictions_epoch.append(val_batch_predictions[1].argmax(1))
+                subtype_val_predictions_epoch_full.append(val_batch_predictions[1])
+                subtype_val_epoch_labels.append(valid_batch[1][2].argmax(1))
+                subtype_val_epoch_labels_full.append(valid_batch[1][2])
+                valid_labels_epoch.append(valid_batch[1][0].argmax(1))
+                valid_labels_full_epoch.append(valid_batch[1][0])
+                valid_predictions.append(val_batch_predictions[0].argmax(1))
+                valid_predictions_full.append(val_batch_predictions[0])
+            else:
+                valid_labels_epoch.append(valid_batch[1][0].argmax(1))
+                valid_labels_full_epoch.append(valid_batch[1][0])
+                valid_predictions.append(val_batch_predictions.argmax(1))
+                valid_predictions_full.append(val_batch_predictions)
 
-        valid_labels = np.nan_to_num(np.hstack(valid_labels).astype(np.float32))
+        #random infinitye predictions? I'm assuming some weird type conversion issues and that nan_to_num should fix this
+
+        valid_labels_epoch= np.nan_to_num(np.hstack(valid_labels_epoch).astype(np.float32))
         valid_predictions = np.nan_to_num(np.hstack(valid_predictions).astype(np.float32))
 
-        print("debug: valid_labels.shape {}, valid_predictions.shape {}".format(valid_labels.shape, valid_predictions.shape))
-        print("We predicted {} seizures in the validation split, there were actually {}".format(valid_predictions.sum(), valid_labels.sum()))
-        print("We predicted {} seizure/total in the validation split, there were actually {}".format(valid_predictions.sum()/len(valid_predictions), valid_labels.sum()/len(valid_labels)))
+        print("debug: valid_labels_epoch shape {}, valid_predictions.shape {}".format(valid_labels_epoch.shape, valid_predictions.shape))
+        print("We predicted {} seizures in the validation split, there were actually {}".format(valid_predictions.sum(), valid_labels_epoch.sum()))
+        print("We predicted {} seizure/total in the validation split, there were actually {}".format(valid_predictions.sum()/len(valid_predictions), valid_labels_epoch.sum()/len(valid_labels_epoch)))
 
 
 
-        valid_labels_full = np.nan_to_num(np.vstack(valid_labels_full).astype(np.float32))
+        valid_labels_full_epoch = np.nan_to_num(np.vstack(valid_labels_full_epoch).astype(np.float32))
         valid_predictions_full = np.nan_to_num(np.vstack(valid_predictions_full).astype(np.float32))
+
+        if include_seizure_type:
+            subtype_val_epoch_labels = np.nan_to_num(np.hstack(subtype_val_epoch_labels).astype(np.float32))
+            subtype_val_predictions_epoch = np.nan_to_num(np.hstack(subtype_val_predictions_epoch).astype(np.float32))
+            subtype_val_epoch_labels_full = np.nan_to_num(np.vstack(subtype_val_epoch_labels_full).astype(np.float32))
+            subtype_val_predictions_epoch_full = np.nan_to_num(np.vstack(subtype_val_predictions_epoch_full).astype(np.float32))
 
 
         try:
-            auc = roc_auc_score(valid_predictions, valid_labels)
+            auc = roc_auc_score(valid_predictions, valid_labels_epoch)
         except Exception:
             auc = "undefined"
-        valid_acc =  accuracy_score(valid_predictions, valid_labels)
+        valid_acc =  accuracy_score(valid_predictions, valid_labels_epoch)
         valid_seizure_accs.append(valid_acc)
         train_patient_accs.append(np.mean(patient_accs_epoch))
-        valid_loss = log_loss(valid_labels_full, valid_predictions_full)
+        valid_loss = log_loss(valid_labels_full_epoch, valid_predictions_full)
         training_seizure_loss.append(np.mean(train_seizure_loss_epoch))
+        printEpochEndString = "end epoch: {}, f1: {}, auc: {}, acc: {}, loss: {}\n".format(i, f1_score(valid_predictions, valid_labels_epoch), auc, valid_acc, valid_loss)
         valid_seizure_loss.append(valid_loss)
+        if include_seizure_type:
+            subtype_accs = np.mean(subtype_epochs_accs)
+            subtype_loss = log_loss(subtype_val_epoch_labels_full, subtype_val_predictions_epoch_full)
+            macro_subtype_f1 = f1_score(subtype_val_epoch_labels, subtype_val_predictions_epoch, average='macro')
+            weighted_subtype_f1 = f1_score(subtype_val_epoch_labels, subtype_val_predictions_epoch, average='weighted')
 
-        print("end epoch: {}, f1: {}, auc: {}, acc: {}, loss: {}\n".format(i, f1_score(valid_predictions, valid_labels), auc, valid_acc, valid_loss))
+
+            printEpochEndString += "\tsubtype info: acc: {}, loss: {}, macro_f1: {}, weighted_f1: {}".format(subtype_acc, subtype_loss, macro_subtype_f1, weighted_subtype_f1)
+
+
+
+        print(printEpochEndString)
         if (valid_loss < best_model_loss):
             patience_left = patience
             best_model_loss = valid_loss
             try:
-                seizure_model.save(model_name)
+                val_train_model.save(model_name)
                 print("improved val score to {}".format(best_model_loss))
             except Exception as e:
                 print("{}\n".format(e))
@@ -544,26 +610,45 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
     y_pred = model.predict_generator(test_edg)
 
-    print("We predicted {} seizures in the test split, there were actually {}".format(y_pred.argmax(1).sum(), np.array([data[1] for data in test_edg.dataset]).astype(int).sum()))
-    print("We predicted {} seizure/total in the test split, there were actually {}".format(y_pred.argmax(1).sum()/len(y_pred.argmax(1)), np.array([data[1] for data in test_edg.dataset]).astype(int).sum()/len(np.array([data[1] for data in test_edg.dataset]).astype(int))))
 
     results = Dict()
-    results.history = {
+    results.history = Dict({
         "binary_accuracy": training_seizure_accs,
         "val_binary_accuracy": valid_seizure_accs,
         "seizure_loss": training_seizure_loss,
         "valid_seizure_loss": valid_seizure_loss,
         "patient_acc": train_patient_accs,
 
-    }
-    results.seizure.acc = accuracy_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
-    results.seizure.f1 = f1_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
-    results.seizure.classification_report = classification_report(np.array([data[1] for data in test_edg.dataset]).astype(int), y_pred.argmax(1), output_dict=True)
-    results.seizure.confusion_matrix = confusion_matrix(np.array([data[1] for data in test_edg.dataset]).astype(int), y_pred.argmax(1),)
+    })
+    if include_seizure_type:
+        results.history.subtype.acc = subtype_accs
+    if include_seizure_type:
+        y_seizure_label =  np.array([data[1][0] for data in test_edg.dataset]).astype(int)
+        y_seizure_pred = np.array([y_pred[0].argmax(1)]).astype(int)[0]
+        y_subtype_label =  np.array([data[1][2] for data in test_edg.dataset]).astype(int)
+        y_subtype_pred = np.array([y_pred[1].argmax(1)]).astype(int)[0]
+        results.subtype.acc = accuracy_score(y_subtype_label, y_subtype_pred)
+        results.subtype.f1.macro = f1_score(y_subtype_label, y_subtype_pred, average='macro')
+        results.subtype.f1.micro = f1_score(y_subtype_label, y_subtype_pred, average='micro')
+        results.subtype.f1.weighted = f1_score(y_subtype_label, y_subtype_pred, average='weighted')
+        results.subtype.confusion_matrix = confusion_matrix(y_subtype_pred, y_subtype_label)
+        results.subtype.classification_report = classification_report(y_subtype_pred, y_subtype_label, output_dict=True)
+    else:
+        y_seizure_label =  np.array([data[1] for data in test_edg.dataset]).astype(int)
+        y_seizure_pred = np.array(y_pred.argmax(1)).astype(int)
+
+    print("We predicted {} seizures in the test split, there were actually {}".format(y_seizure_pred.sum(), np.array([data[1] for data in test_edg.dataset]).astype(int).sum()))
+    print("We predicted {} seizure/total in the test split, there were actually {}".format(y_seizure_pred.sum()/len(y_seizure_pred), np.array([data[1] for data in test_edg.dataset]).astype(int).sum()/len(np.array([data[1] for data in test_edg.dataset]).astype(int))))
+
+    results.seizure.acc = accuracy_score(y_seizure_pred, y_seizure_label)
+    results.seizure.f1 = f1_score(y_seizure_pred, y_seizure_label)
+    results.seizure.classification_report = classification_report(y_seizure_label, y_seizure_pred, output_dict=True)
+    results.seizure.confusion_matrix = confusion_matrix(y_seizure_label, y_seizure_pred)
     total_samps = sum(sum(results.seizure.confusion_matrix))
     results.seizure.false_alarms_per_hour = false_alarms_per_hour(results.seizure.confusion_matrix[0][1], total_samps=total_samps)
+
     try:
-        results.seizure.AUC = roc_auc_score(y_pred.argmax(1), np.array([data[1] for data in test_edg.dataset]).astype(int))
+        results.seizure.AUC = roc_auc_score(y_seizure_pred, y_seizure_label)
     except Exception:
         results.seizure.AUC = "failed to calculate"
 
