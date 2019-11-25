@@ -132,7 +132,16 @@
 #   done
 # done
 
-for patient_weight in 0 0.01 0.1 0.25 0.5 0.9 1 1.1 2 4 10 100
+# for patient_weight in 0 0.01 0.1 0.25 0.5 0.9 1 1.1 2 4 10 100
+# do
+#   sbatch -n 1 --mem-per-cpu 64G -t 3:00:00 -p gpu --gres=gpu:2 runPython.sh predictGenderPatientConvExp.py with batch_size=64 standardized_combined_simple_ensemble lr=0.002 num_epochs=50 patience=5 dropout=0.5 patience=5 patient_weight=$patient_weight gender_weight=1 num_gpus=2 num_filters=20
+# done
+
+for patient_weight in 1 -1 0
 do
-  sbatch -n 1 --mem-per-cpu 64G -t 3:00:00 -p gpu --gres=gpu:2 runPython.sh predictGenderPatientConvExp.py with batch_size=64 standardized_combined_simple_ensemble lr=0.002 num_epochs=50 patience=5 dropout=0.5 patience=5 patient_weight=$patient_weight gender_weight=1 num_gpus=2 num_filters=20
+  for use_lstm in True False
+    do
+      
+      sbatch -p gpu --gres=gpu:1 -c 1 --mem-per-cpu 64G -t 4:00:00 runPython.sh predictSeizureMultipleLabels.py with second_set_params.json patient_weight=-1 seizure_weight=5 lr=0.000003 patience=5 num_filters=10 num_temporal_filter=5 num_conv_temporal_layers=4 use_lstm=False epochs=300
+done
 done

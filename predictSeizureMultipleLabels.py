@@ -38,7 +38,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.utils import multi_gpu_model
 
 from addict import Dict
-ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt")
+ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v2")
 
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
@@ -452,6 +452,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     patience_left = patience
     if include_seizure_type:
         subtype_accs = []
+        subtype_losses = []
         valid_seizure_subtype_accs = []
         valid_seizure_subtype_loss = []
 
@@ -477,6 +478,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 
         train_seizure_loss_epoch = []
+        train_subtype_loss_epoch = []
 
         seizure_accs = []
         patient_accs_epoch = []
@@ -504,6 +506,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             patient_accs_epoch.append(patient_acc)
 
             train_seizure_loss_epoch.append(seizure_loss)
+            if include_seizure_type:
+                train_subtype_loss_epoch.append(subtype_loss)
 
             #get weights that try to predict for patient
             oldPatientWeights = patient_model.layers[-1].get_weights()
@@ -514,15 +518,19 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             if (j % 100) == 0:
                 printEpochUpdateString = "epoch: {} batch: {}/{}, seizure acc: {}, patient acc: {}, loss: {}".format(i, j, len(edg), np.mean(seizure_accs), np.mean(patient_accs_epoch), loss)
                 if include_seizure_type:
-                    printEpochUpdateString += ", seizure subtype acc: {}".format(np.mean(subtype_epochs_accs))
+                    printEpochUpdateString += ", seizure subtype acc: {}, subtype loss: {}".format(np.mean(subtype_epochs_accs), np.mean(train_subtype_loss_epoch))
                 print(printEpochUpdateString)
     #     valid_edg.start_background()
 
+        assert valid_labels_epoch == []
+        assert valid_predictions == []
+
         for j in range(len(valid_edg)):
-            valid_batch = valid_edg[i]
+            valid_batch = valid_edg[j]
             data_x = valid_batch[0]
             data_x = data_x.astype(np.float32)
             data_x = np.nan_to_num(data_x) #ssome weird issue with incorrect data conversion
+
 
             val_batch_predictions = val_train_model.predict_on_batch(data_x)
             if include_seizure_type:
@@ -540,6 +548,13 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
                 valid_predictions.append(val_batch_predictions.argmax(1))
                 valid_predictions_full.append(val_batch_predictions)
 
+        def get_sum_seizures():
+            num_seizures = 0
+            for j in range(len(valid_edg)):
+                valid_batch = valid_edg[j]
+                num_seizures += valid_batch[1][0].argmax(1).sum()
+            return num_seizures
+
         #random infinitye predictions? I'm assuming some weird type conversion issues and that nan_to_num should fix this
 
         valid_labels_epoch= np.nan_to_num(np.hstack(valid_labels_epoch).astype(np.float32))
@@ -548,6 +563,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         print("debug: valid_labels_epoch shape {}, valid_predictions.shape {}".format(valid_labels_epoch.shape, valid_predictions.shape))
         print("We predicted {} seizures in the validation split, there were actually {}".format(valid_predictions.sum(), valid_labels_epoch.sum()))
         print("We predicted {} seizure/total in the validation split, there were actually {}".format(valid_predictions.sum()/len(valid_predictions), valid_labels_epoch.sum()/len(valid_labels_epoch)))
+        print(classification_report(valid_labels_epoch, valid_predictions))
+
 
 
 
@@ -559,6 +576,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             subtype_val_predictions_epoch = np.nan_to_num(np.hstack(subtype_val_predictions_epoch).astype(np.float32))
             subtype_val_epoch_labels_full = np.nan_to_num(np.vstack(subtype_val_epoch_labels_full).astype(np.float32))
             subtype_val_predictions_epoch_full = np.nan_to_num(np.vstack(subtype_val_predictions_epoch_full).astype(np.float32))
+
 
 
         try:
@@ -573,13 +591,18 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         printEpochEndString = "end epoch: {}, f1: {}, auc: {}, acc: {}, loss: {}\n".format(i, f1_score(valid_predictions, valid_labels_epoch), auc, valid_acc, valid_loss)
         valid_seizure_loss.append(valid_loss)
         if include_seizure_type:
-            subtype_accs = np.mean(subtype_epochs_accs)
-            subtype_loss = log_loss(subtype_val_epoch_labels_full, subtype_val_predictions_epoch_full)
+            subtype_losses.append(np.mean(train_subtype_loss_epoch))
+            subtype_acc = np.mean(subtype_epochs_accs)
+            subtype_accs.append(subtype_acc)
+            val_subtype_acc = accuracy_score(subtype_val_epoch_labels, subtype_val_predictions_epoch)
+            valid_seizure_subtype_accs.append(val_subtype_acc)
+            val_subtype_loss = log_loss(subtype_val_epoch_labels_full, subtype_val_predictions_epoch_full)
+            valid_seizure_subtype_loss.append(val_subtype_loss)
             macro_subtype_f1 = f1_score(subtype_val_epoch_labels, subtype_val_predictions_epoch, average='macro')
             weighted_subtype_f1 = f1_score(subtype_val_epoch_labels, subtype_val_predictions_epoch, average='weighted')
 
 
-            printEpochEndString += "\tsubtype info: acc: {}, loss: {}, macro_f1: {}, weighted_f1: {}".format(subtype_acc, subtype_loss, macro_subtype_f1, weighted_subtype_f1)
+            printEpochEndString += "\tsubtype info: train acc: {}, valid acc:{}, loss: {}, macro_f1: {}, weighted_f1: {}".format(subtype_acc, val_subtype_acc, val_subtype_loss, macro_subtype_f1, weighted_subtype_f1)
 
 
 
@@ -622,6 +645,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     })
     if include_seizure_type:
         results.history.subtype.acc = subtype_accs
+        results.history.subtype.val_acc = valid_seizure_subtype_accs
+        results.history.subtype.loss = subtype_losses
+        results.history.subtype.val_loss = valid_seizure_subtype_loss
+
     if include_seizure_type:
         y_seizure_label =  np.array([data[1][0] for data in test_edg.dataset]).astype(int)
         y_seizure_pred = np.array([y_pred[0].argmax(1)]).astype(int)[0]
@@ -644,7 +671,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     results.seizure.f1 = f1_score(y_seizure_pred, y_seizure_label)
     results.seizure.classification_report = classification_report(y_seizure_label, y_seizure_pred, output_dict=True)
     results.seizure.confusion_matrix = confusion_matrix(y_seizure_label, y_seizure_pred)
-    total_samps = sum(sum(results.seizure.confusion_matrix))
+    if max_bckg_samps_per_file_test is not None:
+        total_samps = sum(results.seizure.confusion_matrix[0]) #just use the samps labeled negative, max_bckg_samps_per_file_test is used to run faster but leads to issues with class imbalance not being fully reflected if we include seizure
+    else:
+        total_samps = sum(sum(results.seizure.confusion_matrix))
     results.seizure.false_alarms_per_hour = false_alarms_per_hour(results.seizure.confusion_matrix[0][1], total_samps=total_samps)
 
     try:
