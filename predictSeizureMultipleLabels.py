@@ -67,13 +67,14 @@ def knn():
 
 @ex.named_config
 def debug():
-    train_pkl = "/n/scratch2/ms994/debug_train_multiple_labels_seizure_data_4.pkl"
-    valid_pkl = "/n/scratch2/ms994/debug_valid_multiple_labels_seizure_data_4.pkl"
-    test_pkl = "/n/scratch2/ms994/debug_test_multiple_labels_seizure_data_4.pkl"
+    train_pkl = "/home/msaqib/debug_train_multiple_labels_seizure_data_4.pkl"
+    valid_pkl = "/home/msaqib/debug_valid_multiple_labels_seizure_data_4.pkl"
+    test_pkl = "/home/msaqib/debug_test_multiple_labels_seizure_data_4.pkl"
     max_bckg_samps_per_file = 5 #limits number of samples we grab that are bckg to increase speed and reduce data size
     max_bckg_samps_per_file_test = 5
     max_samples=5000
     include_seizure_type=True
+    session_instead_patient = True
 
 
 
@@ -85,6 +86,7 @@ def config():
     max_pool_size = (2,2)
     max_pool_stride = (2,2)
     steps_per_epoch = None
+    session_instead_patient=False
 
     conv_spatial_filter=(3,3)
     conv_temporal_filter=(1,3)
@@ -136,7 +138,7 @@ def config():
     use_batch_normalization = True
 
     max_bckg_samps_per_file = 50 #limits number of samples we grab that are bckg to increase speed and reduce data size
-    max_bckg_samps_per_file_test = 100
+    max_bckg_samps_per_file_test = None
     max_samples=None
     use_standard_scaler = False
     use_filtering = True
@@ -329,7 +331,7 @@ def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
         return data
 
 @ex.capture
-def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_type):
+def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_type, session_instead_patient):
     allPatients = []
     seizureLabels = []
     validSeizureLabels = []
@@ -356,7 +358,10 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
         print("(Re)generating data")
         train_edss, valid_edss, test_edss = get_data()
         tkn_file_paths = [train_edss.sampleInfo[key].token_file_path for key in train_edss.sampleInfo.keys()]
-        patients = [read.parse_edf_token_path_structure(tkn_file_path)[1] for tkn_file_path in tkn_file_paths]
+        if session_instead_patient:
+            patients = [read.parse_edf_token_path_structure(tkn_file_path)[1] + "/" + read.parse_edf_token_path_structure(tkn_file_path)[2] for tkn_file_path in tkn_file_paths]
+        else:
+            patients = [read.parse_edf_token_path_structure(tkn_file_path)[1] for tkn_file_path in tkn_file_paths]
         allPatients = list(set(patients))
         patientInd = [allPatients.index(patient) for patient in patients]
         seizureLabels = [train_edss.sampleInfo[key].label for key in train_edss.sampleInfo.keys()]
