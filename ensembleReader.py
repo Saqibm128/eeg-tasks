@@ -57,11 +57,104 @@ class Utility_Custom_Annotater(util_funcs.MultiProcessingDataset):
             return self.getItemSlice(i)
         return self.files[i], self.custom_annotate(self.labels[i])
 
+class EdfDatasetSegmentsOnlySeizures():
+    """
+    Similar to EdfDatasetSegments but tries to split patients so that only seizure-type segments are allowed
+        Option is given to enforce splitint patients or not
+    """
+    def __init__(self,
+                 train_split="train",
+                 test_split="dev_test",
+                 ref="01_tcp_ar",
+                 n_process=20,
+                 valid_size=0.2,
+                 pre_cooldown=5,
+                 post_cooldown=None,
+                 sample_time=60,
+                 num_seconds=4,
+                 use_rolling=False,
+                 seizure_types=["gnsz", "fnsz", "cpsz", "absz", "tnsz", "tcsz", "spsz"]):
+        self.train_split = train_split
+        self.test_split = test_split
+        self.ref = ref
+        self.train_valid_slr = read.SeizureLabelReader(split=train_split, return_tse_data=True, n_process=n_process)
+        self.train_valid_slr.verbosity = 1000
+        self.test_slr = read.SeizureLabelReader(split=test_split, return_tse_data=True, n_process=n_process)
+        self.test_slr.verbosity = 1000
+        self.test_labeling = self.test_slr[:]
+        self.test_files = self.test_slr.sampleInfo
+        self.test_files = [self.test_files[i].token_file_path for i in range(len(self.test_files))]
+        self.valid_size = valid_size
+        self.train_valid_labels = None
+        self.pre_cooldown = pre_cooldown
+        self.post_cooldown = post_cooldown
+        self.sample_time = sample_time
+        self.num_seconds = num_seconds
+
+        #setup stuff
+        if self.train_valid_labels is None:
+            self.train_valid_labels = self.train_valid_slr[:]
+        train_valid_files = self.train_valid_slr.sampleInfo
+        train_valid_files = [train_valid_files[i].token_file_path for i in range(len(train_valid_files))]
+        self.train_valid_files = train_valid_files
+        patients = []
+        for filename in train_valid_files:
+            patients.append(read.parse_edf_token_path_structure(filename)[1])
+        trainPatients, testPatients = train_test_split(list(set(patients)), test_size=self.valid_size)
+        self.train_files = []
+        self.valid_files = []
+        self.train_labeling = []
+        self.valid_labeling = []
+        if use_rolling:
+            self.func_call = generate_label_rolling_window
+        else:
+            self.func_call = seizure_series_annotate_times
+        for i, file in enumerate(train_valid_files):
+            if patients[i] in trainPatients:
+                self.train_files.append(file)
+                self.train_labeling.append(self.train_valid_labels[i])
+            else:
+                self.valid_files.append(file)
+                self.valid_labeling.append(self.train_valid_labels[i])
+
+    def custom_annotate(self, ann):
+        return self.func_call(
+            ann,
+            num_seconds=self.num_seconds,
+            pre_cooldown=self.pre_cooldown,
+            post_cooldown=self.post_cooldown,
+            sample_time=self.sample_time)
+
+
+
+    def get_train_valid_split(self):
+        return [(self.train_valid_files[i], self.custom_annotate(self.train_valid_labels[i],)) for i in range(len(self.train_valid_files))]
+    def get_test_split(self):
+        return Utility_Custom_Annotater(self.test_files, self.test_labeling, self.custom_annotate)[:]
+        return [(self.test_files[i], self.custom_annotate(self.test_labeling[i],)) for i in range(len(self.test_files))]
+
+    def get_train_split(self):
+        return Utility_Custom_Annotater(self.train_files, self.train_labeling, self.custom_annotate)[:]
+        return [(self.train_files[i], self.custom_annotate(self.train_labeling[i],)) for i in range(len(self.train_files))]
+
+    def get_valid_split(self):
+        return Utility_Custom_Annotater(self.valid_files, self.valid_labeling, self.custom_annotate)[:]
+        return [(self.valid_files[i], self.custom_annotate(self.valid_labeling[i],)) for i in range(len(self.valid_files))]
+
+class EdfDatasetSegmentsSplitPatients():
+    """
+    similar to EdfDatasetSegments but tries to split patients so that a patient will appear once in train and test set.
+    """
+    def __init__(self):
+        pass
+
 class EdfDatasetSegments():
     """Short summary.
 
     bckg | sample | preseizure | seizure | postsz | bckg
-    arrangement of the allocations of the segments for each seizure
+    arrangement of the allocations of the segments for each seizure for each file
+
+    THIS MAINTAINS SPLITS BETWEEN PATIENTS!!!
 
     Parameters
     ----------

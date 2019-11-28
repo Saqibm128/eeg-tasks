@@ -205,6 +205,12 @@ def get_annotation_csv():
     return cached_annotation_csv
 
 
+@lru_cache(10)
+def get_seizure_info():
+    return pd.read_csv(path.join(
+        root_path, "dbmi_eeg_clustering/assets/seizures.csv"), header=0)
+
+
 def get_annotation_types():
     """Used to get the specific annotation types. These are specified in
             .tse files and label specific time subsequences of the entire record
