@@ -127,6 +127,7 @@ def config():
     randomly_reorder_channels = False #use if we want to try to mess around with EEG order
     random_channel_ordering = get_random_channel_ordering()
     include_seizure_type = False
+    update_seizure_detect_class_weights = False
 
     patient_weight = -1
     seizure_weight = 1
@@ -421,6 +422,7 @@ def false_alarms_per_hour(fp, total_samps, num_seconds):
 
 @ex.main
 def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test):
+    class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
 
     print("Creating models")
@@ -448,7 +450,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
     oldPatientWeights = patient_model.layers[-1].get_weights()
     oldNonPatientWeights = [layer.get_weights() for layer in seizure_model.layers[:-1]]
-    best_model_loss = 100
+    best_model_loss = -100
     patience_left = patience
     if include_seizure_type:
         subtype_accs = []
@@ -607,9 +609,9 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 
         print(printEpochEndString)
-        if (valid_loss < best_model_loss):
+        if (f1_score(valid_predictions, valid_labels_epoch) > best_model_loss):
             patience_left = patience
-            best_model_loss = valid_loss
+            best_model_loss = f1_score(valid_predictions, valid_labels_epoch)
             try:
                 val_train_model.save(model_name)
                 print("improved val score to {}".format(best_model_loss))
