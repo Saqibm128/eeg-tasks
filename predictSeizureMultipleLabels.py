@@ -61,11 +61,13 @@ def no_stride_channels():
 
 @ex.named_config
 def knn():
-    train_pkl = "/home/msaqib/train_multiple_labels_seizure_data_4.pkl"
-    valid_pkl = "/home/msaqib/valid_multiple_labels_seizure_data_4.pkl"
-    test_pkl = "/home/msaqib/test_multiple_labels_seizure_data_4.pkl"
+    train_pkl = "/home/msaqib/train_multiple_labels_sessions_seizure_data_4.pkl"
+    valid_pkl = "/home/msaqib/valid_multiple_labels_sessions_seizure_data_4.pkl"
+    test_pkl = "/home/msaqib/test_multiple_labels_sessions_seizure_data_4.pkl"
     include_seizure_type = True
     session_instead_patient = True
+    # max_bckg_samps_per_file = None
+    # max_bckg_samps_per_file_test = None
 
 @ex.named_config
 def debug():
