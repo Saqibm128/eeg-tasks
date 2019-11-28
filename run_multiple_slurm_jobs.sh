@@ -137,11 +137,37 @@
 #   sbatch -n 1 --mem-per-cpu 64G -t 3:00:00 -p gpu --gres=gpu:2 runPython.sh predictGenderPatientConvExp.py with batch_size=64 standardized_combined_simple_ensemble lr=0.002 num_epochs=50 patience=5 dropout=0.5 patience=5 patient_weight=$patient_weight gender_weight=1 num_gpus=2 num_filters=20
 # done
 
-for patient_weight in 1 -1 0
+
+
+for patient_weight in 1 -1
 do
-  for use_lstm in True False
+  for use_lstm in False
     do
-      
-      sbatch -p gpu --gres=gpu:1 -c 1 --mem-per-cpu 64G -t 4:00:00 runPython.sh predictSeizureMultipleLabels.py with second_set_params.json patient_weight=-1 seizure_weight=5 lr=0.000003 patience=5 num_filters=10 num_temporal_filter=5 num_conv_temporal_layers=4 use_lstm=False epochs=300
+      for include_seizure_type in True False
+      do
+      sbatch -p gpu --gres=gpu:1 -c 1 --mem-per-cpu 96G -t 4:00:00 runPython.sh predictSeizureMultipleLabels.py with second_set_params.json patient_weight=$patient_weight seizure_weight=5 lr=0.0001 patience=5 num_filters=1 num_temporal_filter=1 num_conv_temporal_layers=3 num_layers=3 use_lstm=$use_lstm epochs=300 include_seizure_type=$include_seizure_type
+    done
+done
+done
+
+for patient_weight in 1 -1
+do
+  for use_lstm in False
+    do
+      for include_seizure_type in True False
+      do
+     sbatch -p gpu --gres=gpu:1 -c 1 --mem-per-cpu 96G -t 4:00:00 runPython.sh predictSeizureMultipleLabels.py with second_set_params.json patient_weight=$patient_weight seizure_weight=5 lr=0.0001 patience=5 num_filters=8 num_temporal_filter=4 num_conv_temporal_layers=3 num_layers=3 use_lstm=$use_lstm epochs=300 include_seizure_type=$include_seizure_type
+   done
+done
+done
+
+for patient_weight in 1 -1
+do
+  for use_lstm in False
+    do
+      for include_seizure_type in True False
+      do
+     sbatch -p gpu --gres=gpu:1 -c 1 --mem-per-cpu 96G -t 4:00:00 runPython.sh predictSeizureMultipleLabels.py with second_set_params.json patient_weight=$patient_weight seizure_weight=5 lr=0.0001 patience=5 num_filters=1 num_temporal_filter=1 num_conv_temporal_layers=3 num_layers=2 use_lstm=$use_lstm epochs=300 include_seizure_type=$include_seizure_type
+   done
 done
 done
