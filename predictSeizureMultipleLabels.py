@@ -64,6 +64,8 @@ def knn():
     train_pkl = "/home/msaqib/train_multiple_labels_seizure_data_4.pkl"
     valid_pkl = "/home/msaqib/valid_multiple_labels_seizure_data_4.pkl"
     test_pkl = "/home/msaqib/test_multiple_labels_seizure_data_4.pkl"
+    include_seizure_type = True
+    session_instead_patient = True
 
 @ex.named_config
 def debug():
