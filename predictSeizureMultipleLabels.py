@@ -80,7 +80,13 @@ def debug():
     include_seizure_type=True
     session_instead_patient = True
 
-
+@ex.named_config
+def use_session_dbmi():
+    train_pkl = "/n/scratch2/ms994/train_multiple_labels_sessions_seizure_data_4.pkl"
+    valid_pkl = "/n/scratch2/ms994/valid_multiple_labels_sessions_seizure_data_4.pkl"
+    test_pkl = "/n/scratch2/ms994/test_multiple_labels_sessions_seizure_data_4.pkl"
+    session_instead_patient = True
+    include_seizure_type = True
 
 @ex.config
 def config():
