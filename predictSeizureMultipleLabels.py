@@ -20,7 +20,7 @@ import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels, RULEdfDataGenerator, RULDataGenMultipleLabels
 from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like_pre_layers, conv2d_gridsearch_pre_layers
 from keras import optimizers
-from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM, Flatten
+from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM, Flatten, Concatenate
 from keras.models import Model, load_model
 from keras.utils import multi_gpu_model
 import pickle as pkl
@@ -40,7 +40,7 @@ from keras.utils import multi_gpu_model
 from addict import Dict
 ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v2")
 
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -139,6 +139,9 @@ def config():
     randomly_reorder_channels = False #use if we want to try to mess around with EEG order
     random_channel_ordering = get_random_channel_ordering()
     include_seizure_type = False
+    attach_seizure_type_to_seizure_detect = False
+    seizure_classification_only = False
+    seizure_classes_to_use = None
     update_seizure_detect_class_weights = False
 
     patient_weight = -1
@@ -162,6 +165,7 @@ def config():
     max_pool_size_time = None
 
     epochs=100
+    seizure_weight_decay = None
 
 @ex.capture
 def getImbResampler(imbalanced_resampler):
@@ -235,7 +239,8 @@ def get_model(
     max_pool_size_time,
     patient_weight,
     seizure_weight,
-    include_seizure_type):
+    include_seizure_type,
+    attach_seizure_type_to_seizure_detect):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -275,13 +280,18 @@ def get_model(
         y = Dense(num_post_lin_h, activation='relu')(y)
         y = Dropout(linear_dropout)(y)
     if not use_lstm:
-        y_seizure = Dense(2, activation="softmax", name="seizure")(y)
         y_seizure_subtype = Dense(len(constants.SEIZURE_SUBTYPES), activation="softmax", name="seizure_subtype")(y)
+        if include_seizure_type and attach_seizure_type_to_seizure_detect:
+            y = Concatenate()([y, y_seizure_subtype])
+        y_seizure = Dense(2, activation="softmax", name="seizure")(y)
         y_patient = Dense(num_patients, activation="softmax", name="patient")(y)
     else:
         y = Reshape((int(y.shape[1]), int(y.shape[2]) * int(y.shape[3])))(y)
         y_seizure = LSTM(2)(y)
         y_seizure_subtype = LSTM(len(constants.SEIZURE_SUBTYPES))(y)
+        if include_seizure_type and attach_seizure_type_to_seizure_detect:
+            raise Exception("Not IMPLEMENTED")
+            y = Concatenate()([y, y_seizure_subtype])
         y_patient = LSTM(num_patients)(y)
 
 
@@ -313,6 +323,18 @@ def get_model(
 global_model = None
 
 @ex.capture
+def recompile_model(seizure_patient_model, epoch_num, seizure_weight, patient_weight, include_seizure_type, lr, seizure_weight_decay):
+    if seizure_weight_decay is not None and (epoch_num + 1) % 1 == 0:
+        weight_decay = seizure_weight_decay ** ((epoch_num + 1) / 1)
+        print("Weight Decay! new Seizure Weight: {}".format(seizure_weight * weight_decay))
+
+        if include_seizure_type:
+            seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[seizure_weight * weight_decay,patient_weight, seizure_weight * weight_decay], metrics=["categorical_accuracy"])
+        else:
+            seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[seizure_weight * weight_decay, patient_weight,], metrics=["categorical_accuracy"])
+    return seizure_patient_model
+
+@ex.capture
 def set_global_model():
     global global_model
     global_model = get_model()
@@ -342,7 +364,38 @@ def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
         return data
 
 @ex.capture
-def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_type, session_instead_patient):
+def update_data(edss, seizure_classification_only, seizure_classes_to_use):
+    '''
+    some of the tasks require different datasets and some filtering of the data i.e. only seizure classification or just some of the labels
+    '''
+    data = [datum[0] for datum in edss]
+    patient_labels = [datum[1][1] for datum in edss]
+    seizure_detection_labels = [datum[1][0] for datum in edss]
+    seizure_class_labels = [datum[1][2] for datum in edss]
+    keep_index = [True for i in range(len(data))]
+    if seizure_classes_to_use is not None:
+        for i, seizure_class_label in enumerate(seizure_class_labels):
+            if seizure_detection_labels[i] and seizure_class_label not in seizure_classes_to_use: #it's a seizure detection class and it should be excluded
+                keep_index[i] = False
+    if seizure_classification_only:
+        for i, seizure_detect in enumerate(seizure_detection_labels):
+            if not seizure_detect:
+                keep_index[i] = False
+    data_to_keep = []
+    patient_labels_to_keep = []
+    seizure_detect_to_keep = []
+    seizure_class_labels_to_keep = []
+    for i, should_keep in enumerate(keep_index):
+        if should_keep:
+            data_to_keep.append(data[i])
+            patient_labels_to_keep.append(patient_labels[i])
+            seizure_detect_to_keep.append(seizure_detection_labels[i])
+            seizure_class_labels_to_keep.append(seizure_class_labels[i])
+    return [(data_to_keep[i], (seizure_detect_to_keep[i], patient_labels_to_keep[i], seizure_class_labels_to_keep[i])) for i in range(len(data_to_keep))]
+
+
+@ex.capture
+def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_type, session_instead_patient,):
     allPatients = []
     seizureLabels = []
     validSeizureLabels = []
@@ -402,7 +455,9 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
         pkl.dump(test_edss[:], open(test_pkl, 'wb'))
 
 
-
+    train_edss = update_data(train_edss)
+    valid_edss = update_data(valid_edss)
+    test_edss = update_data(test_edss)
 
     if use_standard_scaler:
         train_edss = read.EdfStandardScaler(
@@ -417,8 +472,8 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
     test_edss = reorder_channels(test_edss)
 
     if include_seizure_type:
-        edg = RULDataGenMultipleLabels(train_edss, num_labels=3, precache=True, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureLabels], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
-        valid_edg = DataGenMultipleLabels(valid_edss, num_labels=3, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureLabels], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
+        edg = RULDataGenMultipleLabels(train_edss, num_labels=3, precache=True, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
+        valid_edg = DataGenMultipleLabels(valid_edss, num_labels=3, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
         test_edg = DataGenMultipleLabels(test_edss[:], num_labels=3, precache=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
     else:
         edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=True, labels=[seizureLabels, patientInd], batch_size=batch_size, n_classes=(2, len(allPatients)),) #learning means we are more likely to be affected by batch size, both for OOM in gpu and as a hyperparamer
@@ -436,7 +491,7 @@ def false_alarms_per_hour(fp, total_samps, num_seconds):
     return (fp / total_samps) * num_chances_per_hour
 
 @ex.main
-def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test):
+def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight_decay):
     class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
 
@@ -476,7 +531,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     for i in range(num_epochs):
         if patience_left == 0:
             continue
-    #     edg.start_background()
+        recompile_model(seizure_patient_model, i)
 
         valid_labels_full_epoch = []
         valid_labels_epoch= []
