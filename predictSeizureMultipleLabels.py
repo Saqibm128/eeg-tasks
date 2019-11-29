@@ -40,7 +40,7 @@ from keras.utils import multi_gpu_model
 from addict import Dict
 ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v2")
 
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -71,12 +71,12 @@ def knn():
 
 @ex.named_config
 def debug():
-    train_pkl = "/home/msaqib/debug_train_multiple_labels_seizure_data_4.pkl"
-    valid_pkl = "/home/msaqib/debug_valid_multiple_labels_seizure_data_4.pkl"
-    test_pkl = "/home/msaqib/debug_test_multiple_labels_seizure_data_4.pkl"
+    train_pkl = "/home/ms994/debug_train_multiple_labels_seizure_data_4.pkl"
+    valid_pkl = "/home/ms994/debug_valid_multiple_labels_seizure_data_4.pkl"
+    test_pkl = "/home/ms994/debug_test_multiple_labels_seizure_data_4.pkl"
     max_bckg_samps_per_file = 5 #limits number of samples we grab that are bckg to increase speed and reduce data size
     max_bckg_samps_per_file_test = 5
-    max_samples=5000
+    max_samples=10000
     include_seizure_type=True
     session_instead_patient = True
 
@@ -87,6 +87,10 @@ def use_session_dbmi():
     test_pkl = "/n/scratch2/ms994/test_multiple_labels_sessions_seizure_data_4.pkl"
     session_instead_patient = True
     include_seizure_type = True
+
+@ex.named_config
+def gnsz_fnsz():
+    seizure_classes_to_use=["bckg", "gnsz", "fnsz"]
 
 @ex.config
 def config():
@@ -334,10 +338,7 @@ def recompile_model(seizure_patient_model, epoch_num, seizure_weight, patient_we
             seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[seizure_weight * weight_decay, patient_weight,], metrics=["categorical_accuracy"])
     return seizure_patient_model
 
-@ex.capture
-def set_global_model():
-    global global_model
-    global_model = get_model()
+
 
 @ex.capture
 def get_model_checkpoint(model_name, early_stopping_on):
@@ -375,7 +376,7 @@ def update_data(edss, seizure_classification_only, seizure_classes_to_use):
     keep_index = [True for i in range(len(data))]
     if seizure_classes_to_use is not None:
         for i, seizure_class_label in enumerate(seizure_class_labels):
-            if seizure_detection_labels[i] and seizure_class_label not in seizure_classes_to_use: #it's a seizure detection class and it should be excluded
+            if seizure_detection_labels[i] and constants.SEIZURE_SUBTYPES[seizure_class_label] not in seizure_classes_to_use: #it's a seizure detection class and it should be excluded
                 keep_index[i] = False
     if seizure_classification_only:
         for i, seizure_detect in enumerate(seizure_detection_labels):
@@ -391,7 +392,7 @@ def update_data(edss, seizure_classification_only, seizure_classes_to_use):
             patient_labels_to_keep.append(patient_labels[i])
             seizure_detect_to_keep.append(seizure_detection_labels[i])
             seizure_class_labels_to_keep.append(seizure_class_labels[i])
-    return [(data_to_keep[i], (seizure_detect_to_keep[i], patient_labels_to_keep[i], seizure_class_labels_to_keep[i])) for i in range(len(data_to_keep))]
+    return [(data_to_keep[i], (seizure_detect_to_keep[i], patient_labels_to_keep[i], seizure_class_labels_to_keep[i])) for i in range(len(data_to_keep))], seizure_detect_to_keep, patient_labels_to_keep, seizure_class_labels_to_keep
 
 
 @ex.capture
@@ -467,14 +468,14 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
         test_edss = read.EdfStandardScaler(
             test_edss, dataset_includes_label=True, n_process=n_process)[:]
 
-    train_edss = reorder_channels(train_edss)
-    valid_edss = reorder_channels(valid_edss)
-    test_edss = reorder_channels(test_edss)
+    train_edss, seizureLabels, patientInd, seizureSubtypes = reorder_channels(train_edss)
+    valid_edss, validSeizureLabels, validPatientInd, validSeizureSubtypes = reorder_channels(valid_edss)
+    test_edss, _, _, testSeizureSubtypes = reorder_channels(test_edss)
 
     if include_seizure_type:
         edg = RULDataGenMultipleLabels(train_edss, num_labels=3, precache=True, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
         valid_edg = DataGenMultipleLabels(valid_edss, num_labels=3, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
-        test_edg = DataGenMultipleLabels(test_edss[:], num_labels=3, precache=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
+        test_edg = DataGenMultipleLabels(test_edss, num_labels=3, precache=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
     else:
         edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=True, labels=[seizureLabels, patientInd], batch_size=batch_size, n_classes=(2, len(allPatients)),) #learning means we are more likely to be affected by batch size, both for OOM in gpu and as a hyperparamer
         valid_edg = DataGenMultipleLabels(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], batch_size=batch_size*4, xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False) #batch size doesn't matter as much when we aren't learning but we still need batches to avoid OOM
@@ -491,7 +492,7 @@ def false_alarms_per_hour(fp, total_samps, num_seconds):
     return (fp / total_samps) * num_chances_per_hour
 
 @ex.main
-def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight_decay):
+def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight_decay, seizure_classification_only):
     class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
 
@@ -679,9 +680,13 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 
         print(printEpochEndString)
-        if (f1_score(valid_predictions, valid_labels_epoch) > best_model_loss):
+        if seizure_classification_only:
+            new_val_f1 = weighted_subtype_f1
+        else:
+            new_val_f1 = f1_score(valid_predictions, valid_labels_epoch)
+        if (new_val_f1 > best_model_loss):
             patience_left = patience
-            best_model_loss = f1_score(valid_predictions, valid_labels_epoch)
+            best_model_loss = new_val_f1
             try:
                 val_train_model.save(model_name)
                 print("improved val score to {}".format(best_model_loss))
