@@ -744,20 +744,21 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     print("We predicted {} seizures in the test split, there were actually {}".format(y_seizure_pred.sum(), np.array([data[1] for data in test_edg.dataset]).astype(int).sum()))
     print("We predicted {} seizure/total in the test split, there were actually {}".format(y_seizure_pred.sum()/len(y_seizure_pred), np.array([data[1] for data in test_edg.dataset]).astype(int).sum()/len(np.array([data[1] for data in test_edg.dataset]).astype(int))))
 
-    results.seizure.acc = accuracy_score(y_seizure_pred, y_seizure_label)
-    results.seizure.f1 = f1_score(y_seizure_pred, y_seizure_label)
-    results.seizure.classification_report = classification_report(y_seizure_label, y_seizure_pred, output_dict=True)
-    results.seizure.confusion_matrix = confusion_matrix(y_seizure_label, y_seizure_pred)
-    if max_bckg_samps_per_file_test is not None:
-        total_samps = sum(results.seizure.confusion_matrix[0]) #just use the samps labeled negative, max_bckg_samps_per_file_test is used to run faster but leads to issues with class imbalance not being fully reflected if we include seizure
-    else:
-        total_samps = sum(sum(results.seizure.confusion_matrix))
-    results.seizure.false_alarms_per_hour = false_alarms_per_hour(results.seizure.confusion_matrix[0][1], total_samps=total_samps)
+    if not seizure_classification_only:
+        results.seizure.acc = accuracy_score(y_seizure_pred, y_seizure_label)
+        results.seizure.f1 = f1_score(y_seizure_pred, y_seizure_label)
+        results.seizure.classification_report = classification_report(y_seizure_label, y_seizure_pred, output_dict=True)
+        results.seizure.confusion_matrix = confusion_matrix(y_seizure_label, y_seizure_pred)
+        if max_bckg_samps_per_file_test is not None:
+            total_samps = sum(results.seizure.confusion_matrix[0]) #just use the samps labeled negative, max_bckg_samps_per_file_test is used to run faster but leads to issues with class imbalance not being fully reflected if we include seizure
+        else:
+            total_samps = sum(sum(results.seizure.confusion_matrix))
+        results.seizure.false_alarms_per_hour = false_alarms_per_hour(results.seizure.confusion_matrix[0][1], total_samps=total_samps)
 
-    try:
-        results.seizure.AUC = roc_auc_score(y_seizure_pred, y_seizure_label)
-    except Exception:
-        results.seizure.AUC = "failed to calculate"
+        try:
+            results.seizure.AUC = roc_auc_score(y_seizure_pred, y_seizure_label)
+        except Exception:
+            results.seizure.AUC = "failed to calculate"
 
     return results.to_dict()
 
