@@ -92,6 +92,14 @@ def use_session_dbmi():
 def gnsz_fnsz():
     seizure_classes_to_use=["bckg", "gnsz", "fnsz"]
 
+@ex.named_config
+def gnsz():
+    seizure_classes_to_use=["bckg", "gnsz"]
+
+@ex.named_config
+def fnsz():
+    seizure_classes_to_use=["bckg", "fnsz"]
+
 @ex.config
 def config():
     model_name = "/n/scratch2/ms994/out/" + randomString() + ".h5" #set to rando string so we don't have to worry about collisions
