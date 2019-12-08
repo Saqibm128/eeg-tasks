@@ -155,6 +155,7 @@ def config():
     seizure_classification_only = False
     seizure_classes_to_use = None
     update_seizure_detect_class_weights = False
+    min_seizure_weight = 0
 
     patient_weight = -1
     seizure_weight = 1
@@ -171,14 +172,23 @@ def config():
     ref = "01_tcp_ar"
     combined_split = None
     lr = 0.005
+    lr_decay = 0
 
     use_lstm = False
     use_time_layers_first = False
     max_pool_size_time = None
 
+    balance_valid_dataset = False
+
     epochs=100
     seizure_weight_decay = None
 
+@ex.capture
+def valid_dataset_class(balance_valid_dataset):
+    if balance_valid_dataset:
+        return RULDataGenMultipleLabels
+    else:
+        return DataGenMultipleLabels
 @ex.capture
 def getImbResampler(imbalanced_resampler):
     if imbalanced_resampler is None:
@@ -335,15 +345,22 @@ def get_model(
 global_model = None
 
 @ex.capture
-def recompile_model(seizure_patient_model, epoch_num, seizure_weight, patient_weight, include_seizure_type, lr, seizure_weight_decay):
-    if seizure_weight_decay is not None and (epoch_num + 1) % 1 == 0:
-        weight_decay = seizure_weight_decay ** ((epoch_num + 1) / 1)
-        print("Weight Decay! new Seizure Weight: {}".format(seizure_weight * weight_decay))
+def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizure_weight, patient_weight, include_seizure_type, lr, lr_decay, seizure_weight_decay):
+    if seizure_weight_decay is not None:
+        weight_decay = seizure_weight_decay ** ((epoch_num))
+        if lr_decay == 0:
+            new_lr = lr
+        else:
+            new_lr = lr * (lr_decay) ** ((epoch_num))
+        new_weight = seizure_weight * weight_decay
+        if new_weight < min_seizure_weight:
+            new_weight = min_seizure_weight
+        print("Weight Decay! new Seizure Weight: {}, lr: {}".format(new_weight, new_lr))
 
         if include_seizure_type:
-            seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[seizure_weight * weight_decay,patient_weight, seizure_weight * weight_decay], metrics=["categorical_accuracy"])
+            seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy"])
         else:
-            seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[seizure_weight * weight_decay, patient_weight,], metrics=["categorical_accuracy"])
+            seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[new_weight, patient_weight,], metrics=["categorical_accuracy"])
     return seizure_patient_model
 
 
@@ -482,11 +499,11 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
 
     if include_seizure_type:
         edg = RULDataGenMultipleLabels(train_edss, num_labels=3, precache=True, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
-        valid_edg = DataGenMultipleLabels(valid_edss, num_labels=3, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
+        valid_edg = valid_dataset_class()(valid_edss, num_labels=3, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
         test_edg = DataGenMultipleLabels(test_edss, num_labels=3, precache=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
     else:
         edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=True, labels=[seizureLabels, patientInd], batch_size=batch_size, n_classes=(2, len(allPatients)),) #learning means we are more likely to be affected by batch size, both for OOM in gpu and as a hyperparamer
-        valid_edg = DataGenMultipleLabels(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], batch_size=batch_size*4, xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False) #batch size doesn't matter as much when we aren't learning but we still need batches to avoid OOM
+        valid_edg = valid_dataset_class()(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], batch_size=batch_size*4, xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False) #batch size doesn't matter as much when we aren't learning but we still need batches to avoid OOM
         if len(test_edss[0][1]) > 1: #we throw out the seizure type label
             data = [datum[0] for datum in test_edss]
             labels = [datum[1][0] for datum in test_edss]
@@ -712,7 +729,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         training_seizure_accs.append(np.mean(seizure_accs))
 
         edg.on_epoch_end()
-        valid_edg.on_epoch_end()
+        # valid_edg.on_epoch_end()
 
     model = load_model(model_name)
 
