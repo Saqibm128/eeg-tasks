@@ -62,7 +62,6 @@
     "steps_per_epoch": null,
     "test_pkl": "/n/scratch2/ms994/test_multiple_labels_sessions_seizure_data_4.pkl",
     "train_pkl": "/n/scratch2/ms994/train_multiple_labels_sessions_seizure_data_4.pkl",
-    "update_seizure_detect_class_weights": false,
     "use_batch_normalization": true,
     "use_filtering": true,
     "use_inception": false,

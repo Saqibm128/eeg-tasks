@@ -595,7 +595,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             data_x = data_x.astype(np.float32)
             data_x = np.nan_to_num(data_x)
             if include_seizure_type:
-                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1], class_weights=[seizure_class_weights, patient_class_weights])
+                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1], class_weight=[seizure_class_weights, patient_class_weights])
                 subtype_epochs_accs.append(subtype_acc)
 
             else:
