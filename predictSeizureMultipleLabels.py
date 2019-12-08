@@ -154,7 +154,7 @@ def config():
     attach_seizure_type_to_seizure_detect = False
     seizure_classification_only = False
     seizure_classes_to_use = None
-    update_seizure_detect_class_weights = False
+    update_seizure_class_weights = False
     min_seizure_weight = 0
 
     patient_weight = -1
@@ -177,6 +177,8 @@ def config():
     use_lstm = False
     use_time_layers_first = False
     max_pool_size_time = None
+
+
 
     balance_valid_dataset = False
 
@@ -517,9 +519,12 @@ def false_alarms_per_hour(fp, total_samps, num_seconds):
     return (fp / total_samps) * num_chances_per_hour
 
 @ex.main
-def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight_decay, seizure_classification_only):
-    class_weights = {0:1,1:1}
+def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only):
+    seizure_class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
+    patient_class_weights = {}
+    for i in range(len_all_patients):
+        patient_class_weights[i] = 1
 
     print("Creating models")
     seizure_model, seizure_patient_model, patient_model, val_train_model = get_model(num_patients=len_all_patients)
@@ -590,7 +595,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             data_x = data_x.astype(np.float32)
             data_x = np.nan_to_num(data_x)
             if include_seizure_type:
-                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1])
+                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1], class_weights=[seizure_class_weights, patient_class_weights])
                 subtype_epochs_accs.append(subtype_acc)
 
             else:
@@ -662,6 +667,15 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         print("We predicted {} seizures in the validation split, there were actually {}".format(valid_predictions.sum(), valid_labels_epoch.sum()))
         print("We predicted {} seizure/total in the validation split, there were actually {}".format(valid_predictions.sum()/len(valid_predictions), valid_labels_epoch.sum()/len(valid_labels_epoch)))
         print(classification_report(valid_labels_epoch, valid_predictions))
+
+        if update_seizure_class_weights and valid_predictions.sum()/len(valid_predictions) > 0.95:
+            seizure_class_weights[0] *= 1.05
+            seizure_class_weights[1] /= 1.05
+            print("Updating seizure classes {}".format(seizure_class_weights))
+        elif update_seizure_class_weights and valid_predictions.sum()/len(valid_predictions) < 0.05:
+            seizure_class_weights[1] *= 1.05
+            seizure_class_weights[0] /= 1.05
+            print("Updating seizure classes {}".format(seizure_class_weights))
 
 
 
