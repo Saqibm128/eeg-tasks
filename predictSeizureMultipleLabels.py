@@ -66,8 +66,8 @@ def knn():
     test_pkl = "/home/msaqib/test_multiple_labels_sessions_seizure_data_4.pkl"
     include_seizure_type = True
     session_instead_patient = True
-    # max_bckg_samps_per_file = None
-    # max_bckg_samps_per_file_test = None
+    max_bckg_samps_per_file = None
+    max_bckg_samps_per_file_test = None
 
 @ex.named_config
 def debug():
@@ -86,7 +86,16 @@ def use_patient_dbmi():
     valid_pkl = "/n/scratch2/ms994/valid_multiple_labels_seizure_data_4.pkl"
     test_pkl = "/n/scratch2/ms994/test_multiple_labels_seizure_data_4.pkl"
     session_instead_patient = False
-    
+
+def debug_knn():
+    train_pkl = "/home/msaqib/debug_train_multiple_labels_seizure_data_4.pkl"
+    valid_pkl = "/home/msaqib/debug_valid_multiple_labels_seizure_data_4.pkl"
+    test_pkl = "/home/msaqib/debug_test_multiple_labels_seizure_data_4.pkl"
+    max_bckg_samps_per_file = 5 #limits number of samples we grab that are bckg to increase speed and reduce data size
+    max_bckg_samps_per_file_test = 5
+    max_samples=10000
+    include_seizure_type=True
+    session_instead_patient = True
 
 @ex.named_config
 def use_session_dbmi():
@@ -244,6 +253,7 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
     valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
     test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
+    raise Exception()
     return train_edss, valid_edss, test_edss
 
 @ex.capture
@@ -409,12 +419,20 @@ def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
         return data
 
 @ex.capture
-def update_data(edss, seizure_classification_only, seizure_classes_to_use):
+def update_data(edss, seizure_classification_only, seizure_classes_to_use, zero_out_patients=False):
     '''
+    since we store the full string of the session or the patient instead of the index, we update the data to use the int index
     some of the tasks require different datasets and some filtering of the data i.e. only seizure classification or just some of the labels
+    zero_out_patients: for use with valid and test set, since they shouldn't have patients from the train set and therefore predicting for them is wrong
     '''
+
     data = [datum[0] for datum in edss]
-    patient_labels = [datum[1][1] for datum in edss]
+    if zero_out_patients:
+        patient_labels = [0 for i in range(len(edss))]
+    else:
+        patients = [datum[1][1] for datum in edss]
+        allPatient = list(set(patients))
+        patient_labels = [allPatient.index(patient) for patient in patients]
     seizure_detection_labels = [datum[1][0] for datum in edss]
     seizure_class_labels = [datum[1][2] for datum in edss]
     keep_index = [True for i in range(len(data))]
@@ -455,49 +473,62 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
         valid_edss = pkl.load(open(valid_pkl, 'rb'))
         print("Loading data completed")
 
-        patientInd = [datum[1][1] for datum in train_edss]
+
+
+        # validPatientInd
+
         seizureLabels = [datum[1][0] for datum in train_edss]
         if include_seizure_type:
             seizureSubtypes = [datum[1][2] for datum in train_edss]
             validSeizureSubtypes = [datum[1][2] for datum in valid_edss]
-        validPatientInd = [datum[1][1] for datum in valid_edss]
         validSeizureLabels = [datum[1][0] for datum in valid_edss]
-        allPatients = list(set([datum[1][1] for datum in train_edss]))
     else:
         print("(Re)generating data")
         train_edss, valid_edss, test_edss = get_data()
-        tkn_file_paths = [train_edss.sampleInfo[key].token_file_path for key in train_edss.sampleInfo.keys()]
+        # tkn_file_paths = [train_edss.sampleInfo[key].token_file_path for key in train_edss.sampleInfo.keys()]
         if session_instead_patient:
-            patients = [read.parse_edf_token_path_structure(tkn_file_path)[1] + "/" + read.parse_edf_token_path_structure(tkn_file_path)[2] for tkn_file_path in tkn_file_paths]
+            patient_func = lambda tkn_file_paths: [read.parse_edf_token_path_structure(tkn_file_path)[1] + "/" + read.parse_edf_token_path_structure(tkn_file_path)[2] for tkn_file_path in tkn_file_paths]
         else:
-            patients = [read.parse_edf_token_path_structure(tkn_file_path)[1] for tkn_file_path in tkn_file_paths]
-        allPatients = list(set(patients))
-        patientInd = [allPatients.index(patient) for patient in patients]
+            patient_func = lambda tkn_file_paths: [read.parse_edf_token_path_structure(tkn_file_path)[1] for tkn_file_path in tkn_file_paths]
+        # allPatients = list(set(patients))
+        # patientInd = [allPatients.index(patient) for patient in patients]
         seizureLabels = [train_edss.sampleInfo[key].label for key in train_edss.sampleInfo.keys()]
+        train_patients = patient_func( [train_edss.sampleInfo[key].token_file_path for key in train_edss.sampleInfo.keys()])
         validSeizureLabels = [valid_edss.sampleInfo[key].label for key in valid_edss.sampleInfo.keys()]
+        valid_patients = patient_func( [valid_edss.sampleInfo[key].token_file_path for key in valid_edss.sampleInfo.keys()])
         testSeizureLabels = [test_edss.sampleInfo[key].label for key in test_edss.sampleInfo.keys()]
+        test_patients = patient_func( [test_edss.sampleInfo[key].token_file_path for key in test_edss.sampleInfo.keys()])
+
 
         validPatientInd = [0 for i in range(len(validSeizureLabels))]
         if not include_seizure_type:
             for i in range(len(seizureLabels)):
-                train_edss.sampleInfo[i].label = (seizureLabels[i], patientInd[i])
+                train_edss.sampleInfo[i].label = (seizureLabels[i], train_patients[i])
             for i in range(len(validSeizureLabels)):
-                valid_edss.sampleInfo[i].label = (validSeizureLabels[i], 0) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
+                valid_edss.sampleInfo[i].label = (validSeizureLabels[i], valid_patients[i]) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
         else:
             for i in range(len(seizureLabels)):
-                train_edss.sampleInfo[i].label = (seizureLabels[i][0], patientInd[i], constants.SEIZURE_SUBTYPES.index(seizureLabels[i][1].lower()))
+                train_edss.sampleInfo[i].label = (seizureLabels[i][0], train_patients[i], constants.SEIZURE_SUBTYPES.index(seizureLabels[i][1].lower()))
             for i in range(len(validSeizureLabels)):
-                valid_edss.sampleInfo[i].label = (validSeizureLabels[i][0], 0, constants.SEIZURE_SUBTYPES.index(validSeizureLabels[i][1].lower())) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
+                valid_edss.sampleInfo[i].label = (validSeizureLabels[i][0], valid_patients[i], constants.SEIZURE_SUBTYPES.index(validSeizureLabels[i][1].lower())) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
             for i in range(len(testSeizureLabels)):
-                test_edss.sampleInfo[i].label = (testSeizureLabels[i][0], 0, constants.SEIZURE_SUBTYPES.index(testSeizureLabels[i][1].lower())) #the network has too many parameters if you include test set patients (mutually exclusive) and the neural network should never choose test patients anyways
+                test_edss.sampleInfo[i].label = (testSeizureLabels[i][0], test_patients[i], constants.SEIZURE_SUBTYPES.index(testSeizureLabels[i][1].lower())) #the network has too many parameters if you include test set patients (mutually exclusive) and the neural network should never choose test patients anyways
 
         train_edss = train_edss[:]
         valid_edss = valid_edss[:]
         test_edss = test_edss[:]
 
+
+
         pkl.dump(train_edss[:], open(train_pkl, 'wb'))
         pkl.dump(valid_edss[:], open(valid_pkl, 'wb'))
         pkl.dump(test_edss[:], open(test_pkl, 'wb'))
+
+    #we want to have an actual string stored in record so we can do some more dissection on the segments, but we want an integer index when we run the code
+    patients = [datum[1][1] for datum in train_edss]
+    allPatients = list(set(patients))
+    patientInd = [allPatients.index(patient) for patient in patients]
+    validPatientInd = [0 for i in range(len(valid_edss))]
 
 
     train_edss = update_data(train_edss)
@@ -553,6 +584,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     print("Creating models")
     seizure_model, seizure_patient_model, patient_model, val_train_model = get_model(num_patients=len_all_patients)
 
+    edg[0]
+    valid_edg[0]
     if regenerate_data:
         return
 
