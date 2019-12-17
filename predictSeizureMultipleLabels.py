@@ -98,6 +98,20 @@ def use_session_dbmi():
     test_pkl = "/n/scratch2/ms994/test_multiple_labels_sessions_seizure_data_4.pkl"
     session_instead_patient = True
     include_seizure_type = True
+    max_bckg_samps_per_file = 100
+    max_bckg_samps_per_file_test = -1
+
+
+@ex.named_config
+def use_session_knn():
+    train_pkl = "/home/msaqib/train_multiple_labels_sessions_seizure_data_4.pkl"
+    valid_pkl = "/home/msaqib/valid_multiple_labels_sessions_seizure_data_4.pkl"
+    test_pkl = "/home/msaqib/test_multiple_labels_sessions_seizure_data_4.pkl"
+    session_instead_patient = True
+    include_seizure_type = True
+    max_bckg_samps_per_file = 100
+    max_bckg_samps_per_file_test = -1
+
 
 @ex.named_config
 def gnsz_fnsz():
@@ -242,9 +256,9 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     valid_label_files_segs = eds.get_valid_split()
 
     #increased n_process to deal with io processing
-    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
-    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
-    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process*1.2), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
+    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
+    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
+    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
     raise Exception()
     return train_edss, valid_edss, test_edss
 
