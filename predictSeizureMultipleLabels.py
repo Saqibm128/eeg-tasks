@@ -81,6 +81,13 @@ def debug():
     session_instead_patient = True
 
 @ex.named_config
+def use_patient_dbmi():
+    train_pkl = "/n/scratch2/ms994/train_multiple_labels_seizure_data_4.pkl"
+    valid_pkl = "/n/scratch2/ms994/valid_multiple_labels_seizure_data_4.pkl"
+    test_pkl = "/n/scratch2/ms994/test_multiple_labels_seizure_data_4.pkl"
+    session_instead_patient = False
+
+@ex.named_config
 def debug_knn():
     train_pkl = "/home/msaqib/debug_train_multiple_labels_seizure_data_4.pkl"
     valid_pkl = "/home/msaqib/debug_valid_multiple_labels_seizure_data_4.pkl"
@@ -92,11 +99,25 @@ def debug_knn():
     session_instead_patient = True
 
 @ex.named_config
+def full_data():
+    max_samples=None
+    max_bckg_samps_per_file=None
+    max_bckg_samps_per_file_test=None
+    train_pkl = "/n/scratch2/ms994/full_train_multiple_labels_sessions_seizure_data_4.pkl"
+    valid_pkl = "/n/scratch2/ms994/full_valid_multiple_labels_sessions_seizure_data_4.pkl"
+    test_pkl = "/n/scratch2/ms994/test_multiple_labels_sessions_seizure_data_4.pkl"
+    session_instead_patient = True
+    include_seizure_type = True
+
+
+
+@ex.named_config
 def use_session_dbmi():
     train_pkl = "/n/scratch2/ms994/train_multiple_labels_sessions_seizure_data_4.pkl"
     valid_pkl = "/n/scratch2/ms994/valid_multiple_labels_sessions_seizure_data_4.pkl"
     test_pkl = "/n/scratch2/ms994/test_multiple_labels_sessions_seizure_data_4.pkl"
     session_instead_patient = True
+    max_bckg_samps_per_file_test=None
     include_seizure_type = True
     max_bckg_samps_per_file = 100
     max_bckg_samps_per_file_test = -1
@@ -150,6 +171,7 @@ def config():
     mode = er.EdfDatasetSegmentedSampler.DETECT_MODE
     cnn_dropout = 0
     linear_dropout = 0.5
+    optimizer_name="adam"
 
 
     precache = True
@@ -190,7 +212,7 @@ def config():
     use_batch_normalization = True
 
     max_bckg_samps_per_file = 50 #limits number of samples we grab that are bckg to increase speed and reduce data size
-    max_bckg_samps_per_file_test = None
+    max_bckg_samps_per_file_test = -1 #reflect the full imbalance in the dataset
     max_samples=None
     use_standard_scaler = False
     use_filtering = True
@@ -202,6 +224,7 @@ def config():
     use_lstm = False
     use_time_layers_first = False
     max_pool_size_time = None
+    validation_f1_score_type = None
 
 
 
@@ -250,17 +273,26 @@ def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds
 def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds, max_bckg_samps_per_file_test, include_seizure_type, ref="01_tcp_ar", num_files=None):
     if max_bckg_samps_per_file_test is None:
         max_bckg_samps_per_file_test = max_bckg_samps_per_file
+    if max_bckg_samps_per_file_test == -1:
+        max_bckg_samps_per_file_test = None
     eds = getDataSampleGenerator()
     train_label_files_segs = eds.get_train_split()
     test_label_files_segs = eds.get_test_split()
     valid_label_files_segs = eds.get_valid_split()
 
     #increased n_process to deal with io processing
+
     train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
-    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
+    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
     test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
-    raise Exception()
     return train_edss, valid_edss, test_edss
+
+@ex.capture
+def get_optimizer(optimizer_name):
+    if optimizer_name == "adam":
+        return optimizers.Adam
+    elif optimizer_name == "sgd":
+        return optimizers.SGD
 
 @ex.capture
 def get_model(
@@ -300,7 +332,7 @@ def get_model(
 
         for i in range(num_lin_layer):
             y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
-            y = TimeDistributed(Dropout(linear_dropout))(y)
+            # y = TimeDistributed(Dropout(linear_dropout))(y)
 
         y = Reshape((input_time_size, pre_layer_h, 1))(y) #add back in channel dim
     else:
@@ -361,13 +393,13 @@ def get_model(
         seizure_patient_model = multi_gpu_model(seizure_patient_model, num_gpus)
         patient_model = multi_gpu_model(patient_model, num_gpus)
 
-    seizure_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["binary_accuracy"])
+    seizure_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["binary_accuracy"])
     if include_seizure_type:
-        seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight, seizure_weight], metrics=["categorical_accuracy"])
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight, seizure_weight], metrics=["categorical_accuracy"])
     else:
-        seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight,], metrics=["categorical_accuracy"])
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight,], metrics=["categorical_accuracy"])
 
-    patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
+    patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
     return seizure_model, seizure_patient_model, patient_model, val_train_model
 
 global_model = None
@@ -386,9 +418,9 @@ def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizur
         print("Weight Decay! new Seizure Weight: {}, lr: {}".format(new_weight, new_lr))
 
         if include_seizure_type:
-            seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy"])
+            seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy"])
         else:
-            seizure_patient_model.compile(optimizers.Adam(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[new_weight, patient_weight,], metrics=["categorical_accuracy"])
+            seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[new_weight, patient_weight,], metrics=["categorical_accuracy"])
     return seizure_patient_model
 
 
@@ -565,13 +597,20 @@ def false_alarms_per_hour(fp, total_samps, num_seconds):
     num_chances_per_hour = 60 * 60 / num_seconds
     return (fp / total_samps) * num_chances_per_hour
 
+@ex.capture
+def get_class_weights(seizure_class_weights, num_patients, include_seizure_type):
+    if include_seizure_type:
+        return [seizure_class_weights, [1 for i in range(num_patients)], [1 for i in range(len(constants.SEIZURE_SUBTYPES))]]
+    else:
+        return  [seizure_class_weights, [1 for i in range(num_patients)]]
+
 @ex.main
-def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only):
+def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only, validation_f1_score_type):
     seizure_class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
-    patient_class_weights = {}
-    for i in range(len_all_patients):
-        patient_class_weights[i] = 1
+    # patient_class_weights = {}
+    # for i in range(len_all_patients):
+    #     patient_class_weights[i] = 1
 
     print("Creating models")
     seizure_model, seizure_patient_model, patient_model, val_train_model = get_model(num_patients=len_all_patients)
@@ -644,7 +683,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             data_x = data_x.astype(np.float32)
             data_x = np.nan_to_num(data_x)
             if include_seizure_type:
-                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1], class_weights=[seizure_class_weights, patient_class_weights])
+                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1], class_weight=get_class_weights(seizure_class_weights, len_all_patients))
                 subtype_epochs_accs.append(subtype_acc)
 
             else:
@@ -770,8 +809,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         print(printEpochEndString)
         if seizure_classification_only:
             new_val_f1 = weighted_subtype_f1
-        else:
+        elif validation_f1_score_type is None:
             new_val_f1 = f1_score(valid_predictions, valid_labels_epoch)
+        else:
+            new_val_f1 = f1_score(valid_predictions, valid_labels_epoch, average=validation_f1_score_type)
         if (new_val_f1 > best_model_loss):
             patience_left = patience
             best_model_loss = new_val_f1
