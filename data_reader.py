@@ -300,7 +300,10 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
                 original_data, label = original_data_label
             else:
                 original_data = original_data_label
-            fft_data = original_data.values
+            if self.is_pandas_data:
+                fft_data = original_data.values
+            else:
+                fft_data = original_data
             fft_data_windows = np_rolling_window(
                 np.array(fft_data.T), window_count_size)
             if self.non_overlapping:
@@ -320,10 +323,10 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
                         fft_freq, bins=fft_freq_bins, weights=window_channel)[0]
             if not self.return_ann:
                 return new_hist_bins
-            if (self.edf_dataset.expand_tse and not self.non_overlapping):
+            if (hasattr(self.edf_dataset, "expand_tse") and self.edf_dataset.expand_tse and not self.non_overlapping):
                 return new_hist_bins, label.rolling(window_count_size).mean(
                 )[:-window_count_size + 1].fillna(method="ffill").fillna(method="bfill")
-            elif (self.edf_dataset.expand_tse and self.non_overlapping):
+            elif (hasattr(self.edf_dataset, "expand_tse") and self.edf_dataset.expand_tse and self.non_overlapping):
                 annotations = label.rolling(window_count_size).mean()[
                     :-window_count_size + 1]
                 return new_hist_bins, annotations.iloc[list(range(

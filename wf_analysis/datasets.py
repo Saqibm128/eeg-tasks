@@ -21,6 +21,46 @@ def norm_num_vals_func(n):
 def autocorrelation(lag):
     return lambda x: feats.autocorrelation(x, lag)
 
+class ConcatenationDataset(util_funcs.MultiProcessingDataset):
+    '''
+    Avoid a possible bottleneck where we try to call the base segments too much, just concatenate a ton of transforms together
+    '''
+    def __init__(self, datasets, flatten=True):
+        self.datasets = datasets
+        self.flatten = flatten
+
+    def __len__(self):
+        return len(self.datasets[0])
+
+    def __getitem__(self, i):
+        if self.should_use_mp(i):
+            return self.getItemSlice(i)
+        x = []
+        y = None
+        for dataset in self.datasets:
+            xy = dataset[i]
+            if type(xy) == tuple:
+                if not self.flatten:
+                    x.append(xy[0])
+                else:
+                    if type(xy[0]) == pd.DataFrame:
+                        x.append(xy[0].values.flatten())
+                    elif type(xy[0]) == pd.Series:
+                        x.append(xy[0].values.flatten())
+                    else:
+                        x.append(xy[0].flatten())
+                if y == None:
+                    y = xy[1]
+            else:
+                if type(xy) == pd.DataFrame or type(xy) == pd.Series:
+                    xy = xy.values.flatten()
+                else:
+                    xy = xy.flatten()
+                x.append(xy)
+        if self.flatten:
+            x = np.hstack(x)
+        return x, y
+
 class SimpleHandEngineeredDataset(util_funcs.MultiProcessingDataset):
     def __init__(self, edfRawData, n_process=None, features = [], f_names = [], max_size=None, vectorize=None, is_pandas_data=True):
         assert len(features) == len(f_names)

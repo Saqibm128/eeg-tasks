@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 import random
 from numpy.random import choice
 from numpy.random import randint
+import functools
 
 class EnsemblerSequence():
     '''
@@ -141,12 +142,7 @@ class EdfDatasetSegmentsOnlySeizures():
         return Utility_Custom_Annotater(self.valid_files, self.valid_labeling, self.custom_annotate)[:]
         return [(self.valid_files[i], self.custom_annotate(self.valid_labeling[i],)) for i in range(len(self.valid_files))]
 
-class EdfDatasetSegmentsSplitPatients():
-    """
-    similar to EdfDatasetSegments but tries to split patients so that a patient will appear once in train and test set.
-    """
-    def __init__(self):
-        pass
+
 
 class EdfDatasetSegments():
     """Short summary.
@@ -369,6 +365,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         return len(self.sampleInfo)
 
 
+    @functools.lru_cache(100)
     def __getitem__(self, i):
         if self.should_use_mp(i):
             return self.getItemSlice(i)
