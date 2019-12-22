@@ -34,7 +34,7 @@ from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
 import random
 import string
-from keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.callbacks import ModelCheckpoint, EarlyStopping, LearningRateScheduler
 from keras.utils import multi_gpu_model
 
 from addict import Dict
@@ -619,7 +619,7 @@ def get_test_patient_edg(test_pkl, batch_size):
     return test_edg, num_patients
 
 @ex.capture
-def train_patient_model(x_input, cnn_y, trained_model, lr, epochs, model_name, test_edg=None, num_patients=None):
+def train_patient_model(x_input, cnn_y, trained_model, lr, lr_decay, epochs, model_name, test_edg=None, num_patients=None):
     if test_edg is None:
         test_edg, num_patients = get_test_patient_edg()
     patient_layer = Dense(num_patients, activation="softmax")(cnn_y)
@@ -629,7 +629,7 @@ def train_patient_model(x_input, cnn_y, trained_model, lr, epochs, model_name, t
         layer.trainable = False #freeze all layers except last
     print(patient_model.summary())
     patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
-    test_patient_history = patient_model.fit_generator(test_edg, epochs=epochs, callbacks=[get_model_checkpoint(model_name[:-3] + "_patient.h5"), get_early_stopping() ])
+    test_patient_history = patient_model.fit_generator(test_edg, epochs=epochs, callbacks=[get_model_checkpoint(model_name[:-3] + "_patient.h5"), get_early_stopping(), LearningRateScheduler(lambda (x, old_lr): old_lr * lr_decay) ])
     return test_patient_history
 
 @ex.main
