@@ -17,6 +17,7 @@ from wf_analysis import filters
 from addict import Dict
 import time
 from random import random
+import functools
 
 class EdfStandardScaler(util_funcs.MultiProcessingDataset):
     """
@@ -576,6 +577,7 @@ def expand_tse_file(ann_y, ts_index=None, dtype=np.float32, fully_expand=True, t
 file_list = set()
 file_list_lock = mp.Lock()
 
+@functools.lru_cache(100)
 def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None):
     """ Transforms from EDF to pd.df, with channel labels as columns.
         This does not attempt to concatenate multiple time series but only takes

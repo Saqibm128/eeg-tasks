@@ -365,7 +365,6 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         return len(self.sampleInfo)
 
 
-    @functools.lru_cache(100)
     def __getitem__(self, i):
         if self.should_use_mp(i):
             return self.getItemSlice(i)

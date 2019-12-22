@@ -107,8 +107,8 @@ class EdfDataGenerator(DataGenerator):
 
         super().__init__(list_IDs=list(range(len(dataset))), labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
                      n_classes=n_classes, shuffle=shuffle)
-        if not xy_tuple_form:
-            self.list_IDs = list(range(len(dataset[0]))) #the dataset is a tuple of x and y. grab x and use that length.
+        # if not xy_tuple_form:
+        #     self.list_IDs = list(range(len(dataset[0]))) #the dataset is a tuple of x and y. grab x and use that length.
         self.dataset = dataset
         self.mask_value=mask_value
         self.max_length=max_length

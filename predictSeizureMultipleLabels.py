@@ -232,6 +232,7 @@ def config():
 
     epochs=100
     seizure_weight_decay = None
+    # measure_train_patient_bias = False
 
 @ex.capture
 def valid_dataset_class(balance_valid_dataset):
@@ -322,7 +323,7 @@ def get_model(
     patient_weight,
     seizure_weight,
     include_seizure_type,
-    attach_seizure_type_to_seizure_detect):
+    attach_seizure_type_to_seizure_detect,):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -400,7 +401,7 @@ def get_model(
         seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight,], metrics=["categorical_accuracy"])
 
     patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
-    return seizure_model, seizure_patient_model, patient_model, val_train_model
+    return seizure_model, seizure_patient_model, patient_model, val_train_model, x, y
 
 global_model = None
 
@@ -487,9 +488,14 @@ def update_data(edss, seizure_classification_only, seizure_classes_to_use, zero_
             seizure_class_labels_to_keep.append(seizure_class_labels[i])
     return [(data_to_keep[i], (seizure_detect_to_keep[i], patient_labels_to_keep[i], seizure_class_labels_to_keep[i])) for i in range(len(data_to_keep))], seizure_detect_to_keep, patient_labels_to_keep, seizure_class_labels_to_keep
 
-
 @ex.capture
-def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_type, session_instead_patient,):
+def patient_func(tkn_file_paths, session_instead_patient):
+    if session_instead_patient:
+        return [read.parse_edf_token_path_structure(tkn_file_path)[1] + "/" + read.parse_edf_token_path_structure(tkn_file_path)[2] for tkn_file_path in tkn_file_paths]
+    else:
+        return [read.parse_edf_token_path_structure(tkn_file_path)[1] for tkn_file_path in tkn_file_paths]
+@ex.capture
+def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_type):
     allPatients = []
     seizureLabels = []
     validSeizureLabels = []
@@ -517,10 +523,7 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
         print("(Re)generating data")
         train_edss, valid_edss, test_edss = get_data()
         # tkn_file_paths = [train_edss.sampleInfo[key].token_file_path for key in train_edss.sampleInfo.keys()]
-        if session_instead_patient:
-            patient_func = lambda tkn_file_paths: [read.parse_edf_token_path_structure(tkn_file_path)[1] + "/" + read.parse_edf_token_path_structure(tkn_file_path)[2] for tkn_file_path in tkn_file_paths]
-        else:
-            patient_func = lambda tkn_file_paths: [read.parse_edf_token_path_structure(tkn_file_path)[1] for tkn_file_path in tkn_file_paths]
+
         # allPatients = list(set(patients))
         # patientInd = [allPatients.index(patient) for patient in patients]
         seizureLabels = [train_edss.sampleInfo[key].label for key in train_edss.sampleInfo.keys()]
@@ -541,9 +544,9 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
             for i in range(len(seizureLabels)):
                 train_edss.sampleInfo[i].label = (seizureLabels[i][0], train_patients[i], constants.SEIZURE_SUBTYPES.index(seizureLabels[i][1].lower()))
             for i in range(len(validSeizureLabels)):
-                valid_edss.sampleInfo[i].label = (validSeizureLabels[i][0], valid_patients[i], constants.SEIZURE_SUBTYPES.index(validSeizureLabels[i][1].lower())) #the network has too many parameters if you include validation set patients (mutually exclusive) and the neural network should never choose validation patients anyways
+                valid_edss.sampleInfo[i].label = (validSeizureLabels[i][0], valid_patients[i], constants.SEIZURE_SUBTYPES.index(validSeizureLabels[i][1].lower()))
             for i in range(len(testSeizureLabels)):
-                test_edss.sampleInfo[i].label = (testSeizureLabels[i][0], test_patients[i], constants.SEIZURE_SUBTYPES.index(testSeizureLabels[i][1].lower())) #the network has too many parameters if you include test set patients (mutually exclusive) and the neural network should never choose test patients anyways
+                test_edss.sampleInfo[i].label = (testSeizureLabels[i][0], test_patients[i], constants.SEIZURE_SUBTYPES.index(testSeizureLabels[i][1].lower()))
 
         train_edss = train_edss[:]
         valid_edss = valid_edss[:]
@@ -559,7 +562,7 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
     patients = [datum[1][1] for datum in train_edss]
     allPatients = list(set(patients))
     patientInd = [allPatients.index(patient) for patient in patients]
-    validPatientInd = [0 for i in range(len(valid_edss))]
+    validPatientInd = [0 for i in range(len(valid_edss))] #we don't actually care about predicting valid patients, since the split should be patient wise
 
 
     train_edss = update_data(train_edss)
@@ -604,8 +607,33 @@ def get_class_weights(seizure_class_weights, num_patients, include_seizure_type)
     else:
         return  [seizure_class_weights, [1 for i in range(num_patients)]]
 
+@ex.capture
+def get_test_patient_edg(test_pkl, batch_size):
+    test_edss = pkl.load(open(test_pkl, "rb"))
+    patients = [datum[1] for datum in test_edss]
+    allPatients = list(set(patients))
+    patientInd = [allPatients.index(patient) for patient in patients]
+    num_patients = len(allPatients)
+    # x_data = [datum[0] for datum in test_edss]
+    test_edg = EdfDataGenerator(test_edss, labels=patientInd, n_classes=num_patients, batch_size=batch_size, shuffle=True, precache=True)
+    return test_edg, num_patients
+
+@ex.capture
+def train_patient_model(x_input, cnn_y, trained_model, lr, epochs, model_name, test_edg=None, num_patients=None):
+    if test_edg is None:
+        test_edg, num_patients = get_test_patient_edg()
+    patient_layer = Dense(num_patients, activation="softmax")(cnn_y)
+    patient_model = Model(inputs=[x_input], outputs=[patient_layer])
+    for i, layer in enumerate(patient_model.layers[:-1]):
+        layer.set_weights(trained_model.layers[i].get_weights())
+        layer.trainable = False #freeze all layers except last
+    print(patient_model.summary())
+    patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
+    test_patient_history = patient_model.fit_generator(test_edg, epochs=epochs, callbacks=[get_model_checkpoint(model_name[:-3] + "_patient.h5"), get_early_stopping() ])
+    return test_patient_history
+
 @ex.main
-def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only, validation_f1_score_type):
+def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only, validation_f1_score_type,):
     seizure_class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
     # patient_class_weights = {}
@@ -613,7 +641,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     #     patient_class_weights[i] = 1
 
     print("Creating models")
-    seizure_model, seizure_patient_model, patient_model, val_train_model = get_model(num_patients=len_all_patients)
+    seizure_model, seizure_patient_model, patient_model, val_train_model, x_input, cnn_y = get_model(num_patients=len_all_patients)
 
     edg[0]
     valid_edg[0]
@@ -835,7 +863,11 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         edg.on_epoch_end()
         # valid_edg.on_epoch_end()
 
+
     model = load_model(model_name)
+
+
+
 
     y_pred = model.predict_generator(test_edg)
 
@@ -849,6 +881,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         "patient_acc": train_patient_accs,
 
     })
+    test_patient_history = train_patient_model(x_input, cnn_y, model)
+    results.test_patient_history = test_patient_history.history
     if include_seizure_type:
         results.history.subtype.acc = subtype_accs
         results.history.subtype.val_acc = valid_seizure_subtype_accs
