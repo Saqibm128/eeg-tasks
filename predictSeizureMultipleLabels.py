@@ -38,7 +38,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.utils import multi_gpu_model
 
 from addict import Dict
-ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v2")
+ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v3")
 
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
