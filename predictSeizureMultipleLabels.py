@@ -358,24 +358,23 @@ def get_model(
     # y = Dropout(0.5)(y)
     if not use_lstm:
         y = Flatten()(y)
+    else:
+        y = Reshape((int(y.shape[1]), int(y.shape[2]) * int(y.shape[3])))(y)
+        y = LSTM(lstm_h, return_sequences=lstm_return_sequence)(y)
+        if lstm_return_sequence:
+            y = Flatten(y)
+
 
     for i in range(num_post_cnn_layers):
         y = Dense(num_post_lin_h, activation='relu')(y)
         y = Dropout(linear_dropout)(y)
-    if not use_lstm:
-        y_seizure_subtype = Dense(len(constants.SEIZURE_SUBTYPES), activation="softmax", name="seizure_subtype")(y)
-        if include_seizure_type and attach_seizure_type_to_seizure_detect:
-            y = Concatenate()([y, y_seizure_subtype])
-        y_seizure = Dense(2, activation="softmax", name="seizure")(y)
-        y_patient = Dense(num_patients, activation="softmax", name="patient")(y)
-    else:
-        y = Reshape((int(y.shape[1]), int(y.shape[2]) * int(y.shape[3])))(y)
-        y_seizure = LSTM(2)(y)
-        y_seizure_subtype = LSTM(len(constants.SEIZURE_SUBTYPES))(y)
-        if include_seizure_type and attach_seizure_type_to_seizure_detect:
-            raise Exception("Not IMPLEMENTED")
-            y = Concatenate()([y, y_seizure_subtype])
-        y_patient = LSTM(num_patients)(y)
+        
+    y_seizure_subtype = Dense(len(constants.SEIZURE_SUBTYPES), activation="softmax", name="seizure_subtype")(y)
+    if include_seizure_type and attach_seizure_type_to_seizure_detect:
+        y = Concatenate()([y, y_seizure_subtype])
+    y_seizure = Dense(2, activation="softmax", name="seizure")(y)
+    y_patient = Dense(num_patients, activation="softmax", name="patient")(y)
+
 
 
     seizure_model = Model(inputs=x, outputs=[y_seizure])
@@ -629,7 +628,7 @@ def train_patient_model(x_input, cnn_y, trained_model, lr, lr_decay, epochs, mod
         layer.trainable = False #freeze all layers except last
     print(patient_model.summary())
     patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
-    test_patient_history = patient_model.fit_generator(test_edg, epochs=epochs, callbacks=[get_model_checkpoint(model_name[:-3] + "_patient.h5"), get_early_stopping(), LearningRateScheduler(lambda (x, old_lr): old_lr * lr_decay) ])
+    test_patient_history = patient_model.fit_generator(test_edg, epochs=epochs, callbacks=[get_model_checkpoint(model_name[:-3] + "_patient.h5"), get_early_stopping(), LearningRateScheduler(lambda x, old_lr: old_lr * lr_decay) ])
     return test_patient_history
 
 @ex.main
@@ -863,7 +862,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         edg.on_epoch_end()
         # valid_edg.on_epoch_end()
 
-
+    del edg
+    del valid_edg
     model = load_model(model_name)
 
 

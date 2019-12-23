@@ -139,7 +139,7 @@
 
 
 
-for patient_weight in 1 -1
+for patient_weight in 1 0 -1
 do
   for use_lstm in False
     do
