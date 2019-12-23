@@ -139,35 +139,25 @@
 
 
 
+# for patient_weight in 1 0 -1
+# do
+#   for use_lstm in True False
+#     do
+#       for include_seizure_type in True False
+#       do
+#       sbatch -p gpu --gres=gpu:1 -c 1 --mem-per-cpu 64G -t 4:00:00 runPython.sh predictSeizureMultipleLabels.py with second_set_params.json patient_weight=$patient_weight seizure_weight=5 lr=0.05 lr_decay=0.75 patience=5 num_filters=1 num_temporal_filter=1 num_conv_temporal_layers=3 num_layers=3 use_lstm=$use_lstm epochs=300 include_seizure_type=$include_seizure_type
+#     done
+# done
+# done
+
+
 for patient_weight in 1 0 -1
 do
-  for use_lstm in False
+  for use_lstm in True False
     do
       for include_seizure_type in True False
       do
-      sbatch -p gpu --gres=gpu:1 -c 1 --mem-per-cpu 64G -t 4:00:00 runPython.sh predictSeizureMultipleLabels.py with second_set_params.json patient_weight=$patient_weight seizure_weight=5 lr=0.0005 patience=5 num_filters=1 num_temporal_filter=1 num_conv_temporal_layers=3 num_layers=3 use_lstm=$use_lstm epochs=300 include_seizure_type=$include_seizure_type
+      sbatch -p gpu --gres=gpu:1 -c 1 --mem-per-cpu 64G -t 4:00:00 runPython.sh predictSeizureMultipleLabels.py with second_set_params.json patient_weight=$patient_weight seizure_weight=5 lr=0.05 lr_decay=0.75 patience=5 num_filters=4 num_temporal_filter=2 num_conv_temporal_layers=3 num_layers=3 use_lstm=$use_lstm epochs=300 include_seizure_type=$include_seizure_type num_post_cnn_layers=2 linear_dropout=0.5
     done
 done
 done
-
-# for patient_weight in 1 -1
-# do
-#   for use_lstm in False
-#     do
-#       for include_seizure_type in True False
-#       do
-#      sbatch -p gpu --gres=gpu:1 -c 1 --mem-per-cpu 64G -t 4:00:00 runPython.sh predictSeizureMultipleLabels.py with use_session_dbmi second_set_params.json patient_weight=$patient_weight seizure_weight=5 lr=0.0001 patience=5 num_filters=8 num_temporal_filter=4 num_conv_temporal_layers=3 num_layers=3 use_lstm=$use_lstm epochs=300 include_seizure_type=$include_seizure_type
-#    done
-# done
-# done
-#
-# for patient_weight in 1 -1
-# do
-#   for use_lstm in False
-#     do
-#       for include_seizure_type in True False
-#       do
-#      sbatch -p gpu --gres=gpu:1 -c 1 --mem-per-cpu 64G -t 4:00:00 runPython.sh predictSeizureMultipleLabels.py with use_session_dbmi second_set_params.json patient_weight=$patient_weight seizure_weight=5 lr=0.0001 patience=5 num_filters=1 num_temporal_filter=1 num_conv_temporal_layers=3 num_layers=2 use_lstm=$use_lstm epochs=300 include_seizure_type=$include_seizure_type
-#    done
-# done
-# done

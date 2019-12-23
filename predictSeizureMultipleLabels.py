@@ -20,7 +20,7 @@ import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels, RULEdfDataGenerator, RULDataGenMultipleLabels
 from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like_pre_layers, conv2d_gridsearch_pre_layers
 from keras import optimizers
-from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM, Flatten, Concatenate
+from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM, Flatten, Concatenate, CuDNNLSTM
 from keras.models import Model, load_model
 from keras.utils import multi_gpu_model
 import pickle as pkl
@@ -172,6 +172,8 @@ def config():
     cnn_dropout = 0
     linear_dropout = 0.5
     optimizer_name="adam"
+    lstm_h = 128
+    lstm_return_sequence = False
 
 
     precache = True
@@ -323,7 +325,9 @@ def get_model(
     patient_weight,
     seizure_weight,
     include_seizure_type,
-    attach_seizure_type_to_seizure_detect,):
+    attach_seizure_type_to_seizure_detect,
+    lstm_h,
+    lstm_return_sequence):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if num_lin_layer != 0:
@@ -360,7 +364,7 @@ def get_model(
         y = Flatten()(y)
     else:
         y = Reshape((int(y.shape[1]), int(y.shape[2]) * int(y.shape[3])))(y)
-        y = LSTM(lstm_h, return_sequences=lstm_return_sequence)(y)
+        y = CuDNNLSTM(lstm_h, return_sequences=lstm_return_sequence)(y)
         if lstm_return_sequence:
             y = Flatten(y)
 
@@ -368,7 +372,7 @@ def get_model(
     for i in range(num_post_cnn_layers):
         y = Dense(num_post_lin_h, activation='relu')(y)
         y = Dropout(linear_dropout)(y)
-        
+
     y_seizure_subtype = Dense(len(constants.SEIZURE_SUBTYPES), activation="softmax", name="seizure_subtype")(y)
     if include_seizure_type and attach_seizure_type_to_seizure_detect:
         y = Concatenate()([y, y_seizure_subtype])
@@ -618,7 +622,7 @@ def get_test_patient_edg(test_pkl, batch_size):
     return test_edg, num_patients
 
 @ex.capture
-def train_patient_model(x_input, cnn_y, trained_model, lr, lr_decay, epochs, model_name, test_edg=None, num_patients=None):
+def train_patient_model(x_input, cnn_y, trained_model, lr, lr_decay, epochs, model_name, fit_generator_verbosity, test_edg=None, num_patients=None):
     if test_edg is None:
         test_edg, num_patients = get_test_patient_edg()
     patient_layer = Dense(num_patients, activation="softmax")(cnn_y)
@@ -628,7 +632,7 @@ def train_patient_model(x_input, cnn_y, trained_model, lr, lr_decay, epochs, mod
         layer.trainable = False #freeze all layers except last
     print(patient_model.summary())
     patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
-    test_patient_history = patient_model.fit_generator(test_edg, epochs=epochs, callbacks=[get_model_checkpoint(model_name[:-3] + "_patient.h5"), get_early_stopping(), LearningRateScheduler(lambda x, old_lr: old_lr * lr_decay) ])
+    test_patient_history = patient_model.fit_generator(test_edg, epochs=epochs, verbose=fit_generator_verbosity, callbacks=[get_model_checkpoint(model_name[:-3] + "_patient.h5"), get_early_stopping(), LearningRateScheduler(lambda x, old_lr: old_lr * lr_decay) ])
     return test_patient_history
 
 @ex.main
