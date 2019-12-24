@@ -189,7 +189,7 @@ def config():
     num_lin_layer = 1
 
     patience=5
-    early_stopping_on="val_binary_accuracy"
+    early_stopping_on="val_loss"
     fit_generator_verbosity = 2
     num_layers = 3
     num_filters = 1
@@ -625,6 +625,7 @@ def get_test_patient_edg(test_pkl, batch_size):
 def train_patient_model(x_input, cnn_y, trained_model, lr, lr_decay, epochs, model_name, fit_generator_verbosity, test_edg=None, num_patients=None):
     if test_edg is None:
         test_edg, num_patients = get_test_patient_edg()
+    # train_test_edg, valid_test_edg = test_edg.create_validation_train_split()
     patient_layer = Dense(num_patients, activation="softmax")(cnn_y)
     patient_model = Model(inputs=[x_input], outputs=[patient_layer])
     for i, layer in enumerate(patient_model.layers[:-1]):
@@ -632,7 +633,7 @@ def train_patient_model(x_input, cnn_y, trained_model, lr, lr_decay, epochs, mod
         layer.trainable = False #freeze all layers except last
     print(patient_model.summary())
     patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
-    test_patient_history = patient_model.fit_generator(test_edg, epochs=epochs, verbose=fit_generator_verbosity, callbacks=[get_model_checkpoint(model_name[:-3] + "_patient.h5"), get_early_stopping(), LearningRateScheduler(lambda x, old_lr: old_lr * lr_decay) ])
+    test_patient_history = patient_model.fit_generator(test_edg, epochs=epochs, verbose=2, callbacks=[get_model_checkpoint(model_name[:-3] + "_patient.h5"), get_early_stopping(early_stopping_on="loss"), LearningRateScheduler(lambda x, old_lr: old_lr * lr_decay) ])
     return test_patient_history
 
 @ex.main
