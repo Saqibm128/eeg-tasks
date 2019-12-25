@@ -3,6 +3,8 @@ import numpy as np
 from keras.models import Model
 from keras.layers import Input, LSTM, Dense, Activation
 import data_reader as read
+import util_funcs
+import pandas as pd
 
 
 
@@ -15,10 +17,11 @@ def get_simple_lstm(input_shape, latent_shape, ffn_nodes, num_lstm, num_feed_for
         lstm = Dense(ffn_nodes)(lstm)
 
 class LSTMDataset(util_funcs.MultiProcessingDataset):
-    def __init__(self, reader, width=pd.Timedelta(seconds=4), stride=pd.Timedelta(seconds=2)):
+    def __init__(self, reader, width=pd.Timedelta(seconds=4), stride=pd.Timedelta(seconds=2), n_process=4):
         self.width = width
         self.stride = stride
         self.reader = reader
+        self.n_process = n_process
     def __len__(self):
         return len(self.reader)
     def __getitem__(self, i):

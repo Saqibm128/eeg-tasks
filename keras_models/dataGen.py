@@ -205,6 +205,8 @@ class EdfDataGenerator(DataGenerator):
             y =  keras.utils.to_categorical(y, num_classes=self.n_classes)
         elif self.class_type == "quantile":
             y = y
+        elif self.class_type == "custom":
+            y = self.transform_y(y)
         return x, np.stack(y)
 
 
