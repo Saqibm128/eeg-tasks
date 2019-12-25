@@ -2,6 +2,9 @@ import keras
 import numpy as np
 from keras.models import Model
 from keras.layers import Input, LSTM, Dense, Activation
+import data_reader as read
+
+
 
 def get_simple_lstm(input_shape, latent_shape, ffn_nodes, num_lstm, num_feed_forward, activation="relu"):
     lstm = Input(shape=(None, input_shape)) #arbitrary time steps by num_features
@@ -11,6 +14,20 @@ def get_simple_lstm(input_shape, latent_shape, ffn_nodes, num_lstm, num_feed_for
     for i in range(num_feed_forward):
         lstm = Dense(ffn_nodes)(lstm)
 
+class LSTMDataset(util_funcs.MultiProcessingDataset):
+    def __init__(self, reader, width=pd.Timedelta(seconds=4), stride=pd.Timedelta(seconds=1)):
+        self.width = width
+        self.stride = stride
+        self.reader = reader
+    def __len__(self):
+        return len(self.reader)
+    def __getitem__(self, i):
+        if self.should_use_mp(i):
+            return self.getItemSlice(i)
+        data_x, labels = self.reader[i]
+        data_x = read.time_distribute_x(data_x, width=self.width, stride=self.stride)
+        return data_x, labels
+        
 
 
 def get_seq_2_seq(input_shape, latent_shape):

@@ -231,7 +231,28 @@ class CoherenceTransformer(util_funcs.MultiProcessingDataset):
                 for column_1, column_2 in coherence_pairs:
                     toReturn["coherence {}".format((column_1, column_2))] =  np.mean(coherence(raw_data.T[column_1], raw_data.T[column_2], fs=constants.COMMON_FREQ, nperseg=constants.COMMON_FREQ/4)[1])
         else:
-            raise NotImplemented("yet")
+            raise Exception("Not implemented yet")
+
+            if self.is_pandas:
+                raise Exception("Not implemented yet")
+            else:
+                toReturn = pd.Series()
+                window_count_size = int(
+                    self.coherence_bins /
+                    pd.Timedelta(
+                        seconds=constants.COMMON_DELTA))
+
+                original_data_label = self.edf_dataset[i]
+                if self.is_tuple_data:
+                    original_data, label = original_data_label
+                else:
+                    original_data = original_data_label
+                if self.is_pandas_data:
+                    fft_data = original_data.values
+                else:
+                    fft_data = original_data
+                fft_data_windows = np_rolling_window(
+                    np.array(fft_data.T), window_count_size)
         return toReturn, ann
 
 

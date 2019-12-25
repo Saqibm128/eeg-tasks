@@ -335,7 +335,6 @@ class EdfFFTDatasetTransformer(util_funcs.MultiProcessingDataset):
             else:
                 return new_hist_bins, label
 
-# class EdfDatasetSeizureDetection
 
 class EdfDataset(util_funcs.MultiProcessingDataset):
     """Basic access to the raw data. Is the first layer in any/all data processing
@@ -662,6 +661,83 @@ def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None
 
 
     return data
+
+def get_associated_lbl(edf_fn):
+    """
+    Simple utility, convert edf file name to the associated label
+    """
+    return edf_fn[:-4] + ".lbl"
+
+def get_per_channel_annotation(lbl_fn):
+    """ Get a compressed dataframe breaking down time seizure info for each channel
+
+    Parameters
+    ----------
+    lbl_fn : str
+        Description of parameter `fn`.
+
+    Returns
+    -------
+    type
+        Description of returned object.
+
+    """
+    with open(lbl_fn, "rb") as  open_label_file:
+        output = open_label_file.readlines()
+    montage_channel_dict = {}
+    start_montage_channel_assign = False
+    symbols = [None]
+    symbols_list = []
+    full_list = []
+    for line in output:
+        if "montage = 0" in str(line):
+            start_montage_channel_assign = True
+        if start_montage_channel_assign:
+            if b'\n' == (line):
+                start_montage_channel_assign = False
+            else:
+                montage_channel_dict[int(line[10:str(line).index(',') - 2])] = (line[str(line).index(','):str(line).index(':') - 2]).decode("utf-8")
+        elif "symbols[0]" in str(line):
+            #since we are using weird pseudocode, run the string through exec and get the symbols variable out
+            exec(line.decode("utf8"))
+            symbols_dict = symbols
+            symbols_list = [symbols_dict[0][i] for i in range(len(symbols[0].keys()))]
+    #         print(symbols_list)
+        elif "label =" in str(line):
+#             print(line.decode("utf8").replace("{", "[").replace("}", "]"))
+            #since we are using weird pseudocode, run the string through exec and get the label variable out
+            label = eval(line.decode("utf8").replace("{", "[").replace("}", "]")[7:])
+
+            curr_level = label[0]
+            curr_sublevel = label[1]
+            curr_start = label[2]
+            curr_end = label[3]
+            curr_mont_num = label[4]
+            curr_channel = montage_channel_dict[int(curr_mont_num)]
+            curr_label_probs = label[5]
+            curr_vals = pd.Series([curr_level, curr_sublevel, curr_start, curr_end, curr_channel, *curr_label_probs], index=["level", "sublevel", "start", "end", "channel", *symbols_list])
+            full_list.append(curr_vals)
+    return pd.concat(full_list, axis=1).T
+
+def gen_seizure_channel_labels(fn, width=pd.Timedelta(seconds=0.5)):
+    data = get_per_channel_annotation(fn)
+    max_time = pd.Timedelta(seconds=int(data.end.max()))
+    index = pd.timedelta_range(start=pd.Timedelta(0), end=max_time, freq=width)
+    columns = constants.MONTAGE_COLUMNS
+    expanded_is_seizure = pd.DataFrame(index=index, columns=columns).fillna(0)
+    for i, row in data.iterrows():
+        expanded_is_seizure.loc[pd.Timedelta(seconds=row.start):pd.Timedelta(seconds=row.end), row.channel] = 1 - row.bckg
+    return expanded_is_seizure
+
+def time_distribute_x(data_x, width=pd.Timedelta(seconds=4), stride=pd.Timedelta(seconds=1)):
+    time_steps = []
+    literal_width = int(width/pd.Timedelta(seconds=constants.COMMON_DELTA))
+    literal_stride = int(stride/pd.Timedelta(seconds=constants.COMMON_DELTA))
+    for i in range(int(data_x.shape[0]/literal_stride - width/stride)):
+        time_steps.append(data_x[i*literal_stride:(i) * literal_stride + literal_width])
+    time_steps = np.array(time_steps)
+    return time_steps
+
 
 
 def get_patient_dir_names(data_split, ref, full_path=True):
