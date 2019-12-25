@@ -18,6 +18,7 @@ from addict import Dict
 import time
 from random import random
 import functools
+from copy import deepcopy
 
 class EdfStandardScaler(util_funcs.MultiProcessingDataset):
     """
@@ -386,7 +387,8 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
             hp_cutoff=50, #get close to nyq without actually hitting it
             order_filt=5,
             columns_to_use=util_funcs.get_common_channel_names(),
-            use_numpy=False
+            use_numpy=False,
+            specific_seiz_types=None
             ):
         self.data_split = data_split
         if n_process is None:
@@ -399,6 +401,9 @@ class EdfDataset(util_funcs.MultiProcessingDataset):
         self.max_length = max_length
         self.manager = mp.Manager()
         self.edf_tokens = get_all_token_file_names(data_split, ref)
+        self.specific_seiz_types = specific_seiz_types
+        if self.specific_seiz_types is not None:
+            util_funcs.g
         self.expand_tse = expand_tse
         self.use_average_ref_names = use_average_ref_names
         if num_files is not None:
@@ -538,6 +543,12 @@ def read_tse_file_and_return_ts(tse_path, ts_index):
 
     return expand_tse_file(ann_y, ts_index)
 
+def expand_tse_file_seizure_only(ann_y, fully_expand=True, time_period=pd.Timedelta(seconds=1)):
+    if fully_expand==False:
+        #TODO
+        raise Exception("Not implemented yet")
+    seiz_series = expand_tse_file(ann_y, fully_expand=False, time_period=time_period)
+    return pd.DataFrame([seiz_series == "bckg", seiz_series != "bckg"]).T
 
 def expand_tse_file(ann_y, ts_index=None, dtype=np.float32, fully_expand=True, time_period=pd.Timedelta(seconds=1)):
     """expands a time series file to fill up a set period of time
@@ -561,7 +572,7 @@ def expand_tse_file(ann_y, ts_index=None, dtype=np.float32, fully_expand=True, t
 
     """
     if ts_index is None:
-        ts_index = pd.timedelta_range(start=0, end=ann_y.end.max()*time_period, freq=time_period)
+        ts_index = pd.timedelta_range(start=0, end=ann_y.end.max()*pd.Timedelta(seconds=1), freq=time_period)
     if fully_expand:
         ann_y_t = pd.DataFrame(columns=get_annotation_types(), index=ts_index)
         ann_y.apply(lambda row: ann_y_t[row['label']].loc[pd.Timedelta(

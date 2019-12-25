@@ -15,7 +15,7 @@ def get_simple_lstm(input_shape, latent_shape, ffn_nodes, num_lstm, num_feed_for
         lstm = Dense(ffn_nodes)(lstm)
 
 class LSTMDataset(util_funcs.MultiProcessingDataset):
-    def __init__(self, reader, width=pd.Timedelta(seconds=4), stride=pd.Timedelta(seconds=1)):
+    def __init__(self, reader, width=pd.Timedelta(seconds=4), stride=pd.Timedelta(seconds=2)):
         self.width = width
         self.stride = stride
         self.reader = reader
@@ -26,8 +26,8 @@ class LSTMDataset(util_funcs.MultiProcessingDataset):
             return self.getItemSlice(i)
         data_x, labels = self.reader[i]
         data_x = read.time_distribute_x(data_x, width=self.width, stride=self.stride)
-        return data_x, labels
-        
+        return data_x, read.expand_tse_file_seizure_only(labels, time_period=self.stride).iloc[0:data_x.shape[0]] #chop off last bit because window_width is usually larger than stride
+
 
 
 def get_seq_2_seq(input_shape, latent_shape):
