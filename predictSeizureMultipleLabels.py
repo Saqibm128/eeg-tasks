@@ -968,4 +968,3 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 if __name__ == "__main__":
     ex.run_commandline()
-  
