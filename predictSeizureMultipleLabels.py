@@ -889,7 +889,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
                 print("failed saving\n")
         else:
             patience_left -= 1
-            if patience_left >= int(patience/2) and reduce_lr_on_plateau:
+            if reduce_lr_on_plateau:
                 current_lr = current_lr * lr_decay
             if patience_left == 0:
                 print("Early Stopping!")
@@ -968,3 +968,4 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 if __name__ == "__main__":
     ex.run_commandline()
+  

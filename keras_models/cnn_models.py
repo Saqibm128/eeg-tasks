@@ -34,6 +34,21 @@ def simplified_vp_conv2d(dropout=0.25, input_shape=(None)):
     ]
     return Sequential(layers)
 
+def inception_like_layer(x, num_filters):
+    y0 = Conv2D(1, (1,1), activation="relu", padding='same')(x)
+    y0 = Conv2D(num_filters, (2,2), activation="relu", padding='same')(y0)
+    y1 = Conv2D(1, (1,1), activation="relu", padding='same')(x)
+    y1 = Conv2D(num_filters, (3,3), activation="relu", padding='same')(y1)
+    y2 = Conv2D(1, (1,1), activation="relu", padding='same')(x)
+    y2 = Conv2D(num_filters, (5,5), activation="relu", padding='same')(y2)
+    y3 = MaxPool2D(pool_size=(3, 3), strides=(1,1), padding='same')(x)
+    y3 = Conv2D(num_filters, (1,1), activation="relu", padding='same')(y3)
+    return Concatenate()([y0, y1, y2, y3])
+
+
+
+
+
 def inception_like_pre_layers(input_shape=None, x=None, num_layers=4, max_pool_size=(1,2), max_pool_stride=(1,2), dropout=0.5, num_filters=30, get_kernel_regularizer=None, get_activity_regularizer=None):
     def get_none():
         return None
@@ -43,6 +58,15 @@ def inception_like_pre_layers(input_shape=None, x=None, num_layers=4, max_pool_s
         get_activity_regularizer = get_none
     if x is None:
         x = Input(input_shape)
+    y = x
+    for i in range(num_layers):
+        y = BatchNormalization()(y)
+        y = inception_like_layer(y, num_filters)
+        y = MaxPool2D(max_pool_size, strides=max_pool_stride)(y)
+        if dropout != 0:
+            y = Dropout(dropout)(y)
+    return x, y
+
 
     y0 = Conv2D(num_filters, (2,2),  activation="relu", kernel_regularizer=get_kernel_regularizer(), activity_regularizer=get_activity_regularizer())(x)
     y0 = MaxPool2D(pool_size=max_pool_size, strides=max_pool_stride)(y0)
