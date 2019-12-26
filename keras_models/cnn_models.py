@@ -65,6 +65,8 @@ def inception_like_pre_layers(input_shape=None, x=None, num_layers=4, max_pool_s
         y = MaxPool2D(max_pool_size, strides=max_pool_stride)(y)
         if dropout != 0:
             y = Dropout(dropout)(y)
+    y = Conv2D(max(int(num_filters/4), 1), (1,1))(y)
+
     return x, y
 
 

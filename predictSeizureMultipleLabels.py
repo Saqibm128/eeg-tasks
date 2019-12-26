@@ -188,6 +188,7 @@ def config():
     lstm_h = 128
     lstm_return_sequence = False
     reduce_lr_on_plateau = False
+    change_batch_size_over_time = False
 
     precache = True
     regenerate_data = False
@@ -426,17 +427,18 @@ global_model = None
 @ex.capture
 def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizure_weight, patient_weight, include_seizure_type, lr, lr_decay, seizure_weight_decay, reduce_lr_on_plateau):
     if seizure_weight_decay is not None:
-        weight_decay = seizure_weight_decay ** ((epoch_num))
         if lr_decay == 0:
             new_lr = lr
         elif not reduce_lr_on_plateau:
             new_lr = lr * (lr_decay) ** ((epoch_num))
         else:
             new_lr = lr
+        weight_decay = seizure_weight_decay ** ((epoch_num))
         new_weight = seizure_weight * weight_decay
-        if new_weight < min_seizure_weight:
-            new_weight = min_seizure_weight
-        print("Weight Decay! new Seizure Weight: {}, lr: {}".format(new_weight, new_lr))
+        if min_seizure_weight is not None or min_seizure_weight != 0:
+            new_weight = (seizure_weight - min_seizure_weight) * np.e ** (np.log(seizure_weight_decay) * epoch_num + 1) + min_seizure_weight * np.e
+            new_weight /= np.e
+        print("Epoch: {}, Seizure Weight: {}, lr: {}".format(epoch_num, new_weight, new_lr))
 
         if include_seizure_type:
             seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy"])
@@ -654,7 +656,7 @@ def train_patient_model(x_input, cnn_y, trained_model, lr, lr_decay, epochs, mod
     return test_patient_history
 
 @ex.main
-def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only, validation_f1_score_type, reduce_lr_on_plateau, lr, lr_decay):
+def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only, validation_f1_score_type, reduce_lr_on_plateau, lr, lr_decay, change_batch_size_over_time):
     seizure_class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
     # patient_class_weights = {}
@@ -698,6 +700,9 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     if reduce_lr_on_plateau:
         lrs = []
         current_lr = lr
+    if change_batch_size_over_time:
+        batch_sizes = []
+        current_batch_size = edg.batch_size
         # seizure_weights = []
         # current_seizure_weight = seizure_weight
 
@@ -713,7 +718,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             recompile_model(seizure_patient_model, i, lr=current_lr)
         else:
             recompile_model(seizure_patient_model, i)
-
+        if change_batch_size_over_time:
+            batch_sizes.append(current_batch_size)
 
 
         valid_labels_full_epoch = []
@@ -739,8 +745,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         patient_accs_epoch = []
         # for j in range(len(edg)):
         if steps_per_epoch is None:
-            steps_per_epoch = len(edg)
-        for j in range(steps_per_epoch):
+            steps_per_epoch_func = lambda: len(edg)
+        else:
+            steps_per_epoch_func = lambda: steps_per_epoch
+        for j in range(steps_per_epoch_func()):
 
             train_batch = edg[j]
             data_x = train_batch[0]
@@ -770,7 +778,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             #set weights that don't ruin seizure prediction
             for layer_num, layer in enumerate(seizure_model.layers[:-1]):
                 seizure_model.layers[layer_num].set_weights(oldNonPatientWeights[layer_num])
-            if (j % 100) == 0:
+            if (j % int(len(edg)/10)) == 0:
                 printEpochUpdateString = "epoch: {} batch: {}/{}, seizure acc: {}, patient acc: {}, loss: {}".format(i, j, len(edg), np.mean(seizure_accs), np.mean(patient_accs_epoch), loss)
                 if include_seizure_type:
                     printEpochUpdateString += ", seizure subtype acc: {}, subtype loss: {}".format(np.mean(subtype_epochs_accs), np.mean(train_subtype_loss_epoch))
@@ -891,6 +899,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             patience_left -= 1
             if reduce_lr_on_plateau:
                 current_lr = current_lr * lr_decay
+            if change_batch_size_over_time:
+                edg.batch_size = max(int(edg.batch_size * 3/4), 1)
+                current_batch_size=edg.batch_size
+
             if patience_left == 0:
                 print("Early Stopping!")
 
@@ -921,6 +933,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         "patient_acc": train_patient_accs,
 
     })
+    if reduce_lr_on_plateau:
+        results.history.lr = lrs
     test_patient_history = train_patient_model(x_input, cnn_y, model)
     results.test_patient_history = test_patient_history.history
     if include_seizure_type:
