@@ -902,6 +902,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             if change_batch_size_over_time:
                 edg.batch_size = max(int(edg.batch_size * 3/4), 1)
                 current_batch_size=edg.batch_size
+                print("changing batch size {}".format(current_batch_size))
 
             if patience_left == 0:
                 print("Early Stopping!")
@@ -935,6 +936,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     })
     if reduce_lr_on_plateau:
         results.history.lr = lrs
+    if change_batch_size_over_time:
+        results.history.batch_size = batch_sizes
     test_patient_history = train_patient_model(x_input, cnn_y, model)
     results.test_patient_history = test_patient_history.history
     if include_seizure_type:
