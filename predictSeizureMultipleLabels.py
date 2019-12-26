@@ -188,7 +188,7 @@ def config():
     lstm_h = 128
     lstm_return_sequence = False
     reduce_lr_on_plateau = False
-    change_batch_size_over_time = False
+    change_batch_size_over_time = None
 
     precache = True
     regenerate_data = False
@@ -700,7 +700,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     if reduce_lr_on_plateau:
         lrs = []
         current_lr = lr
-    if change_batch_size_over_time:
+    if change_batch_size_over_time is not None:
         batch_sizes = []
         current_batch_size = edg.batch_size
         # seizure_weights = []
@@ -718,7 +718,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             recompile_model(seizure_patient_model, i, lr=current_lr)
         else:
             recompile_model(seizure_patient_model, i)
-        if change_batch_size_over_time:
+        if change_batch_size_over_time is not None:
             batch_sizes.append(current_batch_size)
 
 
@@ -899,8 +899,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             patience_left -= 1
             if reduce_lr_on_plateau:
                 current_lr = current_lr * lr_decay
-            if change_batch_size_over_time:
-                edg.batch_size = max(int(edg.batch_size * 3/4), 1)
+            if change_batch_size_over_time is not None:
+                edg.batch_size = max(int(edg.batch_size * 3/4), change_batch_size_over_time)
                 current_batch_size=edg.batch_size
                 print("changing batch size {}".format(current_batch_size))
 
