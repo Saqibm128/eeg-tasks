@@ -36,12 +36,12 @@ def simplified_vp_conv2d(dropout=0.25, input_shape=(None)):
 
 def inception_like_layer(x, num_filters):
     y0 = Conv2D(1, (1,1), activation="relu", padding='same')(x)
-    y0 = Conv2D(num_filters, (2,2), activation="relu", padding='same')(y0)
+    y0 = Conv2D(num_filters, (2,1), activation="relu", padding='same')(y0)
     y1 = Conv2D(1, (1,1), activation="relu", padding='same')(x)
-    y1 = Conv2D(num_filters, (3,3), activation="relu", padding='same')(y1)
+    y1 = Conv2D(num_filters, (3,1), activation="relu", padding='same')(y1)
     y2 = Conv2D(1, (1,1), activation="relu", padding='same')(x)
-    y2 = Conv2D(num_filters, (5,5), activation="relu", padding='same')(y2)
-    y3 = MaxPool2D(pool_size=(3, 3), strides=(1,1), padding='same')(x)
+    y2 = Conv2D(num_filters, (5,1), activation="relu", padding='same')(y2)
+    y3 = MaxPool2D(pool_size=(3, 1), strides=(1,1), padding='same')(x)
     y3 = Conv2D(num_filters, (1,1), activation="relu", padding='same')(y3)
     return Concatenate()([y0, y1, y2, y3])
 
