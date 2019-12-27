@@ -20,7 +20,7 @@ import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels, RULEdfDataGenerator, RULDataGenMultipleLabels
 from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like_pre_layers, conv2d_gridsearch_pre_layers
 from keras import optimizers
-from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM, Flatten, Concatenate, CuDNNLSTM
+from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM, Flatten, Concatenate, CuDNNLSTM, GaussianNoise
 from keras.models import Model, load_model
 from keras.utils import multi_gpu_model
 import pickle as pkl
@@ -189,6 +189,7 @@ def config():
     lstm_return_sequence = False
     reduce_lr_on_plateau = False
     change_batch_size_over_time = None
+    add_gaussian_noise = None
 
     precache = True
     regenerate_data = False
@@ -343,11 +344,16 @@ def get_model(
     include_seizure_type,
     attach_seizure_type_to_seizure_detect,
     lstm_h,
-    lstm_return_sequence):
+    lstm_return_sequence,
+    add_gaussian_noise):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
+    if add_gaussian_noise is not None:
+        y = GaussianNoise(add_gaussian_noise)(x)
+    else:
+        y = x
     if num_lin_layer != 0:
-        y = Reshape((input_time_size, 21))(x) #remove channel dim
+        y = Reshape((input_time_size, 21))(y) #remove channel dim
 
 
 
