@@ -42,7 +42,7 @@ from keras.utils import multi_gpu_model
 from addict import Dict
 ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v4")
 
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -480,7 +480,7 @@ def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizur
         if min_seizure_weight is not None or min_seizure_weight != 0:
             new_weight = (seizure_weight - min_seizure_weight) * np.e ** (np.log(seizure_weight_decay) * epoch_num + 1) + min_seizure_weight * np.e
             new_weight /= np.e
-        print("Epoch: {}, Seizure Weight: {}, lr: {}".format(epoch_num, new_weight, new_lr))
+        print("Epoch: {}, Seizure Weight: {}, Patient Weight: {}, lr: {}".format(epoch_num, new_weight, patient_weight, new_lr))
 
         if include_seizure_type:
             seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy"])
@@ -694,8 +694,8 @@ def valid_patient_accuracy_after_training(x_input, cnn_y, trained_model, valid_p
 
 @ex.capture
 def test_patient_accuracy_after_training(x_input, cnn_y, trained_model, lr, lr_decay, epochs, model_name, fit_generator_verbosity, test_pkl, num_patients=None):
-    if test_edg is None:
-        test_edg, num_patients = get_test_patient_edg(test_pkl=test_pkl)
+    # if test_edg is None:
+    test_edg, num_patients = get_test_patient_edg(test_pkl=test_pkl)
     # train_test_edg, valid_test_edg = test_edg.create_validation_train_split()
     patient_layer = Dense(num_patients, activation="softmax")(cnn_y)
     patient_model = Model(inputs=[x_input], outputs=[patient_layer])
