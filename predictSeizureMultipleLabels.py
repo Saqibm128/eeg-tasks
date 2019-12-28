@@ -20,7 +20,9 @@ import wf_analysis.datasets as wfdata
 from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels, RULEdfDataGenerator, RULDataGenMultipleLabels
 from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like_pre_layers, conv2d_gridsearch_pre_layers
 from keras import optimizers
-from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM, Flatten, Concatenate, CuDNNLSTM, GaussianNoise
+from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM, Flatten, Concatenate, CuDNNLSTM, GaussianNoise, BatchNormalization
+from keras.layers import Conv2D, MaxPool2D, TimeDistributed, Dense
+import keras.layers as layers
 from keras.models import Model, load_model
 from keras.utils import multi_gpu_model
 import pickle as pkl
@@ -369,17 +371,25 @@ def get_model(
     if use_inception:
         _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=cnn_dropout, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_layers=num_layers, num_filters=num_filters)
     elif model_type=="time_distributed_dense":
-        from keras.layers import Conv2D, MaxPool2D, TimeDistributed, Dense
         for i in range(num_conv_temporal_layers):
             y = Conv2D(num_conv_temporal_layers, conv_temporal_filter, activation="relu")(y)
             y = MaxPool2D(max_pool_size)(y)
 
         for i in range(2):
+            if use_batch_normalization:
+                y = layers.BatchNormalization()(y)
             y = Conv2D(num_filters, conv_spatial_filter, activation="relu")(y)
             y = MaxPool2D(max_pool_size)(y)
             y = TimeDistributed(Dense(y.get_shape()[2].value, activation="relu"))(y)
             y = TimeDistributed(Dropout(cnn_dropout))(y)
             y = TimeDistributed(Dense(y.get_shape()[2].value, activation="relu"))(y)
+    elif model_type=="cnn1d":
+        y = layers.Reshape((input_time_size, 21))(y)
+        for i in range(num_layers):
+            if use_batch_normalization:
+                y = layers.BatchNormalization()(y)
+            y = layers.Conv1D(num_conv_temporal_layers, (4), activation="relu")(y)
+            y = layers.MaxPool1D((2))(y)
 
     else:
         _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1),
