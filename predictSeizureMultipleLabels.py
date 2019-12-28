@@ -161,6 +161,12 @@ def gnsz():
 def fnsz():
     seizure_classes_to_use=["bckg", "fnsz"]
 
+@ex.named_config
+def measure_patient_bias():
+    test_patient_model_after_train = True
+    train_patient_model_after_train = True
+    valid_patient_model_after_train = True
+
 @ex.config
 def config():
     model_name = "/n/scratch2/ms994/out/" + randomString() + ".h5" #set to rando string so we don't have to worry about collisions
@@ -254,6 +260,10 @@ def config():
     seizure_weight_decay = None
     # measure_train_patient_bias = False
 
+    test_patient_model_after_train = False
+    train_patient_model_after_train = False
+    valid_patient_model_after_train = False
+
 @ex.capture
 def valid_dataset_class(balance_valid_dataset):
     if balance_valid_dataset:
@@ -274,6 +284,7 @@ def get_random_channel_ordering():
     channel_ordering = [i for i in range(len(util_funcs.get_common_channel_names()))]
     np.random.shuffle(channel_ordering)
     return channel_ordering
+
 
 @ex.capture
 def resample_x_y(x, y, imbalanced_resampler):
@@ -388,7 +399,7 @@ def get_model(
         for i in range(num_layers):
             if use_batch_normalization:
                 y = layers.BatchNormalization()(y)
-            y = layers.Conv1D(21, (4), activation="relu")(y)
+            y = layers.Conv1D(num_filters, (4), activation="relu")(y)
             y = layers.MaxPool1D((2))(y)
 
     else:
@@ -672,9 +683,19 @@ def get_test_patient_edg(test_pkl, batch_size):
     return test_edg, num_patients
 
 @ex.capture
-def train_patient_model(x_input, cnn_y, trained_model, lr, lr_decay, epochs, model_name, fit_generator_verbosity, test_edg=None, num_patients=None):
+def train_patient_accuracy_after_training(x_input, cnn_y, trained_model, train_pkl):
+    return test_patient_accuracy_after_training(x_input, cnn_y, trained_model, test_pkl=train_pkl)
+
+@ex.capture
+def valid_patient_accuracy_after_training(x_input, cnn_y, trained_model, valid_pkl):
+    return test_patient_accuracy_after_training(x_input, cnn_y, trained_model, test_pkl=valid_pkl)
+
+
+
+@ex.capture
+def test_patient_accuracy_after_training(x_input, cnn_y, trained_model, lr, lr_decay, epochs, model_name, fit_generator_verbosity, test_pkl, num_patients=None):
     if test_edg is None:
-        test_edg, num_patients = get_test_patient_edg()
+        test_edg, num_patients = get_test_patient_edg(test_pkl=test_pkl)
     # train_test_edg, valid_test_edg = test_edg.create_validation_train_split()
     patient_layer = Dense(num_patients, activation="softmax")(cnn_y)
     patient_model = Model(inputs=[x_input], outputs=[patient_layer])
@@ -687,7 +708,10 @@ def train_patient_model(x_input, cnn_y, trained_model, lr, lr_decay, epochs, mod
     return test_patient_history
 
 @ex.main
-def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience, include_seizure_type, max_bckg_samps_per_file_test, seizure_weight, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only, validation_f1_score_type, reduce_lr_on_plateau, lr, lr_decay, change_batch_size_over_time):
+def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience,
+         include_seizure_type, max_bckg_samps_per_file_test, seizure_weight, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only,
+         validation_f1_score_type, reduce_lr_on_plateau, lr, lr_decay, change_batch_size_over_time,
+         test_patient_model_after_train, train_patient_model_after_train, valid_patient_model_after_train):
     seizure_class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
     # patient_class_weights = {}
@@ -930,13 +954,13 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             patience_left -= 1
             if reduce_lr_on_plateau:
                 current_lr = current_lr * lr_decay
-            if change_batch_size_over_time is not None:
-                edg.batch_size = max(int(edg.batch_size * 3/4), change_batch_size_over_time)
-                current_batch_size=edg.batch_size
                 print("changing batch size {}".format(current_batch_size))
 
             if patience_left == 0:
                 print("Early Stopping!")
+        if change_batch_size_over_time is not None:
+            edg.batch_size = max(int(edg.batch_size * 3/4), change_batch_size_over_time)
+            current_batch_size=edg.batch_size
 
 
 
@@ -969,8 +993,14 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         results.history.lr = lrs
     if change_batch_size_over_time:
         results.history.batch_size = batch_sizes
-    test_patient_history = train_patient_model(x_input, cnn_y, model)
-    results.test_patient_history = test_patient_history.history
+    if test_patient_model_after_train:
+        test_patient_history = test_patient_accuracy_after_training(x_input, cnn_y, model)
+        results.patient_history.test = test_patient_history.history
+    if train_patient_model_after_train:
+        results.patient_history.train = train_patient_accuracy_after_training(x_input, cnn_y, model).history
+    if valid_patient_model_after_train:
+        results.patient_history.valid = valid_patient_accuracy_after_training(x_input, cnn_y, model).history
+
     if include_seizure_type:
         results.history.subtype.acc = subtype_accs
         results.history.subtype.val_acc = valid_seizure_subtype_accs
