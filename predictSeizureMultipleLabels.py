@@ -220,6 +220,7 @@ def config():
     seizure_classes_to_use = None
     update_seizure_class_weights = False
     min_seizure_weight = 0
+    model_type = None
 
     patient_weight = -1
     seizure_weight = 1
@@ -345,6 +346,7 @@ def get_model(
     attach_seizure_type_to_seizure_detect,
     lstm_h,
     lstm_return_sequence,
+    model_type,
     add_gaussian_noise):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
@@ -366,6 +368,19 @@ def get_model(
         y = x
     if use_inception:
         _, y = inception_like_pre_layers(input_shape=(input_time_size,21,1), x=y, dropout=cnn_dropout, max_pool_size=max_pool_size, max_pool_stride=max_pool_stride, num_layers=num_layers, num_filters=num_filters)
+    elif model_type=="time_distributed_dense":
+        from keras.layers import Conv2D, MaxPool2D, TimeDistributed, Dense
+        for i in range(num_conv_temporal_layers):
+            y = Conv2D(num_conv_temporal_layers, conv_temporal_filter, activation="relu")(y)
+            y = MaxPool2D(max_pool_size)(y)
+
+        for i in range(2):
+            y = Conv2D(num_filters, conv_spatial_filter, activation="relu")(y)
+            y = MaxPool2D(max_pool_size)(y)
+            y = TimeDistributed(Dense(y.get_shape()[2].value, activation="relu"))(y)
+            y = TimeDistributed(Dropout(cnn_dropout))(y)
+            y = TimeDistributed(Dense(y.get_shape()[2].value, activation="relu"))(y)
+
     else:
         _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1),
                                             x=y,

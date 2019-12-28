@@ -3,26 +3,22 @@
     "cnn_dropout" : 0,
     "conv_spatial_filter" : [
         4,
-        4
+        1
     ],
     "conv_temporal_filter" : [
         4,
-        4
+        1
     ],
     "early_stopping_on" : "val_binary_accuracy",
-    "epochs" : 300,
+    "epochs" : 100,
     "fit_generator_verbosity" : 1,
-    "hyperopt_run" : true,
     "imbalanced_resampler" : "rul",
     "include_seizure_type" : true,
-    "linear_dropout" : 0.25,
-    "lr" : 0.0001,
-    "make_model_in_parallel" : false,
-    "max_bckg_samps_per_file" : 100,
-    "max_bckg_samps_per_file_test" : 100,
+    "linear_dropout" : 0,
+    "lr" : 0.0005,
     "max_pool_size" : [
         2,
-        2
+        1
     ],
     "max_pool_size_time" : [
         2,
@@ -33,16 +29,15 @@
         1
     ],
     "mode" : "DETECT",
-    "n_process" : 20,
-    "num_conv_temporal_layers" : 3,
-    "num_filters" : 8,
+    "num_conv_temporal_layers" : 0,
+    "num_filters" : 1,
     "num_gpus" : 1,
-    "num_layers" : 3,
-    "num_lin_layer" : 2,
-    "num_post_cnn_layers" : 2,
+    "num_layers" : 5,
+    "num_lin_layer" : 0,
+    "num_post_cnn_layers" : 0,
     "num_post_lin_h" : 100,
     "num_seconds" : 4,
-    "num_temporal_filter" : 4,
+    "num_temporal_filter" : 1,
     "patience" : 5,
     "patient_weight" : -1,
     "post_cooldown" : null,
@@ -53,15 +48,19 @@
     "ref" : "01_tcp_ar",
     "regenerate_data" : false,
     "sample_time" : 4,
-    "seizure_weight" : 5,
+    "seizure_classes_to_use" : null,
+    "seizure_classification_only" : false,
+    "seizure_weight" : 10,
+    "seizure_weight_decay" : 0.9,
+    "session_instead_patient" : true,
     "steps_per_epoch" : null,
-    "test_pkl" : "/n/scratch2/ms994/test_multiple_labels_seizure_data_4.pkl",
-    "train_pkl" : "/n/scratch2/ms994/train_multiple_labels_seizure_data_4.pkl",
+    "test_pkl" : "/n/scratch2/ms994/test_multiple_labels_sessions_seizure_data_4.pkl",
+    "train_pkl" : "/n/scratch2/ms994/train_multiple_labels_sessions_seizure_data_4.pkl",
     "use_batch_normalization" : true,
     "use_filtering" : true,
     "use_inception" : false,
     "use_lstm" : false,
     "use_standard_scaler" : false,
     "use_time_layers_first" : true,
-    "valid_pkl" : "/n/scratch2/ms994/valid_multiple_labels_seizure_data_4.pkl"
+    "valid_pkl" : "/n/scratch2/ms994/valid_multiple_labels_sessions_seizure_data_4.pkl"
 }
