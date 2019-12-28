@@ -388,7 +388,7 @@ def get_model(
         for i in range(num_layers):
             if use_batch_normalization:
                 y = layers.BatchNormalization()(y)
-            y = layers.Conv1D(num_conv_temporal_layers, (4), activation="relu")(y)
+            y = layers.Conv1D(21, (4), activation="relu")(y)
             y = layers.MaxPool1D((2))(y)
 
     else:
