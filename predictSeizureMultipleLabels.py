@@ -8,6 +8,8 @@ import numpy as np
 import numpy.random as random
 from os import path
 import data_reader as read
+from keras import backend as K
+
 # from multiprocessing import Process
 import constants
 import util_funcs
@@ -265,8 +267,8 @@ def config():
     valid_patient_model_after_train = False
     random_rearrange_each_batch = False
     random_rescale = False
-    max_random_rescale_max = 1.3
-    max_random_rescale_min = 1.0/1.3
+    max_random_rescale = 1.3
+    min_random_rescale = 1.0/1.3
 
 
 @ex.capture
@@ -462,35 +464,43 @@ def get_model(
 
     seizure_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["binary_accuracy"])
     if include_seizure_type:
-        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight, seizure_weight], metrics=["categorical_accuracy"])
+        loss_weights = [K.variable(seizure_weight),K.variable(patient_weight), K.variable(seizure_weight)]
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy"])
     else:
-        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[seizure_weight,patient_weight,], metrics=["categorical_accuracy"])
+        loss_weights = [K.variable(seizure_weight),K.variable(patient_weight)]
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy"])
 
     patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
-    return seizure_model, seizure_patient_model, patient_model, val_train_model, x, y
+    return seizure_model, seizure_patient_model, patient_model, val_train_model, x, y, loss_weights
 
 global_model = None
 
 @ex.capture
-def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizure_weight, patient_weight, include_seizure_type, lr, lr_decay, seizure_weight_decay, reduce_lr_on_plateau):
+def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizure_weight, patient_weight,  loss_weights, include_seizure_type, lr, lr_decay, seizure_weight_decay, reduce_lr_on_plateau):
     if seizure_weight_decay is not None:
-        if lr_decay == 0:
+        if seizure_weight_decay is None:
+            seizure_weight_decay = 1
+        if lr_decay == 0 or lr_decay is None:
             new_lr = lr
         elif not reduce_lr_on_plateau:
             new_lr = lr * (lr_decay) ** ((epoch_num))
         else:
             new_lr = lr
-        weight_decay = seizure_weight_decay ** ((epoch_num))
-        new_weight = seizure_weight * weight_decay
+        # weight_decay = seizure_weight_decay ** ((epoch_num))
+        # new_weight = seizure_weight * weight_decay
+        if min_seizure_weight is None:
+            min_seizure_weight = 0
         if min_seizure_weight is not None or min_seizure_weight != 0:
             new_weight = (seizure_weight - min_seizure_weight) * np.e ** (np.log(seizure_weight_decay) * epoch_num + 1) + min_seizure_weight * np.e
             new_weight /= np.e
         print("Epoch: {}, Seizure Weight: {}, Patient Weight: {}, lr: {}".format(epoch_num, new_weight, patient_weight, new_lr))
+        K.set_value(seizure_patient_model.optimizer.lr, lr)
 
-        if include_seizure_type:
-            seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy"])
-        else:
-            seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[new_weight, patient_weight,], metrics=["categorical_accuracy"])
+        if include_seizure_type and seizure_weight_decay is not None:
+             # K.set_value(
+            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy"])
+        elif seizure_weight_decay is not None:
+            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[new_weight, patient_weight,], metrics=["categorical_accuracy"])
     return seizure_patient_model
 
 
@@ -717,7 +727,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
          include_seizure_type, max_bckg_samps_per_file_test, seizure_weight, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only,
          validation_f1_score_type, reduce_lr_on_plateau, lr, lr_decay, change_batch_size_over_time,
          test_patient_model_after_train, train_patient_model_after_train, valid_patient_model_after_train,
-         random_rearrange_each_batch):
+         random_rearrange_each_batch, random_rescale, max_random_rescale, min_random_rescale):
     seizure_class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
     # patient_class_weights = {}
@@ -725,7 +735,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     #     patient_class_weights[i] = 1
 
     print("Creating models")
-    seizure_model, seizure_patient_model, patient_model, val_train_model, x_input, cnn_y = get_model(num_patients=len_all_patients)
+    seizure_model, seizure_patient_model, patient_model, val_train_model, x_input, cnn_y, loss_weights = get_model(num_patients=len_all_patients)
 
     edg[0]
     valid_edg[0]
@@ -776,9 +786,9 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         if reduce_lr_on_plateau:
             lrs.append(current_lr)
             # seizure_weights.append(current_seizure_weight)
-            recompile_model(seizure_patient_model, i, lr=current_lr)
+            recompile_model(seizure_patient_model, i, loss_weights=loss_weights, lr=current_lr)
         else:
-            recompile_model(seizure_patient_model, i)
+            recompile_model(seizure_patient_model, i, loss_weights=loss_weights,)
         if change_batch_size_over_time is not None:
             batch_sizes.append(current_batch_size)
 
@@ -820,7 +830,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
                 data_x = data_x[:,:,np.random.choice(21, 21, replace=False)]
 
             if random_rescale:
-                data_x = data_x * (np.random.random() * (max_random_rescale_max - max_random_rescale_min) + max_random_rescale_min)
+                data_x = data_x * (np.random.random() * (max_random_rescale - min_random_rescale) + min_random_rescale)
 
             if include_seizure_type:
                 loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1], class_weight=get_class_weights(seizure_class_weights, len_all_patients))
