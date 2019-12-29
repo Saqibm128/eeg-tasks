@@ -263,6 +263,7 @@ def config():
     test_patient_model_after_train = False
     train_patient_model_after_train = False
     valid_patient_model_after_train = False
+    random_rearrange_each_batch = False
 
 @ex.capture
 def valid_dataset_class(balance_valid_dataset):
@@ -711,7 +712,8 @@ def test_patient_accuracy_after_training(x_input, cnn_y, trained_model, lr, lr_d
 def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs, fit_generator_verbosity, batch_size, n_process, steps_per_epoch, patience,
          include_seizure_type, max_bckg_samps_per_file_test, seizure_weight, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only,
          validation_f1_score_type, reduce_lr_on_plateau, lr, lr_decay, change_batch_size_over_time,
-         test_patient_model_after_train, train_patient_model_after_train, valid_patient_model_after_train):
+         test_patient_model_after_train, train_patient_model_after_train, valid_patient_model_after_train,
+         random_rearrange_each_batch):
     seizure_class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
     # patient_class_weights = {}
@@ -809,6 +811,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             data_x = train_batch[0]
             data_x = data_x.astype(np.float32)
             data_x = np.nan_to_num(data_x)
+
+            if random_rearrange_each_batch:
+                data_x = data_x[:,:,np.random.choice(21, 21, replace=False)]
+
             if include_seizure_type:
                 loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1], class_weight=get_class_weights(seizure_class_weights, len_all_patients))
                 subtype_epochs_accs.append(subtype_acc)
