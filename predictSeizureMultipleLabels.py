@@ -264,6 +264,10 @@ def config():
     train_patient_model_after_train = False
     valid_patient_model_after_train = False
     random_rearrange_each_batch = False
+    random_rescale = False
+    max_random_rescale_max = 1.3
+    max_random_rescale_min = 1.0/1.3
+
 
 @ex.capture
 def valid_dataset_class(balance_valid_dataset):
@@ -814,6 +818,9 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
             if random_rearrange_each_batch:
                 data_x = data_x[:,:,np.random.choice(21, 21, replace=False)]
+
+            if random_rescale:
+                data_x = data_x * (np.random.random() * (max_random_rescale_max - max_random_rescale_min) + max_random_rescale_min)
 
             if include_seizure_type:
                 loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1], class_weight=get_class_weights(seizure_class_weights, len_all_patients))
