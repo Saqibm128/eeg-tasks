@@ -280,7 +280,8 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         num_samples=None,
         max_bckg_samps_per_file=None,
         overlapping_augmentation=False,
-        n_process=4
+        n_process=4,
+        include_montage_channels=False, # which montage channels have seizure
     ):
         self.mode = mode
         self.n_process = n_process
@@ -297,6 +298,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         self.num_samples = num_samples
         self.random_under_sample = random_under_sample
         self.overlapping_augmentation = overlapping_augmentation
+        self.include_montage_channels = include_montage_channels
         # self.num_splits_per_sample = num_splits_per_sample
         currentIndex = 0
         for token_file_path, segment in self.segment_file_tuples:
@@ -356,10 +358,13 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
                 newInd += 1
         self.sampleInfo = copiedSelfSampleInfo
 
-
-
-
-
+    def get_montage_channel(self, indexData):
+        # lbl_fn = read.get_associated_lbl(indexData.token_file_path)
+        # per_channel_ann = read.get_per_channel_annotation(lbl_fn)
+        start = indexData.sample_num * indexData.sample_width / pd.Timedelta(seconds=1)
+        end = (indexData.sample_num+1) * indexData.sample_width / pd.Timedelta(seconds=1)
+        return read.gen_seizure_channel_labels(read.get_associated_lbl(indexData.token_file_path), indexData.sample_width).loc[pd.Timedelta(seconds=start)][constants.MONTAGE_COLUMNS]
+        # raise Exception()
 
     def __len__(self):
         return len(self.sampleInfo)
@@ -371,7 +376,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         indexData = self.sampleInfo[i]
         offset = 0
         if self.overlapping_augmentation:
-            offset = randint(0, 50) #add some random overlap up to 25% of the whole segment sample
+            offset = randint(0, 50) #add some random overlap up to 25% of the whole segment sample for data augmentation
         data = read.edf_eeg_2_df(indexData.token_file_path,
                                  resample=self.resample,
                                  start=(indexData.sample_num + offset/200) * self.gap,
@@ -393,7 +398,11 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         data = data.fillna(method="ffill").fillna(method="bfill")
         if self.use_numpy:
             data = data.values
-        return data, indexData.label
+        if not self.include_montage_channels:
+            return data, indexData.label
+        else:
+            return data, (*indexData.label, self.get_montage_channel(indexData))
+
 
 
 def generate_label_rolling_window(ann, pre_cooldown=5, post_cooldown=None, sample_time=5, num_seconds=1):

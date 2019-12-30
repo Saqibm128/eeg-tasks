@@ -268,6 +268,7 @@ def config():
     random_rearrange_each_batch = False
     random_rescale = False
     rescale_factor = 1.3
+    include_montage_channels = False
 
 
 @ex.capture
@@ -308,7 +309,7 @@ def getDataSampleGenerator(pre_cooldown, post_cooldown, sample_time, num_seconds
 
 
 @ex.capture
-def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds, max_bckg_samps_per_file_test, include_seizure_type, ref="01_tcp_ar", num_files=None):
+def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds, max_bckg_samps_per_file_test, include_seizure_type, include_montage_channels, ref="01_tcp_ar", num_files=None):
     if max_bckg_samps_per_file_test is None:
         max_bckg_samps_per_file_test = max_bckg_samps_per_file
     if max_bckg_samps_per_file_test == -1:
@@ -320,9 +321,9 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
 
     #increased n_process to deal with io processing
 
-    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
-    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
-    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type)
+    train_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=train_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type, include_montage_channels=include_montage_channels)
+    valid_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=valid_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type, include_montage_channels=include_montage_channels)
+    test_edss = er.EdfDatasetSegmentedSampler(segment_file_tuples=test_label_files_segs, mode=mode, num_samples=max_samples, max_bckg_samps_per_file=max_bckg_samps_per_file_test, n_process=int(n_process), gap=num_seconds*pd.Timedelta(seconds=1), include_seizure_type=include_seizure_type, include_montage_channels=include_montage_channels)
     pkl.dump((train_edss, valid_edss, test_edss), open("/n/scratch2/ms994/seizure_multi_labels_edss_info.pkl", "wb"))
     ex.add_artifact("/n/scratch2/ms994/seizure_multi_labels_edss_info.pkl")
     return train_edss, valid_edss, test_edss
@@ -366,7 +367,8 @@ def get_model(
     lstm_h,
     lstm_return_sequence,
     model_type,
-    add_gaussian_noise):
+    add_gaussian_noise,
+    include_montage_channels):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if add_gaussian_noise is not None:
