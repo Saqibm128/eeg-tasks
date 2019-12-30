@@ -757,6 +757,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     train_patient_accs = []
     training_seizure_loss = []
     valid_seizure_loss = []
+    valid_f1_scores = []
 
     oldPatientWeights = patient_model.layers[-1].get_weights()
     oldNonPatientWeights = [layer.get_weights() for layer in seizure_model.layers[:-1]]
@@ -865,6 +866,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         assert valid_labels_epoch == []
         assert valid_predictions == []
 
+
         for j in range(len(valid_edg)):
             valid_batch = valid_edg[j]
             data_x = valid_batch[0]
@@ -938,6 +940,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         valid_loss = log_loss(valid_labels_full_epoch, valid_predictions_full)
         training_seizure_loss.append(np.mean(train_seizure_loss_epoch))
         printEpochEndString = "end epoch: {}, f1: {}, auc: {}, acc: {}, loss: {}\n".format(i, f1_score(valid_predictions, valid_labels_epoch), auc, valid_acc, valid_loss)
+        valid_f1_scores.append(f1_score(valid_predictions, valid_labels_epoch))
         valid_seizure_loss.append(valid_loss)
         if include_seizure_type:
             subtype_losses.append(np.mean(train_subtype_loss_epoch))
@@ -1022,6 +1025,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         results.patient_history.train = train_patient_accuracy_after_training(x_input, cnn_y, model).history
     if valid_patient_model_after_train:
         results.patient_history.valid = valid_patient_accuracy_after_training(x_input, cnn_y, model).history
+
+    results.history.seizure.valid_f1 = valid_f1_scores
+    # results.history.seizure.train_f1 = train_f1_scores
+
 
     if include_seizure_type:
         results.history.subtype.acc = subtype_accs
