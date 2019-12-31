@@ -339,7 +339,7 @@ class DataGenMultipleLabels(EdfDataGenerator):
 
         y_labels = []
         for i, sing_label in enumerate(labels):
-            if not hasattr(self, "class_type") or self.class_type[i] == "nominal" or self.class_type is None:
+            if not hasattr(self, "class_type") or self.class_type is None or self.class_type[i] == "nominal":
                 y =  keras.utils.to_categorical(sing_label, num_classes=self.n_classes[i])
             elif self.class_type[i] == "quantile":
                 y = np.vstack(sing_label)
