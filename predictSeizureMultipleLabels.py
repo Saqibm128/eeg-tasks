@@ -519,14 +519,16 @@ def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizur
         print("Epoch: {}, Seizure Weight: {}, Patient Weight: {}, lr: {}".format(epoch_num, new_weight, patient_weight, new_lr))
         K.set_value(seizure_patient_model.optimizer.lr, lr)
         if include_seizure_type and include_montage_channels:
-            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight, new_weight], metrics=["categorical_accuracy"])
+            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight, new_weight], metrics=["categorical_accuracy", f1])
 
         elif include_seizure_type and seizure_weight_decay is not None:
              # K.set_value(
              #Don't throw away old optimizer TODO: check and see if adam keeps any state in its optimizer object
-            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy"])
+            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy", f1])
         elif seizure_weight_decay is not None:
-            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[new_weight, patient_weight,], metrics=["categorical_accuracy"])
+            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[new_weight, patient_weight,], metrics=["categorical_accuracy", f1])
+    # seizure_patient_model.metrics_tensors += seizure_patient_model.outputs #grab output!
+
     return seizure_patient_model
 
 
@@ -790,8 +792,6 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     print("Creating models")
     seizure_model, seizure_patient_model, patient_model, val_train_model, x_input, cnn_y, loss_weights = get_model(num_patients=len_all_patients)
 
-    edg[0]
-    valid_edg[0]
     if regenerate_data:
         return
 
@@ -810,6 +810,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     valid_seizure_accs = []
     train_patient_accs = []
     training_seizure_loss = []
+    train_seizure_f1s = []
+    train_patient_f1s = []
+    train_subtype_f1s = []
+    train_montage_f1s = []
     valid_seizure_loss = []
     valid_f1_scores = []
     train_montage_loss = []
@@ -877,6 +881,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         train_seizure_loss_epoch = []
         train_subtype_loss_epoch = []
         train_montage_loss_epoch = []
+        train_seizure_f1_epoch = []
+        train_subtype_f1_epoch = []
+        train_patient_f1_epoch = []
+        train_montage_f1_epoch = []
 
         seizure_accs = []
         patient_accs_epoch = []
@@ -900,14 +908,22 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
                 data_x = data_x * (np.random.random() * (rescale_factor - 1/rescale_factor) + 1/rescale_factor)
 
             if include_seizure_type and include_montage_channels:
-                loss, seizure_loss, patient_loss, subtype_loss, montage_loss, seizure_acc, patient_acc, subtype_acc, montage_acc, seizure_f1, patient_f1, subtype_f1, montage_f1 = seizure_patient_model.train_on_batch(data_x, train_batch[1], )
+                loss, seizure_loss, patient_loss, subtype_loss, montage_loss, seizure_acc, seizure_f1, patient_acc, patient_f1,  subtype_acc, subtype_f1, montage_acc, montage_f1 = seizure_patient_model.train_on_batch(data_x, train_batch[1], )
                 subtype_epochs_accs.append(subtype_acc)
+                # raise Exception()
+                train_subtype_f1_epoch.append(subtype_f1)
+                train_montage_f1_epoch.append(montage_f1)
             elif include_seizure_type:
-                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc, seizure_f1, patient_f1, subtype_f1 = seizure_patient_model.train_on_batch(data_x, train_batch[1], )
+                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, seizure_f1, patient_acc, patient_f1, subtype_acc, subtype_f1 = seizure_patient_model.train_on_batch(data_x, train_batch[1], )
                 subtype_epochs_accs.append(subtype_acc)
+                train_subtype_f1_epoch.append(subtype_f1)
             elif not include_seizure_type and not include_montage_channels:
-                loss, seizure_loss, patient_loss, seizure_acc, patient_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1])
+                loss, seizure_loss, patient_loss, seizure_acc, seizure_f1, patient_acc, patient_f1 = seizure_patient_model.train_on_batch(data_x, train_batch[1])
             seizure_accs.append(seizure_acc)
+            train_seizure_f1_epoch.append(seizure_f1)
+            train_patient_f1_epoch.append(patient_f1)
+
+
             #old patient weights are trying to predict for patient, try to do the prediction!
             patient_model.layers[-1].set_weights(oldPatientWeights)
             #keep the other nonpatient weights which try not to predict for patient!
@@ -929,7 +945,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             for layer_num, layer in enumerate(seizure_model.layers[:-1]):
                 seizure_model.layers[layer_num].set_weights(oldNonPatientWeights[layer_num])
             if (j % int(len(edg)/10)) == 0:
-                printEpochUpdateString = "epoch: {} batch: {}/{}, seizure acc: {}, patient acc: {}, loss: {}".format(i, j, len(edg), np.mean(seizure_accs), np.mean(patient_accs_epoch), loss)
+                printEpochUpdateString = "epoch: {} batch: {}/{}, seizure acc: {}, seizure f1: {}, patient acc: {}, loss: {}".format(i, j, len(edg), np.mean(seizure_accs), np.mean(train_seizure_f1_epoch), np.mean(patient_accs_epoch), loss)
                 if include_seizure_type:
                     printEpochUpdateString += ", seizure subtype acc: {}, subtype loss: {}".format(np.mean(subtype_epochs_accs), np.mean(train_subtype_loss_epoch))
                 if include_montage_channels:
@@ -1025,19 +1041,24 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         train_patient_accs.append(np.mean(patient_accs_epoch))
         valid_loss = log_loss(valid_labels_full_epoch, valid_predictions_full)
         training_seizure_loss.append(np.mean(train_seizure_loss_epoch))
+        train_seizure_f1s.append(np.mean(train_seizure_f1_epoch))
+        train_patient_f1s.append(np.mean(train_patient_f1_epoch))
+
         printEpochEndString = "end epoch: {}, f1: {}, auc: {}, acc: {}, loss: {}\n".format(i, f1_score(valid_predictions, valid_labels_epoch), auc, valid_acc, valid_loss)
         valid_f1_scores.append(f1_score(valid_predictions, valid_labels_epoch))
         valid_seizure_loss.append(valid_loss)
         if include_montage_channels:
+            train_montage_f1s.append(np.mean(train_montage_f1_epoch))
             train_montage_loss.append(np.mean(train_montage_loss_epoch))
             train_montage_acc.append(np.mean(train_montage_acc_epoch))
             current_val_epoch_montage_acc = accuracy_score(montage_val_epoch_labels_full, np.round(montage_val_predictions_epoch_full).astype(np.int))
             current_val_epoch_montage_loss = log_loss(montage_val_epoch_labels_full, montage_val_predictions_epoch_full)
             val_montage_acc.append(current_val_epoch_montage_acc)
             val_montage_loss.append(current_val_epoch_montage_loss)
-            printEpochEndString += "\t montage info: train acc: {}, valid acc:{}, loss: {}\n".format(train_montage_acc[-1], val_montage_acc[-1], val_montage_loss[-1],)
+            printEpochEndString += "\t montage info: train acc: {}, train f1: {}, valid acc:{}, loss: {}\n".format(train_montage_acc[-1], train_seizure_f1s[-1], val_montage_acc[-1], val_montage_loss[-1],)
 
         if include_seizure_type:
+            train_subtype_f1s.append(np.mean(train_subtype_f1_epoch))
             subtype_losses.append(np.mean(train_subtype_loss_epoch))
             subtype_acc = np.mean(subtype_epochs_accs)
             subtype_accs.append(subtype_acc)
@@ -1120,16 +1141,18 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         results.patient_history.valid = valid_patient_accuracy_after_training(x_input, cnn_y, model).history
 
     results.history.seizure.valid_f1 = valid_f1_scores
-    # results.history.seizure.train_f1 = train_f1_scores
+    results.history.seizure.train_f1 = train_seizure_f1s
 
 
     if include_seizure_type:
+        results.history.subtype.train_f1 = train_seizure_f1s
         results.history.subtype.acc = subtype_accs
         results.history.subtype.val_acc = valid_seizure_subtype_accs
         results.history.subtype.loss = subtype_losses
         results.history.subtype.val_loss = valid_seizure_subtype_loss
 
     if include_montage_channels:
+        results.history.montage.train_f1 = train_montage_f1s
         results.history.montage.train_acc = train_montage_acc
         results.history.montage.train_loss = train_montage_loss
         results.history.montage.val_acc = val_montage_acc
