@@ -36,6 +36,7 @@ from keras_models import train
 import constants
 from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
+from keras_models.metrics import f1
 import random
 import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping, LearningRateScheduler
@@ -482,13 +483,13 @@ def get_model(
     seizure_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["binary_accuracy"])
     if include_seizure_type and include_montage_channels:
         loss_weights = [K.variable(seizure_weight),K.variable(patient_weight), K.variable(seizure_weight), K.variable(seizure_weight)]
-        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy"])
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy", f1])
     elif include_seizure_type:
         loss_weights = [K.variable(seizure_weight),K.variable(patient_weight), K.variable(seizure_weight)]
-        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy"])
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy", f1])
     elif not include_seizure_type and not include_montage_channels:
         loss_weights = [K.variable(seizure_weight),K.variable(patient_weight)]
-        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy"])
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy", f1])
     else:
         raise Exception("Not Implemented")
 
@@ -898,11 +899,13 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             if random_rescale:
                 data_x = data_x * (np.random.random() * (rescale_factor - 1/rescale_factor) + 1/rescale_factor)
 
-            if include_seizure_type:
-                loss, seizure_loss, patient_loss, subtype_loss, montage_loss, seizure_acc, patient_acc, subtype_acc, montage_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1], )
+            if include_seizure_type and include_montage_channels:
+                loss, seizure_loss, patient_loss, subtype_loss, montage_loss, seizure_acc, patient_acc, subtype_acc, montage_acc, seizure_f1, patient_f1, subtype_f1, montage_f1 = seizure_patient_model.train_on_batch(data_x, train_batch[1], )
                 subtype_epochs_accs.append(subtype_acc)
-
-            else:
+            elif include_seizure_type:
+                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc, seizure_f1, patient_f1, subtype_f1 = seizure_patient_model.train_on_batch(data_x, train_batch[1], )
+                subtype_epochs_accs.append(subtype_acc)
+            elif not include_seizure_type and not include_montage_channels:
                 loss, seizure_loss, patient_loss, seizure_acc, patient_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1])
             seizure_accs.append(seizure_acc)
             #old patient weights are trying to predict for patient, try to do the prediction!
