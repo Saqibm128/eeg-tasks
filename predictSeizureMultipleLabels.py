@@ -41,6 +41,7 @@ import random
 import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping, LearningRateScheduler
 from keras.utils import multi_gpu_model
+from time import time
 
 from addict import Dict
 ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v4")
@@ -63,6 +64,14 @@ def no_stride_channels():
     Don't stride on channels
     '''
     max_pool_stride = (1,1)
+
+@ex.named_config
+def use_extra_layers():
+    num_lin_layer = 2
+    pre_layer_h = 22
+    linear_dropout = 0.5
+    num_post_cnn_layers = 2
+
 
 @ex.named_config
 def knn():
@@ -691,13 +700,7 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
     valid_edss = update_data(valid_edss, zero_out_patients=True)
     test_edss = update_data(test_edss, zero_out_patients=True)
 
-    if use_standard_scaler:
-        train_edss = read.EdfStandardScaler(
-            train_edss, dataset_includes_label=True, n_process=n_process)[:]
-        valid_edss = read.EdfStandardScaler(
-            valid_edss, dataset_includes_label=True, n_process=n_process)[:]
-        test_edss = read.EdfStandardScaler(
-            test_edss, dataset_includes_label=True, n_process=n_process)[:]
+
 
     if include_seizure_type and not include_montage_channels:
         train_edss, seizureLabels, patientInd, seizureSubtypes = reorder_channels(train_edss)
@@ -710,23 +713,44 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
     else:
         raise Exception("Not implemented yet")
 
+    if use_standard_scaler:
+        print("start standard scaling")
+        # start = time()
+        train_edss = read.EdfStandardScaler(
+            train_edss, dataset_includes_label=True, n_process=n_process)
+        train_edss.use_mp=False
+        # print(time-start)
+        valid_edss = read.EdfStandardScaler(
+            valid_edss, dataset_includes_label=True, n_process=n_process)
+        valid_edss.use_mp=False
+
+        # print(time-start)
+
+        test_edss = read.EdfStandardScaler(
+            test_edss, dataset_includes_label=True, n_process=n_process)
+        test_edss.use_mp=False
+
+        # print(time-start)
+
+        print("completed")
+
 
     if include_seizure_type and not include_montage_channels:
-        edg = RULDataGenMultipleLabels(train_edss, num_labels=3, precache=True, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
-        valid_edg = valid_dataset_class()(valid_edss, num_labels=3, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
-        test_edg = DataGenMultipleLabels(test_edss, num_labels=3, precache=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
+        edg = RULDataGenMultipleLabels(train_edss, num_labels=3, precache=not use_standard_scaler, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
+        valid_edg = valid_dataset_class()(valid_edss, num_labels=3, precache=not use_standard_scaler, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
+        test_edg = DataGenMultipleLabels(test_edss, num_labels=3, precache=not use_standard_scaler, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
     elif include_seizure_type and include_montage_channels:
-        edg = RULDataGenMultipleLabels(train_edss, num_labels=4, precache=True, class_type=["nominal", "nominal", "nominal", "quantile"], batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes, montageLabels], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)),)
-        valid_edg = valid_dataset_class()(valid_edss, num_labels=4, precache=True, class_type=["nominal", "nominal", "nominal", "quantile"], batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes, validMontageLabels], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)), shuffle=False)
-        test_edg = DataGenMultipleLabels(test_edss, num_labels=4, precache=True, class_type=["nominal", "nominal", "nominal", "quantile"], labels=[testSeizureLabels, testPatientInd, testSeizureSubtypes, testMontageLabels], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)), batch_size=batch_size*4, shuffle=False)
+        edg = RULDataGenMultipleLabels(train_edss, num_labels=4, precache=not use_standard_scaler, class_type=["nominal", "nominal", "nominal", "quantile"], batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes, montageLabels], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)),)
+        valid_edg = valid_dataset_class()(valid_edss, num_labels=4, precache=not use_standard_scaler, class_type=["nominal", "nominal", "nominal", "quantile"], batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes, validMontageLabels], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)), shuffle=False)
+        test_edg = DataGenMultipleLabels(test_edss, num_labels=4, precache=not use_standard_scaler, class_type=["nominal", "nominal", "nominal", "quantile"], labels=[testSeizureLabels, testPatientInd, testSeizureSubtypes, testMontageLabels], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)), batch_size=batch_size*4, shuffle=False)
     elif not include_seizure_type and not include_montage_channels:
-        edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=True, labels=[seizureLabels, patientInd], batch_size=batch_size, n_classes=(2, len(allPatients)),) #learning means we are more likely to be affected by batch size, both for OOM in gpu and as a hyperparamer
-        valid_edg = valid_dataset_class()(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], batch_size=batch_size*4, xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False) #batch size doesn't matter as much when we aren't learning but we still need batches to avoid OOM
+        edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=not use_standard_scaler, labels=[seizureLabels, patientInd], batch_size=batch_size, n_classes=(2, len(allPatients)),) #learning means we are more likely to be affected by batch size, both for OOM in gpu and as a hyperparamer
+        valid_edg = valid_dataset_class()(valid_edss, num_labels=2, precache=not use_standard_scaler, labels=[validSeizureLabels, validPatientInd], batch_size=batch_size*4, xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False) #batch size doesn't matter as much when we aren't learning but we still need batches to avoid OOM
         if len(test_edss[0][1]) > 1: #we throw out the seizure type label
             data = [datum[0] for datum in test_edss]
             labels = [datum[1][0] for datum in test_edss]
             test_edss = [(data[i], labels[i]) for i in range(len(data))]
-        test_edg = EdfDataGenerator(test_edss, n_classes=2, precache=True, batch_size=batch_size, shuffle=False)
+        test_edg = EdfDataGenerator(test_edss, n_classes=2, precache=not use_standard_scaler, batch_size=batch_size, shuffle=False)
     return edg, valid_edg, test_edg, len(allPatients)
 
 @ex.capture
@@ -1207,3 +1231,4 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 if __name__ == "__main__":
     ex.run_commandline()
+  
