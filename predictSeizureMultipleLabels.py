@@ -134,7 +134,7 @@ def use_session_montage_dbmi():
     test_pkl = "/n/scratch2/ms994/test_multiple_labels_sessions_montage_seizure_data_4.pkl"
     session_instead_patient = True
     max_bckg_samps_per_file_test=None
-    include_montage_channels = Trues
+    include_montage_channels = True
     include_seizure_type = True
     max_bckg_samps_per_file = 100
     max_bckg_samps_per_file_test = -1
@@ -498,7 +498,7 @@ def get_model(
 global_model = None
 
 @ex.capture
-def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizure_weight, patient_weight,  loss_weights, include_seizure_type, lr, lr_decay, seizure_weight_decay, reduce_lr_on_plateau):
+def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizure_weight, patient_weight,  loss_weights, include_seizure_type, lr, lr_decay, seizure_weight_decay, reduce_lr_on_plateau, include_montage_channels):
     if seizure_weight_decay is not None:
         if seizure_weight_decay is None:
             seizure_weight_decay = 1
@@ -517,8 +517,10 @@ def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizur
             new_weight /= np.e
         print("Epoch: {}, Seizure Weight: {}, Patient Weight: {}, lr: {}".format(epoch_num, new_weight, patient_weight, new_lr))
         K.set_value(seizure_patient_model.optimizer.lr, lr)
+        if include_seizure_type and include_montage_channels:
+            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight, new_weight], metrics=["categorical_accuracy"])
 
-        if include_seizure_type and seizure_weight_decay is not None:
+        elif include_seizure_type and seizure_weight_decay is not None:
              # K.set_value(
              #Don't throw away old optimizer TODO: check and see if adam keeps any state in its optimizer object
             seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy"])
