@@ -252,7 +252,7 @@ class DataGenMultipleLabels(EdfDataGenerator):
     To be able to deal with cases where neural net can predict for multiple things at once
     '''
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=(2, 2), class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2, shuffle_channels=False, **kwargs):
+                 n_classes=(2, 2), class_type=None, shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2, shuffle_channels=False, **kwargs):
         super().__init__( dataset, mask_value, labels, batch_size, dim, n_channels,
                      n_classes, class_type, shuffle, max_length, time_first, precache=precache, xy_tuple_form=xy_tuple_form, **kwargs)
 
@@ -339,14 +339,17 @@ class DataGenMultipleLabels(EdfDataGenerator):
 
         y_labels = []
         for i, sing_label in enumerate(labels):
-            y =  keras.utils.to_categorical(sing_label, num_classes=self.n_classes[i])
+            if not hasattr(self, "class_type") or self.class_type[i] == "nominal" or self.class_type is None:
+                y =  keras.utils.to_categorical(sing_label, num_classes=self.n_classes[i])
+            elif self.class_type[i] == "quantile":
+                y = np.vstack(sing_label)
+            #   y =  keras.utils.to_categorical(sing_label, num_classes=self.n_classes[i])
             y_labels.append(y)
-
         return x, y_labels
 
 class RULDataGenMultipleLabels(DataGenMultipleLabels):
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=(2, 2), class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2, shuffle_channels=False, class_ratio=1, **kwargs):
+                 n_classes=(2, 2), class_type=None, shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2, shuffle_channels=False, class_ratio=1, **kwargs):
         super().__init__(dataset=dataset, mask_value=mask_value, labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
                      n_classes=n_classes, class_type=class_type, shuffle=shuffle, max_length=max_length, time_first=time_first, precache=precache, xy_tuple_form=xy_tuple_form, num_labels=num_labels, shuffle_channels=shuffle_channels, **kwargs)
         self.class_ratio = class_ratio

@@ -15,7 +15,7 @@ import constants
 import util_funcs
 import functools
 from sklearn.model_selection import PredefinedSplit, GridSearchCV
-from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef, classification_report, log_loss, confusion_matrix
+from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score, matthews_corrcoef, classification_report, log_loss, confusion_matrix, mean_squared_error
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
@@ -126,6 +126,18 @@ def use_session_dbmi():
     max_bckg_samps_per_file = 100
     max_bckg_samps_per_file_test = -1
 
+
+@ex.named_config
+def use_session_montage_dbmi():
+    train_pkl = "/n/scratch2/ms994/train_multiple_labels_sessions_montage_seizure_data_4.pkl"
+    valid_pkl = "/n/scratch2/ms994/valid_multiple_labels_sessions_montage_seizure_data_4.pkl"
+    test_pkl = "/n/scratch2/ms994/test_multiple_labels_sessions_montage_seizure_data_4.pkl"
+    session_instead_patient = True
+    max_bckg_samps_per_file_test=None
+    include_montage_channels = Trues
+    include_seizure_type = True
+    max_bckg_samps_per_file = 100
+    max_bckg_samps_per_file_test = -1
 
 @ex.named_config
 def use_session_knn():
@@ -444,12 +456,16 @@ def get_model(
         y = Concatenate()([y, y_seizure_subtype])
     y_seizure = Dense(2, activation="softmax", name="seizure")(y)
     y_patient = Dense(num_patients, activation="softmax", name="patient")(y)
+    y_montage_channel = Dense(len(constants.MONTAGE_COLUMNS), activation="sigmoid", name="montage_channel")(y)
 
 
 
     seizure_model = Model(inputs=x, outputs=[y_seizure])
 
-    if include_seizure_type:
+    if include_seizure_type and include_montage_channels:
+        seizure_patient_model = Model(inputs=[x], outputs=[y_seizure, y_patient,  y_seizure_subtype, y_montage_channel])
+        val_train_model = Model(inputs=x, outputs=[y_seizure, y_seizure_subtype, y_montage_channel])
+    elif include_seizure_type:
         seizure_patient_model = Model(inputs=[x], outputs=[y_seizure, y_patient,  y_seizure_subtype,])
         val_train_model = Model(inputs=x, outputs=[y_seizure, y_seizure_subtype])
     else:
@@ -464,12 +480,17 @@ def get_model(
         patient_model = multi_gpu_model(patient_model, num_gpus)
 
     seizure_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["binary_accuracy"])
-    if include_seizure_type:
+    if include_seizure_type and include_montage_channels:
+        loss_weights = [K.variable(seizure_weight),K.variable(patient_weight), K.variable(seizure_weight), K.variable(seizure_weight)]
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy"])
+    elif include_seizure_type:
         loss_weights = [K.variable(seizure_weight),K.variable(patient_weight), K.variable(seizure_weight)]
         seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy"])
-    else:
+    elif not include_seizure_type and not include_montage_channels:
         loss_weights = [K.variable(seizure_weight),K.variable(patient_weight)]
         seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy"])
+    else:
+        raise Exception("Not Implemented")
 
     patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
     return seizure_model, seizure_patient_model, patient_model, val_train_model, x, y, loss_weights
@@ -499,6 +520,7 @@ def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizur
 
         if include_seizure_type and seizure_weight_decay is not None:
              # K.set_value(
+             #Don't throw away old optimizer TODO: check and see if adam keeps any state in its optimizer object
             seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy"])
         elif seizure_weight_decay is not None:
             seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[new_weight, patient_weight,], metrics=["categorical_accuracy"])
@@ -531,7 +553,7 @@ def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
         return data
 
 @ex.capture
-def update_data(edss, seizure_classification_only, seizure_classes_to_use, zero_out_patients=False):
+def update_data(edss, seizure_classification_only, seizure_classes_to_use, include_seizure_type, include_montage_channels, zero_out_patients=False):
     '''
     since we store the full string of the session or the patient instead of the index, we update the data to use the int index
     some of the tasks require different datasets and some filtering of the data i.e. only seizure classification or just some of the labels
@@ -546,7 +568,10 @@ def update_data(edss, seizure_classification_only, seizure_classes_to_use, zero_
         allPatient = list(set(patients))
         patient_labels = [allPatient.index(patient) for patient in patients]
     seizure_detection_labels = [datum[1][0] for datum in edss]
-    seizure_class_labels = [datum[1][2] for datum in edss]
+    if include_seizure_type:
+        seizure_class_labels = [datum[1][2] for datum in edss]
+    if include_montage_channels:
+        montage_channel_labels = [datum[1][3] for datum in edss]
     keep_index = [True for i in range(len(data))]
     if seizure_classes_to_use is not None:
         for i, seizure_class_label in enumerate(seizure_class_labels):
@@ -560,13 +585,25 @@ def update_data(edss, seizure_classification_only, seizure_classes_to_use, zero_
     patient_labels_to_keep = []
     seizure_detect_to_keep = []
     seizure_class_labels_to_keep = []
+    montage_channel_labels_to_keep = []
+
     for i, should_keep in enumerate(keep_index):
         if should_keep:
             data_to_keep.append(data[i])
             patient_labels_to_keep.append(patient_labels[i])
             seizure_detect_to_keep.append(seizure_detection_labels[i])
-            seizure_class_labels_to_keep.append(seizure_class_labels[i])
-    return [(data_to_keep[i], (seizure_detect_to_keep[i], patient_labels_to_keep[i], seizure_class_labels_to_keep[i])) for i in range(len(data_to_keep))], seizure_detect_to_keep, patient_labels_to_keep, seizure_class_labels_to_keep
+            if include_montage_channels:
+                montage_channel_labels_to_keep.append(montage_channel_labels[i])
+            if include_seizure_type:
+                seizure_class_labels_to_keep.append(seizure_class_labels[i])
+    if include_montage_channels and include_seizure_type:
+        return [(data_to_keep[i], (seizure_detect_to_keep[i], patient_labels_to_keep[i], seizure_class_labels_to_keep[i], montage_channel_labels_to_keep[i].values)) for i in range(len(data_to_keep))], seizure_detect_to_keep, patient_labels_to_keep, seizure_class_labels_to_keep, montage_channel_labels_to_keep
+    elif include_montage_channels:
+        raise Exception("Not implemented yet")
+    elif include_seizure_type:
+        return [(data_to_keep[i], (seizure_detect_to_keep[i], patient_labels_to_keep[i], seizure_class_labels_to_keep[i])) for i in range(len(data_to_keep))], seizure_detect_to_keep, patient_labels_to_keep, seizure_class_labels_to_keep
+    else:
+        return [(data_to_keep[i], (seizure_detect_to_keep[i], patient_labels_to_keep[i])) for i in range(len(data_to_keep))], seizure_detect_to_keep, patient_labels_to_keep
 
 @ex.capture
 def patient_func(tkn_file_paths, session_instead_patient):
@@ -575,7 +612,7 @@ def patient_func(tkn_file_paths, session_instead_patient):
     else:
         return [read.parse_edf_token_path_structure(tkn_file_path)[1] for tkn_file_path in tkn_file_paths]
 @ex.capture
-def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_type):
+def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_type, include_montage_channels):
     allPatients = []
     seizureLabels = []
     validSeizureLabels = []
@@ -646,8 +683,8 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
 
 
     train_edss = update_data(train_edss)
-    valid_edss = update_data(valid_edss)
-    test_edss = update_data(test_edss)
+    valid_edss = update_data(valid_edss, zero_out_patients=True)
+    test_edss = update_data(test_edss, zero_out_patients=True)
 
     if use_standard_scaler:
         train_edss = read.EdfStandardScaler(
@@ -657,15 +694,27 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
         test_edss = read.EdfStandardScaler(
             test_edss, dataset_includes_label=True, n_process=n_process)[:]
 
-    train_edss, seizureLabels, patientInd, seizureSubtypes = reorder_channels(train_edss)
-    valid_edss, validSeizureLabels, validPatientInd, validSeizureSubtypes = reorder_channels(valid_edss)
-    test_edss, _, _, testSeizureSubtypes = reorder_channels(test_edss)
+    if include_seizure_type and not include_montage_channels:
+        train_edss, seizureLabels, patientInd, seizureSubtypes = reorder_channels(train_edss)
+        valid_edss, validSeizureLabels, validPatientInd, validSeizureSubtypes = reorder_channels(valid_edss)
+        test_edss, _, _, testSeizureSubtypes = reorder_channels(test_edss)
+    elif include_seizure_type and include_montage_channels:
+        train_edss, seizureLabels, patientInd, seizureSubtypes, montageLabels = reorder_channels(train_edss)
+        valid_edss, validSeizureLabels, validPatientInd, validSeizureSubtypes, validMontageLabels = reorder_channels(valid_edss)
+        test_edss, testSeizureLabels, testPatientInd, testSeizureSubtypes, testMontageLabels = reorder_channels(test_edss)
+    else:
+        raise Exception("Not implemented yet")
 
-    if include_seizure_type:
+
+    if include_seizure_type and not include_montage_channels:
         edg = RULDataGenMultipleLabels(train_edss, num_labels=3, precache=True, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
         valid_edg = valid_dataset_class()(valid_edss, num_labels=3, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
         test_edg = DataGenMultipleLabels(test_edss, num_labels=3, precache=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
-    else:
+    elif include_seizure_type and include_montage_channels:
+        edg = RULDataGenMultipleLabels(train_edss, num_labels=4, precache=True, class_type=["nominal", "nominal", "nominal", "quantile"], batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes, montageLabels], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)),)
+        valid_edg = valid_dataset_class()(valid_edss, num_labels=4, precache=True, class_type=["nominal", "nominal", "nominal", "quantile"], batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes, validMontageLabels], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)), shuffle=False)
+        test_edg = DataGenMultipleLabels(test_edss, num_labels=4, precache=True, class_type=["nominal", "nominal", "nominal", "quantile"], labels=[testSeizureLabels, testPatientInd, testSeizureSubtypes, testMontageLabels], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)), batch_size=batch_size*4, shuffle=False)
+    elif not include_seizure_type and not include_montage_channels:
         edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=True, labels=[seizureLabels, patientInd], batch_size=batch_size, n_classes=(2, len(allPatients)),) #learning means we are more likely to be affected by batch size, both for OOM in gpu and as a hyperparamer
         valid_edg = valid_dataset_class()(valid_edss, num_labels=2, precache=True, labels=[validSeizureLabels, validPatientInd], batch_size=batch_size*4, xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False) #batch size doesn't matter as much when we aren't learning but we still need batches to avoid OOM
         if len(test_edss[0][1]) > 1: #we throw out the seizure type label
@@ -728,7 +777,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
          include_seizure_type, max_bckg_samps_per_file_test, seizure_weight, seizure_weight_decay, update_seizure_class_weights, seizure_classification_only,
          validation_f1_score_type, reduce_lr_on_plateau, lr, lr_decay, change_batch_size_over_time,
          test_patient_model_after_train, train_patient_model_after_train, valid_patient_model_after_train,
-         random_rearrange_each_batch, random_rescale, rescale_factor,):
+         random_rearrange_each_batch, random_rescale, rescale_factor, include_montage_channels):
     seizure_class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
     # patient_class_weights = {}
@@ -760,6 +809,10 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     training_seizure_loss = []
     valid_seizure_loss = []
     valid_f1_scores = []
+    train_montage_loss = []
+    train_montage_acc = []
+    val_montage_loss = []
+    val_montage_acc = []
 
     oldPatientWeights = patient_model.layers[-1].get_weights()
     oldNonPatientWeights = [layer.get_weights() for layer in seizure_model.layers[:-1]]
@@ -800,6 +853,13 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         valid_predictions_full = []
         valid_predictions = []
 
+        if include_montage_channels:
+            montage_epochs_accs = []
+            montage_val_epoch_labels = []
+            montage_val_predictions_epoch = []
+            montage_val_epoch_labels_full = []
+            montage_val_predictions_epoch_full = []
+
         if include_seizure_type:
             subtype_epochs_accs = []
             subtype_val_epoch_labels = []
@@ -813,9 +873,11 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
         train_seizure_loss_epoch = []
         train_subtype_loss_epoch = []
+        train_montage_loss_epoch = []
 
         seizure_accs = []
         patient_accs_epoch = []
+        train_montage_acc_epoch = []
         # for j in range(len(edg)):
         if steps_per_epoch is None:
             steps_per_epoch_func = lambda: len(edg)
@@ -835,7 +897,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
                 data_x = data_x * (np.random.random() * (rescale_factor - 1/rescale_factor) + 1/rescale_factor)
 
             if include_seizure_type:
-                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, patient_acc, subtype_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1], class_weight=get_class_weights(seizure_class_weights, len_all_patients))
+                loss, seizure_loss, patient_loss, subtype_loss, montage_loss, seizure_acc, patient_acc, subtype_acc, montage_acc = seizure_patient_model.train_on_batch(data_x, train_batch[1], )
                 subtype_epochs_accs.append(subtype_acc)
 
             else:
@@ -851,6 +913,9 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             train_seizure_loss_epoch.append(seizure_loss)
             if include_seizure_type:
                 train_subtype_loss_epoch.append(subtype_loss)
+            if include_montage_channels:
+                train_montage_loss_epoch.append(montage_loss)
+                train_montage_acc_epoch.append(montage_acc)
 
             #get weights that try to predict for patient
             oldPatientWeights = patient_model.layers[-1].get_weights()
@@ -862,6 +927,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
                 printEpochUpdateString = "epoch: {} batch: {}/{}, seizure acc: {}, patient acc: {}, loss: {}".format(i, j, len(edg), np.mean(seizure_accs), np.mean(patient_accs_epoch), loss)
                 if include_seizure_type:
                     printEpochUpdateString += ", seizure subtype acc: {}, subtype loss: {}".format(np.mean(subtype_epochs_accs), np.mean(train_subtype_loss_epoch))
+                if include_montage_channels:
+                    printEpochUpdateString += ", seizure montage identification acc: {}, montage loss: {}".format(np.mean(train_montage_acc_epoch), np.mean(train_montage_loss_epoch))
                 print(printEpochUpdateString)
     #     valid_edg.start_background()
 
@@ -877,6 +944,12 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 
             val_batch_predictions = val_train_model.predict_on_batch(data_x)
+            if include_montage_channels and include_seizure_type:
+                # montage_val_predictions_epoch.append(val_batch_predictions[2].argmax(1))
+                montage_val_predictions_epoch_full.append(val_batch_predictions[2])
+                # montage_val_epoch_labels.append(valid_batch[1][3].argmax(1))
+                montage_val_epoch_labels_full.append(valid_batch[1][3])
+
             if include_seizure_type:
                 subtype_val_predictions_epoch.append(val_batch_predictions[1].argmax(1))
                 subtype_val_predictions_epoch_full.append(val_batch_predictions[1])
@@ -924,6 +997,12 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         valid_labels_full_epoch = np.nan_to_num(np.vstack(valid_labels_full_epoch).astype(np.float32))
         valid_predictions_full = np.nan_to_num(np.vstack(valid_predictions_full).astype(np.float32))
 
+        if include_montage_channels:
+            # montage_val_epoch_labels = np.nan_to_num(np.hstack(montage_val_epoch_labels).astype(np.float32))
+            # montage_val_predictions_epoch = np.nan_to_num(np.hstack(montage_val_predictions_epoch).astype(np.float32))
+            montage_val_epoch_labels_full = np.nan_to_num(np.vstack(montage_val_epoch_labels_full).astype(np.float32))
+            montage_val_predictions_epoch_full = np.nan_to_num(np.vstack(montage_val_predictions_epoch_full).astype(np.float32))
+
         if include_seizure_type:
             subtype_val_epoch_labels = np.nan_to_num(np.hstack(subtype_val_epoch_labels).astype(np.float32))
             subtype_val_predictions_epoch = np.nan_to_num(np.hstack(subtype_val_predictions_epoch).astype(np.float32))
@@ -944,6 +1023,15 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         printEpochEndString = "end epoch: {}, f1: {}, auc: {}, acc: {}, loss: {}\n".format(i, f1_score(valid_predictions, valid_labels_epoch), auc, valid_acc, valid_loss)
         valid_f1_scores.append(f1_score(valid_predictions, valid_labels_epoch))
         valid_seizure_loss.append(valid_loss)
+        if include_montage_channels:
+            train_montage_loss.append(np.mean(train_montage_loss_epoch))
+            train_montage_acc.append(np.mean(train_montage_acc_epoch))
+            current_val_epoch_montage_acc = accuracy_score(montage_val_epoch_labels_full, np.round(montage_val_predictions_epoch_full).astype(np.int))
+            current_val_epoch_montage_loss = log_loss(montage_val_epoch_labels_full, montage_val_predictions_epoch_full)
+            val_montage_acc.append(current_val_epoch_montage_acc)
+            val_montage_loss.append(current_val_epoch_montage_loss)
+            printEpochEndString += "\t montage info: train acc: {}, valid acc:{}, loss: {}\n".format(train_montage_acc[-1], val_montage_acc[-1], val_montage_loss[-1],)
+
         if include_seizure_type:
             subtype_losses.append(np.mean(train_subtype_loss_epoch))
             subtype_acc = np.mean(subtype_epochs_accs)
@@ -954,9 +1042,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             valid_seizure_subtype_loss.append(val_subtype_loss)
             macro_subtype_f1 = f1_score(subtype_val_epoch_labels, subtype_val_predictions_epoch, average='macro')
             weighted_subtype_f1 = f1_score(subtype_val_epoch_labels, subtype_val_predictions_epoch, average='weighted')
-
-
-            printEpochEndString += "\tsubtype info: train acc: {}, valid acc:{}, loss: {}, macro_f1: {}, weighted_f1: {}".format(subtype_acc, val_subtype_acc, val_subtype_loss, macro_subtype_f1, weighted_subtype_f1)
+            printEpochEndString += "\tsubtype info: train acc: {}, valid acc:{}, loss: {}, macro_f1: {}, weighted_f1: {}\n\n".format(subtype_acc, val_subtype_acc, val_subtype_loss, macro_subtype_f1, weighted_subtype_f1)
 
 
 
@@ -1038,6 +1124,12 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         results.history.subtype.loss = subtype_losses
         results.history.subtype.val_loss = valid_seizure_subtype_loss
 
+    if include_montage_channels:
+        results.history.montage.train_acc = train_montage_acc
+        results.history.montage.train_loss = train_montage_loss
+        results.history.montage.val_acc = val_montage_acc
+        results.history.montage.val_loss = val_montage_loss
+
     if include_seizure_type:
         y_seizure_label =  np.array([data[1][0] for data in test_edg.dataset]).astype(int)
         y_seizure_pred = np.array([y_pred[0].argmax(1)]).astype(int)[0]
@@ -1053,8 +1145,18 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         y_seizure_label =  np.array([data[1] for data in test_edg.dataset]).astype(int)
         y_seizure_pred = np.array(y_pred.argmax(1)).astype(int)
 
-    print("We predicted {} seizures in the test split, there were actually {}".format(y_seizure_pred.sum(), np.array([data[1] for data in test_edg.dataset]).astype(int).sum()))
-    print("We predicted {} seizure/total in the test split, there were actually {}".format(y_seizure_pred.sum()/len(y_seizure_pred), np.array([data[1] for data in test_edg.dataset]).astype(int).sum()/len(np.array([data[1] for data in test_edg.dataset]).astype(int))))
+    if include_seizure_type and include_montage_channels:
+        y_montage_label =  np.array([data[1][3] for data in test_edg.dataset]).astype(int)
+        y_montage_pred = np.round(y_pred[2]).astype(int)
+        results.montage.acc = accuracy_score(y_montage_label, y_montage_pred)
+        results.montage.f1.macro = f1_score(y_montage_label, y_montage_pred, average='macro')
+        results.montage.f1.micro = f1_score(y_montage_label, y_montage_pred, average='micro')
+        results.montage.f1.weighted = f1_score(y_montage_label, y_montage_pred, average='weighted')
+        # results.montage.confusion_matrix = confusion_matrix(y_montage_pred, y_montage_label)
+        # results.montage.classification_report = classification_report(y_montage_pred, y_montage_label, output_dict=True)
+
+    print("We predicted {} seizures in the test split, there were actually {}".format(y_seizure_pred.sum(), np.array([data[1][0] for data in test_edg.dataset]).astype(int).sum()))
+    print("We predicted {} seizure/total in the test split, there were actually {}".format(y_seizure_pred.sum()/len(y_seizure_pred), np.array([data[1][0] for data in test_edg.dataset]).astype(int).sum()/len(test_edg.dataset)))
 
     if not seizure_classification_only:
         results.seizure.acc = accuracy_score(y_seizure_pred, y_seizure_label)
