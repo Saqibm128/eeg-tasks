@@ -759,13 +759,6 @@ def false_alarms_per_hour(fp, total_samps, num_seconds):
     return (fp / total_samps) * num_chances_per_hour
 
 @ex.capture
-def get_class_weights(seizure_class_weights, num_patients, include_seizure_type):
-    if include_seizure_type:
-        return [seizure_class_weights, [1 for i in range(num_patients)], [1 for i in range(len(constants.SEIZURE_SUBTYPES))]]
-    else:
-        return  [seizure_class_weights, [1 for i in range(num_patients)]]
-
-@ex.capture
 def get_test_patient_edg(test_pkl, batch_size):
     test_edss = pkl.load(open(test_pkl, "rb"))
     patients = [datum[1] for datum in test_edss]
@@ -1156,13 +1149,17 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         results.history.lr = lrs
     if change_batch_size_over_time:
         results.history.batch_size = batch_sizes
-    if test_patient_model_after_train:
-        test_patient_history = test_patient_accuracy_after_training(x_input, cnn_y, model)
-        results.patient_history.test = test_patient_history.history
     if train_patient_model_after_train:
+        print("train patient measurement")
         results.patient_history.train = train_patient_accuracy_after_training(x_input, cnn_y, model).history
     if valid_patient_model_after_train:
+        print("valid patient measurement")
         results.patient_history.valid = valid_patient_accuracy_after_training(x_input, cnn_y, model).history
+    if test_patient_model_after_train:
+        print("test patient measurement")
+        test_patient_history = test_patient_accuracy_after_training(x_input, cnn_y, model)
+        results.patient_history.test = test_patient_history.history
+
 
     results.history.seizure.valid_f1 = valid_f1_scores
     results.history.seizure.train_f1 = train_seizure_f1s
@@ -1215,7 +1212,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         results.seizure.f1 = f1_score(y_seizure_pred, y_seizure_label)
         results.seizure.classification_report = classification_report(y_seizure_label, y_seizure_pred, output_dict=True)
         results.seizure.confusion_matrix = confusion_matrix(y_seizure_label, y_seizure_pred)
-        if max_bckg_samps_per_file_test is not None:
+        if max_bckg_samps_per_file_test is not None or max_bckg_samps_per_file_test==-1:
             total_samps = sum(results.seizure.confusion_matrix[0]) #just use the samps labeled negative, max_bckg_samps_per_file_test is used to run faster but leads to issues with class imbalance not being fully reflected if we include seizure
         else:
             total_samps = sum(sum(results.seizure.confusion_matrix))
@@ -1231,4 +1228,3 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 if __name__ == "__main__":
     ex.run_commandline()
-  

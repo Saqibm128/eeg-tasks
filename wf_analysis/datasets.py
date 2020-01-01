@@ -8,6 +8,7 @@ import constants
 from scipy.signal import coherence
 import pywt
 import multiprocessing as mp
+from util_funcs import np_rolling_window
 
 
 def norm_num_peaks_func(n):
@@ -161,7 +162,7 @@ class EdfDWTDatasetTransformer(util_funcs.MultiProcessingDataset):
             :self.max_coef]
 
 class CoherenceTransformer(util_funcs.MultiProcessingDataset):
-    def __init__(self, edfRawData, n_process=None, coherence_all=True, coherence_pairs=None, average_coherence=True, coherence_bins=None, columns_to_use=util_funcs.get_common_channel_names(), is_pandas=True, is_tuple_data=True):
+    def __init__(self, edfRawData, n_process=None, coherence_all=True, coherence_pairs=None, average_coherence=True, coherence_bin=None, columns_to_use=util_funcs.get_common_channel_names(), is_pandas=True, is_tuple_data=True):
         """
 
         Parameters
@@ -178,7 +179,7 @@ class CoherenceTransformer(util_funcs.MultiProcessingDataset):
             to run coherence measurements on
         average_coherence : bool
             If true, just do an average of all coherences over all represented
-            frequencies. If False, use coherence_bins to histogram bin everything
+            frequencies. If False, use coherence_bin to histogram bin everything
 
         Returns
         -------
@@ -192,7 +193,7 @@ class CoherenceTransformer(util_funcs.MultiProcessingDataset):
         self.coherence_all = coherence_all
         self.coherence_pairs = coherence_pairs
         self.average_coherence = average_coherence
-        self.coherence_bins = coherence_bins
+        self.coherence_bin = coherence_bin
         self.columns_to_use = columns_to_use
         self.is_pandas = is_pandas
         self.is_tuple_data = is_tuple_data
@@ -231,28 +232,33 @@ class CoherenceTransformer(util_funcs.MultiProcessingDataset):
                 for column_1, column_2 in coherence_pairs:
                     toReturn["coherence {}".format((column_1, column_2))] =  np.mean(coherence(raw_data.T[column_1], raw_data.T[column_2], fs=constants.COMMON_FREQ, nperseg=constants.COMMON_FREQ/4)[1])
         else:
-            raise Exception("Not implemented yet")
+            # raise Exception("Not implemented yet")
 
             if self.is_pandas:
                 raise Exception("Not implemented yet")
             else:
                 toReturn = pd.Series()
                 window_count_size = int(
-                    self.coherence_bins /
+                    self.coherence_bin /
                     pd.Timedelta(
                         seconds=constants.COMMON_DELTA))
 
-                original_data_label = self.edf_dataset[i]
+                original_data_label = self.edfRawData[i]
                 if self.is_tuple_data:
-                    original_data, label = original_data_label
+                    original_data, ann = original_data_label
                 else:
                     original_data = original_data_label
-                if self.is_pandas_data:
-                    fft_data = original_data.values
+                if self.is_pandas:
+                    original_data = original_data.values
                 else:
-                    fft_data = original_data
-                fft_data_windows = np_rolling_window(
-                    np.array(fft_data.T), window_count_size)
+                    original_data = original_data
+                coher_data = np.ndarray((int(original_data.shape[0]/window_count_size), int(original_data.shape[1] * (original_data.shape[1] - 1) / 2) ))
+                for i in range(coher_data.shape[0]):
+                    start_time = i * window_count_size
+                    end_time = (i+1) * window_count_size
+                    for j, coher_pair in enumerate(coherence_pairs):
+                        coher_data[i, j] = np.mean(coherence(raw_data[start_time:end_time, coher_pair[0], ], raw_data[start_time:end_time, coher_pair[1], ], fs=constants.COMMON_FREQ, nperseg=constants.COMMON_FREQ/4)[1])
+                toReturn = coher_data
         return toReturn, ann
 
 
