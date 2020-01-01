@@ -26,9 +26,9 @@ class ConcatenationDataset(util_funcs.MultiProcessingDataset):
     '''
     Avoid a possible bottleneck where we try to call the base segments too much, just concatenate a ton of transforms together
     '''
-    def __init__(self, datasets, flatten=True):
+    def __init__(self, datasets, mode="flatten"):
         self.datasets = datasets
-        self.flatten = flatten
+        self.mode = mode
 
     def __len__(self):
         return len(self.datasets[0])
@@ -41,7 +41,7 @@ class ConcatenationDataset(util_funcs.MultiProcessingDataset):
         for dataset in self.datasets:
             xy = dataset[i]
             if type(xy) == tuple:
-                if not self.flatten:
+                if not self.mode == "flatten":
                     x.append(xy[0])
                 else:
                     if type(xy[0]) == pd.DataFrame:

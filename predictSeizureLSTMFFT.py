@@ -46,7 +46,131 @@ from time import time
 from addict import Dict
 ex = sacred.Experiment(name="seizure_hand_eng_fft_coh_exp")
 
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+
+
+@ex.config
+def config():
+    model_name = "/n/scratch2/ms994/out/" + randomString() + ".h5" #set to rando string so we don't have to worry about collisions
+    mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
+    max_samples=None
+    max_pool_size = (2,2)
+    max_pool_stride = (2,2)
+    steps_per_epoch = None
+    session_instead_patient=False
+
+    conv_spatial_filter=(3,3)
+    conv_temporal_filter=(1,3)
+    num_gpus=1
+    num_conv_temporal_layers=1
+
+    imbalanced_resampler = "rul"
+    pre_cooldown=4
+    use_inception = False
+    post_cooldown=None
+    sample_time=4
+    num_seconds=4
+    n_process=20
+    mode = er.EdfDatasetSegmentedSampler.DETECT_MODE
+    cnn_dropout = 0
+    linear_dropout = 0.5
+    optimizer_name="adam"
+    lstm_h = 128
+    lstm_return_sequence = False
+    reduce_lr_on_plateau = False
+    change_batch_size_over_time = None
+    add_gaussian_noise = None
+
+    precache = True
+    regenerate_data = False
+    processed_train_pkl = "/n/scratch2/ms994/processed_train_multiple_labels_seizure_data_4.pkl"
+    processed_valid_pkl = "/n/scratch2/ms994/processed_valid_multiple_labels_seizure_data_4.pkl"
+    processed_test_pkl = "/n/scratch2/ms994/processed_test_multiple_labels_seizure_data_4.pkl"
+
+    train_pkl = "/n/scratch2/ms994/train_multiple_labels_seizure_data_4.pkl"
+    valid_pkl = "/n/scratch2/ms994/valid_multiple_labels_seizure_data_4.pkl"
+    test_pkl = "/n/scratch2/ms994/test_multiple_labels_seizure_data_4.pkl"
+    batch_size = 32
+
+    # seizure_type = None
+
+    pre_layer_h = 128
+    num_lin_layer = 1
+
+    patience=5
+    early_stopping_on="val_loss"
+    fit_generator_verbosity = 2
+    num_layers = 3
+    num_filters = 1
+    num_temporal_filter=1
+    num_post_cnn_layers = 2
+    hyperopt_run = False
+    make_model_in_parallel = False
+    randomly_reorder_channels = False #use if we want to try to mess around with EEG order
+    include_seizure_type = False
+    attach_seizure_type_to_seizure_detect = False
+    seizure_classification_only = False
+    seizure_classes_to_use = None
+    update_seizure_class_weights = False
+    min_seizure_weight = 0
+    model_type = None
+
+    patient_weight = -1
+    seizure_weight = 1
+    complex_feature_channels=constants.SYMMETRIC_COLUMN_SUBSET
+
+
+    num_post_lin_h = 5
+
+    use_batch_normalization = True
+
+    max_bckg_samps_per_file = 50 #limits number of samples we grab that are bckg to increase speed and reduce data size
+    max_bckg_samps_per_file_test = -1 #reflect the full imbalance in the dataset
+    max_samples=None
+    use_standard_scaler = False
+    use_filtering = True
+    ref = "01_tcp_ar"
+    combined_split = None
+    lr = 0.005
+    lr_decay = 0
+
+    use_lstm = False
+    use_time_layers_first = False
+    max_pool_size_time = None
+    validation_f1_score_type = None
+
+
+
+    balance_valid_dataset = False
+
+    epochs=100
+    seizure_weight_decay = None
+    # measure_train_patient_bias = False
+
+    test_patient_model_after_train = False
+    train_patient_model_after_train = False
+    valid_patient_model_after_train = False
+    random_rearrange_each_batch = False
+    random_rescale = False
+    rescale_factor = 1.3
+    include_montage_channels = False
+    coherence_bin = pd.Timedelta(seconds=1)
+
+    time_step = pd.Timedelta(seconds=0.5)
+
+@ex.named_config
+def debug():
+    train_pkl = "/home/ms994/debug_train_multiple_labels_seizure_data_4.pkl"
+    valid_pkl = "/home/ms994/debug_valid_multiple_labels_seizure_data_4.pkl"
+    test_pkl = "/home/ms994/debug_test_multiple_labels_seizure_data_4.pkl"
+    processed_train_pkl = "/n/scratch2/ms994/debug_processed_train_multiple_labels_seizure_data_4.pkl"
+    processed_valid_pkl = "/n/scratch2/ms994/debug_processed_valid_multiple_labels_seizure_data_4.pkl"
+    processed_test_pkl = "/n/scratch2/ms994/debug_processed_test_multiple_labels_seizure_data_4.pkl"
+    max_bckg_samps_per_file = 5 #limits number of samples we grab that are bckg to increase speed and reduce data size
+    max_bckg_samps_per_file_test = 5
+    max_samples=10000
+    include_seizure_type=True
+    session_instead_patient = True
 
 # https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -86,16 +210,6 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     return train_edss, valid_edss, test_edss
 
 
-@ex.capture
-def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
-    if randomly_reorder_channels:
-        newData = []
-        for datum_pair in data:
-            datum_pair_first = datum_pair[0][:,random_channel_ordering]
-            newData.append((datum_pair_first, datum_pair[1]))
-        return newData
-    else:
-        return data
 
 @ex.capture
 def update_data(edss, seizure_classification_only, seizure_classes_to_use, include_seizure_type, include_montage_channels, zero_out_patients=False):
@@ -156,8 +270,33 @@ def patient_func(tkn_file_paths, session_instead_patient):
         return [read.parse_edf_token_path_structure(tkn_file_path)[1] + "/" + read.parse_edf_token_path_structure(tkn_file_path)[2] for tkn_file_path in tkn_file_paths]
     else:
         return [read.parse_edf_token_path_structure(tkn_file_path)[1] for tkn_file_path in tkn_file_paths]
+
+
 @ex.capture
-def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_standard_scaler, precache, batch_size, n_process, include_seizure_type, include_montage_channels):
+def process_data(edss, time_step, n_process):
+    coherData = wfdata.CoherenceTransformer(simple_edss(edss), is_pandas=False, is_tuple_data=True, average_coherence=False, coherence_bin=time_step, n_process=n_process)[:]
+    fftData = read.EdfFFTDatasetTransformer(simple_edss(edss), is_tuple_data=True, is_pandas_data=False, freq_bins=constants.FREQ_BANDS, window_size=time_step, n_process=n_process)[:]
+    fftData = [fftDatum[0].transpose((1, 0,2)).reshape(8, fftDatum[0].shape[0] *  fftDatum[0].shape[2]) for fftDatum in fftData]
+    labels = [coherDatum[1] for coherDatum in coherData]
+    coherData = [coherDatum[0] for coherDatum in coherData]
+    data_x = [np.hstack([coherData[i], fftData[i]]) for i in range(len(fftData))]
+    return list(zip(data_x, labels))
+
+
+@ex.capture
+def simple_edss(edss, complex_feature_channels):
+    '''
+    Use only a few columns so that we don't make 21*20 coherence pairs
+    '''
+    all_channels = util_funcs.get_common_channel_names()
+    subset_channels = [all_channels.index(channel) for channel in complex_feature_channels]
+    return [(datum[0][:, subset_channels], datum[1]) for datum in edss]
+
+
+
+@ex.capture
+def get_data_generators(train_pkl,  valid_pkl, test_pkl, processed_train_pkl, processed_valid_pkl, processed_test_pkl, \
+                 regenerate_data, use_standard_scaler, precache, n_process, include_seizure_type, include_montage_channels, batch_size):
     allPatients = []
     seizureLabels = []
     validSeizureLabels = []
@@ -220,6 +359,7 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
         pkl.dump(valid_edss[:], open(valid_pkl, 'wb'))
         pkl.dump(test_edss[:], open(test_pkl, 'wb'))
 
+
     #we want to have an actual string stored in record so we can do some more dissection on the segments, but we want an integer index when we run the code
     patients = [datum[1][1] for datum in train_edss]
     allPatients = list(set(patients))
@@ -234,13 +374,13 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
 
 
     if include_seizure_type and not include_montage_channels:
-        train_edss, seizureLabels, patientInd, seizureSubtypes = reorder_channels(train_edss)
-        valid_edss, validSeizureLabels, validPatientInd, validSeizureSubtypes = reorder_channels(valid_edss)
-        test_edss, _, _, testSeizureSubtypes = reorder_channels(test_edss)
+        train_edss, seizureLabels, patientInd, seizureSubtypes = (train_edss)
+        valid_edss, validSeizureLabels, validPatientInd, validSeizureSubtypes = (valid_edss)
+        test_edss, testSeizureLabels, testPatientInd, testSeizureSubtypes = (test_edss)
     elif include_seizure_type and include_montage_channels:
-        train_edss, seizureLabels, patientInd, seizureSubtypes, montageLabels = reorder_channels(train_edss)
-        valid_edss, validSeizureLabels, validPatientInd, validSeizureSubtypes, validMontageLabels = reorder_channels(valid_edss)
-        test_edss, testSeizureLabels, testPatientInd, testSeizureSubtypes, testMontageLabels = reorder_channels(test_edss)
+        train_edss, seizureLabels, patientInd, seizureSubtypes, montageLabels = (train_edss)
+        valid_edss, validSeizureLabels, validPatientInd, validSeizureSubtypes, validMontageLabels = (valid_edss)
+        test_edss, testSeizureLabels, testPatientInd, testSeizureSubtypes, testMontageLabels = (test_edss)
     else:
         raise Exception("Not implemented yet")
 
@@ -267,24 +407,40 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
 
 
     if include_seizure_type and not include_montage_channels:
-        edg = RULDataGenMultipleLabels(train_edss, num_labels=3, precache=not use_standard_scaler, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
-        valid_edg = valid_dataset_class()(valid_edss, num_labels=3, precache=not use_standard_scaler, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
-        test_edg = DataGenMultipleLabels(test_edss, num_labels=3, precache=not use_standard_scaler, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
+        if path.exists(processed_train_pkl) and precache:
+            processed_train_data = pkl.load(open(processed_train_pkl, "rb"))
+            processed_valid_data = pkl.load(open(processed_valid_pkl, "rb"))
+            processed_test_data = pkl.load(open(processed_test_pkl, "rb"))
+        else:
+            processed_train_data = process_data(train_edss)
+            processed_valid_data = process_data(valid_edss)
+            processed_test_data = process_data(test_edss)
+            pkl.dump(processed_train_data, open(processed_train_pkl, "wb"))
+            pkl.dump(processed_valid_data, open(processed_valid_pkl, "wb"))
+            pkl.dump(processed_test_data, open(processed_test_pkl, "wb"))
+        edg = RULDataGenMultipleLabels(processed_train_data, num_labels=3, precache=True, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
+        valid_edg = valid_dataset_class()(processed_valid_data, num_labels=3, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
+        test_edg = DataGenMultipleLabels(processed_test_data, num_labels=3, precache=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
+
+        return edg, valid_edg, test_edg, len(allPatients)
     elif include_seizure_type and include_montage_channels:
-        edg = RULDataGenMultipleLabels(train_edss, num_labels=4, precache=not use_standard_scaler, class_type=["nominal", "nominal", "nominal", "quantile"], batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes, montageLabels], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)),)
-        valid_edg = valid_dataset_class()(valid_edss, num_labels=4, precache=not use_standard_scaler, class_type=["nominal", "nominal", "nominal", "quantile"], batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes, validMontageLabels], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)), shuffle=False)
-        test_edg = DataGenMultipleLabels(test_edss, num_labels=4, precache=not use_standard_scaler, class_type=["nominal", "nominal", "nominal", "quantile"], labels=[testSeizureLabels, testPatientInd, testSeizureSubtypes, testMontageLabels], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES), len(constants.MONTAGE_COLUMNS)), batch_size=batch_size*4, shuffle=False)
+        raise Exception("Not Implemented")
     elif not include_seizure_type and not include_montage_channels:
-        edg = RULDataGenMultipleLabels(train_edss, num_labels=2, precache=not use_standard_scaler, labels=[seizureLabels, patientInd], batch_size=batch_size, n_classes=(2, len(allPatients)),) #learning means we are more likely to be affected by batch size, both for OOM in gpu and as a hyperparamer
-        valid_edg = valid_dataset_class()(valid_edss, num_labels=2, precache=not use_standard_scaler, labels=[validSeizureLabels, validPatientInd], batch_size=batch_size*4, xy_tuple_form=True, n_classes=(2, len(allPatients)), shuffle=False) #batch size doesn't matter as much when we aren't learning but we still need batches to avoid OOM
-        if len(test_edss[0][1]) > 1: #we throw out the seizure type label
-            data = [datum[0] for datum in test_edss]
-            labels = [datum[1][0] for datum in test_edss]
-            test_edss = [(data[i], labels[i]) for i in range(len(data))]
-        test_edg = EdfDataGenerator(test_edss, n_classes=2, precache=not use_standard_scaler, batch_size=batch_size, shuffle=False)
-    return edg, valid_edg, test_edg, len(allPatients)
+        raise Exception("Not Implemented")
+    raise Exception("Not Implemented")
+
+    # return edg, valid_edg, test_edg, len(allPatients)
 
 @ex.capture
 def false_alarms_per_hour(fp, total_samps, num_seconds):
     num_chances_per_hour = 60 * 60 / num_seconds
     return (fp / total_samps) * num_chances_per_hour
+
+@ex.main
+def main(model_name):
+    edg, valid_edg, test_edg, len_all_patients = get_data_generators()
+    raise Exception()
+
+
+if __name__ == "__main__":
+    ex.run_commandline()
