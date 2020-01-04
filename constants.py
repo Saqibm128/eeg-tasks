@@ -17,3 +17,4 @@ SIMPLE_CONV2D_MAP = [
 SEIZURE_SUBTYPES = ["bckg", "fnsz", "gnsz", "spsz", "cpsz", "absz", "tnsz", "cnsz", "tcsz", "atsz", "mysz"]
 
 MONTAGE_COLUMNS = ['C3-CZ','CZ-C4','FP1-F7','F8-T4','F7-T3','C4-T4','FP2-F4','T5-O1','C4-P4','F3-C3','T3-T5','A1-T3','T4-A2','FP2-F8','FP1-F3','T3-C3','C3-P3','T4-T6','P4-O2','P3-O1','T6-O2','F4-C4']
+MONTAGE_COLUMN_TUPLES = [(1, 6),(6, 10),(16, 14),(4, 12),(14, 18),(10, 12),(20, 13),(0, 11),(10, 3),(5, 1),(18, 0),(2, 18),(12, 8),(20, 4),(16, 5),(18, 1),(1, 9),(12, 19),(3, 7),(9, 11),(19, 7),(13, 10)]

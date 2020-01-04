@@ -19,7 +19,7 @@ from sklearn.metrics import f1_score, make_scorer, accuracy_score, roc_auc_score
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 import wf_analysis.datasets as wfdata
-from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels, RULEdfDataGenerator, RULDataGenMultipleLabels
+from keras_models.dataGen import EdfDataGenerator, DataGenMultipleLabels, RULEdfDataGenerator, RULDataGenMultipleLabels, HackDataGenNoChannels
 from keras_models.cnn_models import vp_conv2d, conv2d_gridsearch, inception_like_pre_layers, conv2d_gridsearch_pre_layers
 from keras import optimizers
 from keras.layers import Dense, TimeDistributed, Input, Reshape, Dropout, LSTM, Flatten, Concatenate, CuDNNLSTM, GaussianNoise, BatchNormalization
@@ -54,32 +54,25 @@ def config():
     model_name = "/n/scratch2/ms994/out/" + randomString() + ".h5" #set to rando string so we don't have to worry about collisions
     mode=er.EdfDatasetSegmentedSampler.DETECT_MODE
     max_samples=None
-    max_pool_size = (2,2)
-    max_pool_stride = (2,2)
     steps_per_epoch = None
     session_instead_patient=False
 
-    conv_spatial_filter=(3,3)
-    conv_temporal_filter=(1,3)
+
     num_gpus=1
-    num_conv_temporal_layers=1
 
     imbalanced_resampler = "rul"
     pre_cooldown=4
-    use_inception = False
     post_cooldown=None
     sample_time=4
     num_seconds=4
     n_process=20
     mode = er.EdfDatasetSegmentedSampler.DETECT_MODE
-    cnn_dropout = 0
     linear_dropout = 0.5
     optimizer_name="adam"
     lstm_h = 128
     lstm_return_sequence = False
     reduce_lr_on_plateau = False
     change_batch_size_over_time = None
-    add_gaussian_noise = None
 
     precache = True
     regenerate_data = False
@@ -87,27 +80,24 @@ def config():
     processed_valid_pkl = "/n/scratch2/ms994/processed_valid_multiple_labels_seizure_data_4.pkl"
     processed_test_pkl = "/n/scratch2/ms994/processed_test_multiple_labels_seizure_data_4.pkl"
 
-    train_pkl = "/n/scratch2/ms994/train_multiple_labels_seizure_data_4.pkl"
-    valid_pkl = "/n/scratch2/ms994/valid_multiple_labels_seizure_data_4.pkl"
-    test_pkl = "/n/scratch2/ms994/test_multiple_labels_seizure_data_4.pkl"
+    train_pkl = "/n/scratch2/ms994/train_multiple_labels_sessions_montage_seizure_data_4.pkl"
+    valid_pkl = "/n/scratch2/ms994/valid_multiple_labels_sessions_montage_seizure_data_4.pkl"
+    test_pkl = "/n/scratch2/ms994/test_multiple_labels_sessions_montage_seizure_data_4.pkl"
     batch_size = 32
 
     # seizure_type = None
 
     pre_layer_h = 128
-    num_lin_layer = 1
+    num_lin_layer = 0
 
     patience=5
     early_stopping_on="val_loss"
     fit_generator_verbosity = 2
     num_layers = 3
-    num_filters = 1
-    num_temporal_filter=1
-    num_post_cnn_layers = 2
     hyperopt_run = False
     make_model_in_parallel = False
     randomly_reorder_channels = False #use if we want to try to mess around with EEG order
-    include_seizure_type = False
+    include_seizure_type = True
     attach_seizure_type_to_seizure_detect = False
     seizure_classification_only = False
     seizure_classes_to_use = None
@@ -118,9 +108,9 @@ def config():
     patient_weight = -1
     seizure_weight = 1
     complex_feature_channels=constants.SYMMETRIC_COLUMN_SUBSET
+    num_post_lin_h=128
 
 
-    num_post_lin_h = 5
 
     use_batch_normalization = True
 
@@ -134,10 +124,8 @@ def config():
     lr = 0.005
     lr_decay = 0
 
-    use_lstm = False
-    use_time_layers_first = False
-    max_pool_size_time = None
     validation_f1_score_type = None
+    num_post_lstm_layers=1
 
 
 
@@ -155,6 +143,7 @@ def config():
     rescale_factor = 1.3
     include_montage_channels = False
     coherence_bin = pd.Timedelta(seconds=1)
+    use_simple_NN_no_adversarial = True
 
     time_step = pd.Timedelta(seconds=0.5)
 
@@ -271,12 +260,18 @@ def patient_func(tkn_file_paths, session_instead_patient):
     else:
         return [read.parse_edf_token_path_structure(tkn_file_path)[1] for tkn_file_path in tkn_file_paths]
 
+@ex.capture
+def get_optimizer(optimizer_name):
+    if optimizer_name == "adam":
+        return optimizers.Adam
+    elif optimizer_name == "sgd":
+        return optimizers.SGD
 
 @ex.capture
 def process_data(edss, time_step, n_process):
     coherData = wfdata.CoherenceTransformer(simple_edss(edss), is_pandas=False, is_tuple_data=True, average_coherence=False, coherence_bin=time_step, n_process=n_process)[:]
-    fftData = read.EdfFFTDatasetTransformer(simple_edss(edss), is_tuple_data=True, is_pandas_data=False, freq_bins=constants.FREQ_BANDS, window_size=time_step, n_process=n_process)[:]
-    fftData = [fftDatum[0].transpose((1, 0,2)).reshape(8, fftDatum[0].shape[0] *  fftDatum[0].shape[2]) for fftDatum in fftData]
+    fftData = read.EdfFFTDatasetTransformer((edss), is_tuple_data=True, is_pandas_data=False, freq_bins=constants.FREQ_BANDS, window_size=time_step, n_process=n_process)[:]
+    fftData = [fftDatum[0].transpose((1, 0,2)).reshape(fftDatum[0].shape[1], fftDatum[0].shape[0] *  fftDatum[0].shape[2]) for fftDatum in fftData]
     labels = [coherDatum[1] for coherDatum in coherData]
     coherData = [coherDatum[0] for coherDatum in coherData]
     data_x = [np.hstack([coherData[i], fftData[i]]) for i in range(len(fftData))]
@@ -296,7 +291,7 @@ def simple_edss(edss, complex_feature_channels):
 
 @ex.capture
 def get_data_generators(train_pkl,  valid_pkl, test_pkl, processed_train_pkl, processed_valid_pkl, processed_test_pkl, \
-                 regenerate_data, use_standard_scaler, precache, n_process, include_seizure_type, include_montage_channels, batch_size):
+                 regenerate_data, use_simple_NN_no_adversarial, use_standard_scaler, precache, n_process, include_seizure_type, include_montage_channels, batch_size):
     allPatients = []
     seizureLabels = []
     validSeizureLabels = []
@@ -418,11 +413,17 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, processed_train_pkl, pr
             pkl.dump(processed_train_data, open(processed_train_pkl, "wb"))
             pkl.dump(processed_valid_data, open(processed_valid_pkl, "wb"))
             pkl.dump(processed_test_data, open(processed_test_pkl, "wb"))
-        edg = RULDataGenMultipleLabels(processed_train_data, num_labels=3, precache=True, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
-        valid_edg = valid_dataset_class()(processed_valid_data, num_labels=3, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
-        test_edg = DataGenMultipleLabels(processed_test_data, num_labels=3, precache=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
+        if use_simple_NN_no_adversarial:
+            edg = RULDataGenMultipleLabels(processed_train_data, num_labels=2, precache=True, batch_size=batch_size, labels=[seizureLabels,  seizureSubtypes], n_classes=(2,  len(constants.SEIZURE_SUBTYPES)),)
+            valid_edg = valid_dataset_class()(processed_valid_data, num_labels=2, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels,  validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(constants.SEIZURE_SUBTYPES)), shuffle=False)
+            test_edg = DataGenMultipleLabels(processed_test_data, labels=[testSeizureLabels, testSeizureSubtypes], num_labels=2, precache=True, n_classes=(2, len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
 
-        return edg, valid_edg, test_edg, len(allPatients)
+        else:
+            edg = RULDataGenMultipleLabels(processed_train_data, num_labels=3, precache=True, batch_size=batch_size, labels=[seizureLabels, patientInd, seizureSubtypes], n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)),)
+            valid_edg = valid_dataset_class()(processed_valid_data, num_labels=3, precache=True, batch_size=batch_size*4, labels=[validSeizureLabels, validPatientInd, validSeizureSubtypes], xy_tuple_form=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), shuffle=False)
+            test_edg = DataGenMultipleLabels(processed_test_data, num_labels=3, precache=True, n_classes=(2, len(allPatients), len(constants.SEIZURE_SUBTYPES)), batch_size=batch_size*4, shuffle=False)
+
+        return HackDataGenNoChannels(edg), HackDataGenNoChannels(valid_edg), HackDataGenNoChannels(test_edg), len(allPatients)
     elif include_seizure_type and include_montage_channels:
         raise Exception("Not Implemented")
     elif not include_seizure_type and not include_montage_channels:
@@ -436,9 +437,101 @@ def false_alarms_per_hour(fp, total_samps, num_seconds):
     num_chances_per_hour = 60 * 60 / num_seconds
     return (fp / total_samps) * num_chances_per_hour
 
-@ex.main
-def main(model_name):
+@ex.capture
+def get_model(
+    num_patients,
+    input_time_size,
+    lr,
+    pre_layer_h,
+    num_lin_layer,
+    num_post_lin_h,
+    num_layers,
+    linear_dropout,
+    num_gpus,
+    num_post_lstm_layers,
+    use_batch_normalization,
+    patient_weight,
+    seizure_weight,
+    include_seizure_type,
+    attach_seizure_type_to_seizure_detect,
+    lstm_h,
+    lstm_return_sequence,
+    model_type,
+    include_montage_channels):
+    x = Input((input_time_size)) #time, ecg channel, cnn channel
+    y = x
+    if num_lin_layer != 0:
+        for i in range(num_lin_layer):
+            y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
+            # y = TimeDistributed(Dropout(linear_dropout))(y)
+
+    y = CuDNNLSTM(lstm_h, return_sequences=lstm_return_sequence)(y)
+    if lstm_return_sequence:
+        y = Flatten(y)
+
+    for i in range(num_post_lstm_layers):
+        y = Dense(num_post_lin_h, activation='relu')(y)
+        y = Dropout(linear_dropout)(y)
+    y_seizure_subtype = Dense(len(constants.SEIZURE_SUBTYPES), activation="softmax", name="seizure_subtype")(y)
+    if include_seizure_type and attach_seizure_type_to_seizure_detect:
+        y = Concatenate()([y, y_seizure_subtype])
+    y_seizure = Dense(2, activation="softmax", name="seizure")(y)
+    y_patient = Dense(num_patients, activation="softmax", name="patient")(y)
+    y_montage_channel = Dense(len(constants.MONTAGE_COLUMNS), activation="sigmoid", name="montage_channel")(y)
+
+
+
+    seizure_model = Model(inputs=x, outputs=[y_seizure])
+
+    if include_seizure_type and include_montage_channels:
+        seizure_patient_model = Model(inputs=[x], outputs=[y_seizure, y_patient,  y_seizure_subtype, y_montage_channel])
+        val_train_model = Model(inputs=x, outputs=[y_seizure, y_seizure_subtype, y_montage_channel])
+    elif include_seizure_type:
+        seizure_patient_model = Model(inputs=[x], outputs=[y_seizure, y_patient,  y_seizure_subtype,])
+        val_train_model = Model(inputs=x, outputs=[y_seizure, y_seizure_subtype])
+        val_train_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy"], loss_weights=[1,1], metrics=["categorical_accuracy", f1])
+
+    else:
+        seizure_patient_model = Model(inputs=[x], outputs=[y_seizure, y_patient,])
+        val_train_model = seizure_model
+
+    patient_model = Model(inputs=[x], outputs=[y_patient])
+    print(seizure_patient_model.summary())
+    if num_gpus > 1:
+        seizure_model = multi_gpu_model(seizure_model, num_gpus)
+        seizure_patient_model = multi_gpu_model(seizure_patient_model, num_gpus)
+        patient_model = multi_gpu_model(patient_model, num_gpus)
+
+    seizure_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["binary_accuracy"])
+    if include_seizure_type and include_montage_channels:
+        loss_weights = [K.variable(seizure_weight),K.variable(patient_weight), K.variable(seizure_weight), K.variable(seizure_weight)]
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy", f1])
+    elif include_seizure_type:
+        loss_weights = [K.variable(seizure_weight),K.variable(patient_weight), K.variable(seizure_weight)]
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy", f1])
+    elif not include_seizure_type and not include_montage_channels:
+        loss_weights = [K.variable(seizure_weight),K.variable(patient_weight)]
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy", f1])
+    else:
+        raise Exception("Not Implemented")
+    patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
+    return seizure_model, seizure_patient_model, patient_model, val_train_model, x, y, loss_weights
+
+@ex.capture
+def simple_NN_no_adversarial(model_name, epochs, steps_per_epoch):
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
+    input_shape = edg[0][0].shape
+    seizure_model, seizure_patient_model, patient_model, val_train_model, x, y, loss_weights = get_model(len_all_patients, input_time_size=input_shape[1:])
+    if steps_per_epoch is not None:
+        history = val_train_model.fit_generator(edg, validation_data=valid_edg, epochs=epochs, steps_per_epoch=steps_per_epoch, verbose=1)
+    else:
+        history = val_train_model.fit_generator(edg, validation_data=valid_edg, epochs=epochs, verbose=1)
+
+
+@ex.main
+def main(use_simple_NN_no_adversarial):
+    if use_simple_NN_no_adversarial:
+        return simple_NN_no_adversarial()
     raise Exception()
 
 

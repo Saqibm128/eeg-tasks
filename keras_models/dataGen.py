@@ -1,5 +1,6 @@
 # https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 import numpy as np
+import numpy.random
 import keras
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -103,7 +104,7 @@ class DataGenerator(keras.utils.Sequence):
 class EdfDataGenerator(DataGenerator):
     'Can accept EdfDataset and any of its intermediates to make data (i.e. sftft)'
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
-                 n_classes=10, class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, use_background_process=False):
+                 n_classes=10, class_type="nominal", shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, separate_x_y=False, use_background_process=False):
 
         super().__init__(list_IDs=list(range(len(dataset))), labels=labels, batch_size=batch_size, dim=dim, n_channels=n_channels,
                      n_classes=n_classes, shuffle=shuffle)
@@ -113,6 +114,7 @@ class EdfDataGenerator(DataGenerator):
         self.mask_value=mask_value
         self.max_length=max_length
         self.time_first = time_first
+        self.separate_x_y = separate_x_y
         self.xy_tuple_form = xy_tuple_form
         self.class_type=class_type
         self.use_background_process=use_background_process
@@ -171,6 +173,15 @@ class EdfDataGenerator(DataGenerator):
                 y = self.labels[i]
             else:
                 y = [datum[1] for datum in data]
+        elif self.separate_x_y:
+            x = []
+            y = []
+            for j in i:
+                x_j = self.dataset[j]
+                y_j = self.labels[j]
+                x.append(x_j)
+                y.append(y_j)
+            return np.array(x), np.array(y)
         else:
             x = self.dataset[0][i]
             y = self.dataset[1][i]
@@ -347,6 +358,8 @@ class DataGenMultipleLabels(EdfDataGenerator):
             y_labels.append(y)
         return x, y_labels
 
+
+
 class RULDataGenMultipleLabels(DataGenMultipleLabels):
     def __init__(self, dataset, mask_value=-10000, labels=None, batch_size=32, dim=(32,32,32), n_channels=1,
                  n_classes=(2, 2), class_type=None, shuffle=True, max_length=None, time_first=True, precache=False, xy_tuple_form=True, num_labels=2, shuffle_channels=False, class_ratio=1, **kwargs):
@@ -380,3 +393,51 @@ class RULDataGenMultipleLabels(DataGenMultipleLabels):
         self.indexes = np.arange(len(self.list_IDs))
         np.random.shuffle(self.indexes)
         # raise Exception()
+
+class HackDataGenNoChannels(keras.utils.Sequence):
+    def __init__(self, datagenObj):
+        self.datagenObj = datagenObj
+
+    def on_epoch_end(self):
+        self.datagenObj.on_epoch_end()
+
+    def __len__(self):
+        return len(self.datagenObj)
+
+    def __getitem__(self, i):
+        x, labels = self.datagenObj[i]
+        return x.reshape(*x.shape[0:-1]), labels #drop off last channel=1 dimension
+
+class RescaleGenerator(keras.utils.Sequence):
+    def __init__(self, datagenObj, rescale_factor=0.5):
+        self.datagenObj = datagenObj
+        self.rescale_factor = rescale_factor
+
+    def on_epoch_end(self):
+        self.datagenObj.on_epoch_end()
+
+    def __len__(self):
+        return len(self.datagenObj)
+
+    def __getitem__(self, i):
+        x, labels = self.datagenObj[i]
+        return x * (np.random.random() * (self.rescale_factor*2) + 1 - self.rescale_factor), labels #drop off last channel=1 dimension
+
+class ConcatenateGenerator(keras.utils.Sequence):
+    def __init__(self, datagenObjs):
+        self.datagenObjs = datagenObjs
+
+    def on_epoch_end(self):
+        for datagenObj in self.datagenObjs:
+            datagenObj.on_epoch_end()
+
+    def __len__(self):
+        return len(self.datagenObjs[0])
+
+    def __getitem__(self, i):
+        label = self.datagenObjs[0][i][1]
+        x_s = []
+        for datagenObj in self.datagenObjs:
+            x, _ = datagenObj[i]
+            x_s.append(x)
+        return x_s, label
