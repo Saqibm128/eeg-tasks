@@ -72,6 +72,12 @@ def use_extra_layers():
     linear_dropout = 0.5
     num_post_cnn_layers = 2
 
+@ex.named_config
+def MLP():
+    num_post_cnn_layers = 2
+    linear_dropout=0.5
+    num_post_lin_h=200
+
 
 @ex.named_config
 def knn():
@@ -291,6 +297,7 @@ def config():
     random_rescale = False
     rescale_factor = 1.3
     include_montage_channels = False
+    attach_patient_layer_to_cnn_output = False
 
 
 @ex.capture
@@ -390,7 +397,8 @@ def get_model(
     lstm_return_sequence,
     model_type,
     add_gaussian_noise,
-    include_montage_channels):
+    include_montage_channels,
+    attach_patient_layer_to_cnn_output):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if add_gaussian_noise is not None:
@@ -449,7 +457,8 @@ def get_model(
                                             time_convolutions_first=use_time_layers_first)
     # y = Dropout(0.5)(y)
     if not use_lstm:
-        y = Flatten()(y)
+        y_flatten = Flatten()(y)
+        y = y_flatten
     else:
         y = Reshape((int(y.shape[1]), int(y.shape[2]) * int(y.shape[3])))(y)
         y = CuDNNLSTM(lstm_h, return_sequences=lstm_return_sequence)(y)
@@ -465,7 +474,10 @@ def get_model(
     if include_seizure_type and attach_seizure_type_to_seizure_detect:
         y = Concatenate()([y, y_seizure_subtype])
     y_seizure = Dense(2, activation="softmax", name="seizure")(y)
-    y_patient = Dense(num_patients, activation="softmax", name="patient")(y)
+    if not attach_patient_layer_to_cnn_output:
+        y_patient = Dense(num_patients, activation="softmax", name="patient")(y)
+    else:
+        y_patient = Dense(num_patients, activation="softmax", name="patient")(y_flatten)
     y_montage_channel = Dense(len(constants.MONTAGE_COLUMNS), activation="sigmoid", name="montage_channel")(y)
 
 
