@@ -298,6 +298,7 @@ def config():
     rescale_factor = 1.3
     include_montage_channels = False
     attach_patient_layer_to_cnn_output = False
+    remove_outlier_by_std_thresh = None
 
 
 @ex.capture
@@ -407,9 +408,6 @@ def get_model(
         y = x
     if num_lin_layer != 0:
         y = Reshape((input_time_size, 21))(y) #remove channel dim
-
-
-
         for i in range(num_lin_layer):
             y = TimeDistributed(Dense(pre_layer_h, activation="relu"))(y)
             # y = TimeDistributed(Dropout(linear_dropout))(y)
@@ -579,7 +577,7 @@ def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
         return data
 
 @ex.capture
-def update_data(edss, seizure_classification_only, seizure_classes_to_use, include_seizure_type, include_montage_channels, zero_out_patients=False):
+def update_data(edss, seizure_classification_only, seizure_classes_to_use, include_seizure_type, include_montage_channels, remove_outlier_by_std_thresh, zero_out_patients=False):
     '''
     since we store the full string of the session or the patient instead of the index, we update the data to use the int index
     some of the tasks require different datasets and some filtering of the data i.e. only seizure classification or just some of the labels
@@ -607,6 +605,13 @@ def update_data(edss, seizure_classification_only, seizure_classes_to_use, inclu
         for i, seizure_detect in enumerate(seizure_detection_labels):
             if not seizure_detect:
                 keep_index[i] = False
+    if remove_outlier_by_std_thresh is not None:
+        removed = 0
+        for i, datum in enumerate(data):
+            if np.std(datum) > remove_outlier_by_std_thresh:
+                keep_index[i] = False
+                removed += 1
+        print("We removed {} because unclean by std".format(removed))
     data_to_keep = []
     patient_labels_to_keep = []
     seizure_detect_to_keep = []
@@ -764,6 +769,7 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
             test_edss = [(data[i], labels[i]) for i in range(len(data))]
         test_edg = EdfDataGenerator(test_edss, n_classes=2, precache=not use_standard_scaler, batch_size=batch_size, shuffle=False)
     return edg, valid_edg, test_edg, len(allPatients)
+
 
 @ex.capture
 def false_alarms_per_hour(fp, total_samps, num_seconds):
