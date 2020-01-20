@@ -299,6 +299,7 @@ def config():
     include_montage_channels = False
     attach_patient_layer_to_cnn_output = False
     remove_outlier_by_std_thresh = None
+    zero_center_each_channel = False
 
 
 @ex.capture
@@ -577,7 +578,7 @@ def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
         return data
 
 @ex.capture
-def update_data(edss, seizure_classification_only, seizure_classes_to_use, include_seizure_type, include_montage_channels, remove_outlier_by_std_thresh, zero_out_patients=False):
+def update_data(edss, seizure_classification_only, seizure_classes_to_use, include_seizure_type, include_montage_channels, remove_outlier_by_std_thresh, zero_center_each_channel, zero_out_patients=False):
     '''
     since we store the full string of the session or the patient instead of the index, we update the data to use the int index
     some of the tasks require different datasets and some filtering of the data i.e. only seizure classification or just some of the labels
@@ -612,6 +613,9 @@ def update_data(edss, seizure_classification_only, seizure_classes_to_use, inclu
                 keep_index[i] = False
                 removed += 1
         print("We removed {} because unclean by std".format(removed))
+    if zero_center_each_channel:
+        for i, datum in enumerate(data):
+            data[i] = datum - datum.mean(0)
     data_to_keep = []
     patient_labels_to_keep = []
     seizure_detect_to_keep = []
