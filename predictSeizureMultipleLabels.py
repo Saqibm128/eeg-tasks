@@ -443,6 +443,7 @@ def get_model(
         y = layers.Reshape((50, int(input_time_size/50 * 21)))(y)
         for i in range(num_layers):
             y = layers.CuDNNLSTM(lstm_h, return_sequences=True)(y)
+        y = layers.Reshape((y.shape[1].value, y.shape[2].value, 1))(y)
     else:
         _, y = conv2d_gridsearch_pre_layers(input_shape=(input_time_size,21,1),
                                             x=y,
@@ -466,9 +467,9 @@ def get_model(
         y = Reshape((int(y.shape[1]), int(y.shape[2]) * int(y.shape[3])))(y)
         y = CuDNNLSTM(lstm_h, return_sequences=lstm_return_sequence)(y)
         if lstm_return_sequence:
-            y = Flatten(y)
+            y = Flatten()(y)
         y_flatten = y
-        
+
 
     for i in range(num_post_cnn_layers):
         y = Dense(num_post_lin_h, activation='relu')(y)
