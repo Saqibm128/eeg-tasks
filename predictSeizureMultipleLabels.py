@@ -888,7 +888,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
           seizure_weight_decay, update_seizure_class_weights, seizure_classification_only,
          validation_f1_score_type, reduce_lr_on_plateau, lr, lr_decay, change_batch_size_over_time,
          test_patient_model_after_train, train_patient_model_after_train, valid_patient_model_after_train,
-         random_rearrange_each_batch, random_rescale, rescale_factor, include_montage_channels):
+         random_rearrange_each_batch, random_rescale, rescale_factor,
+         include_montage_channels, use_montage_channels_instead_of_montage_num):
     seizure_class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
     # patient_class_weights = {}
@@ -1006,28 +1007,30 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             data_x = train_batch[0]
             data_x = data_x.astype(np.float32)
             data_x = np.nan_to_num(data_x)
+            labels = train_batch[1]
 
             if random_rearrange_each_batch:
                 rearrangement = np.random.choice(21, 21, replace=False)
                 data_x = data_x[:,:,rearrangement]
-                if include_montage_channels:
+                if include_montage_channels and use_montage_channels_instead_of_montage_num:
+
                     raise Exception()
 
             if random_rescale:
                 data_x = data_x * (np.random.random() * (rescale_factor - 1/rescale_factor) + 1/rescale_factor)
 
             if include_seizure_type and include_montage_channels:
-                loss, seizure_loss, patient_loss, subtype_loss, montage_loss, seizure_acc, seizure_f1, patient_acc, patient_f1,  subtype_acc, subtype_f1, montage_acc, montage_f1 = seizure_patient_model.train_on_batch(data_x, train_batch[1], )
+                loss, seizure_loss, patient_loss, subtype_loss, montage_loss, seizure_acc, seizure_f1, patient_acc, patient_f1,  subtype_acc, subtype_f1, montage_acc, montage_f1 = seizure_patient_model.train_on_batch(data_x, labels, )
                 subtype_epochs_accs.append(subtype_acc)
                 # raise Exception()
                 train_subtype_f1_epoch.append(subtype_f1)
                 train_montage_f1_epoch.append(montage_f1)
             elif include_seizure_type:
-                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, seizure_f1, patient_acc, patient_f1, subtype_acc, subtype_f1 = seizure_patient_model.train_on_batch(data_x, train_batch[1], )
+                loss, seizure_loss, patient_loss, subtype_loss, seizure_acc, seizure_f1, patient_acc, patient_f1, subtype_acc, subtype_f1 = seizure_patient_model.train_on_batch(data_x, labels, )
                 subtype_epochs_accs.append(subtype_acc)
                 train_subtype_f1_epoch.append(subtype_f1)
             elif not include_seizure_type and not include_montage_channels:
-                loss, seizure_loss, patient_loss, seizure_acc, seizure_f1, patient_acc, patient_f1 = seizure_patient_model.train_on_batch(data_x, train_batch[1])
+                loss, seizure_loss, patient_loss, seizure_acc, seizure_f1, patient_acc, patient_f1 = seizure_patient_model.train_on_batch(data_x, labels)
             seizure_accs.append(seizure_acc)
             train_seizure_f1_epoch.append(seizure_f1)
             train_patient_f1_epoch.append(patient_f1)
