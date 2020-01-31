@@ -44,7 +44,7 @@ from keras.utils import multi_gpu_model
 from time import time
 
 from addict import Dict
-ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v4")
+ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v5")
 
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
@@ -630,16 +630,17 @@ def update_montage_channels(sing_y_montage, use_montage_channels_instead_of_mont
 
 
 @ex.capture
-def update_data(edss, seizure_classification_only, seizure_classes_to_use, include_seizure_type, include_montage_channels, remove_outlier_by_std_thresh, zero_center_over_channel, zero_center_over_time, zero_out_patients=False):
+def update_data(edss, seizure_classification_only, seizure_classes_to_use, include_seizure_type, include_montage_channels, remove_outlier_by_std_thresh, zero_center_over_channel, zero_center_over_time, is_eval_set=False):
     '''
     since we store the full string of the session or the patient instead of the index, we update the data to use the int index
     some of the tasks require different datasets and some filtering of the data i.e. only seizure classification or just some of the labels
-    zero_out_patients: for use with valid and test set, since they shouldn't have patients from the train set and therefore predicting for them is wrong
+    is_eval_set: for use with valid and test set, since they shouldn't have patients from the train set and therefore predicting for them is wrong
     '''
 
     data = [datum[0] for datum in edss]
-    if zero_out_patients:
+    if is_eval_set:
         patient_labels = [0 for i in range(len(edss))]
+        remove_outlier_by_std_thresh=None
     else:
         patients = [datum[1][1] for datum in edss]
         allPatient = list(set(patients))
@@ -777,8 +778,8 @@ def get_data_generators(train_pkl,  valid_pkl, test_pkl, regenerate_data, use_st
 
 
     train_edss = update_data(train_edss)
-    valid_edss = update_data(valid_edss, zero_out_patients=True)
-    test_edss = update_data(test_edss, zero_out_patients=True)
+    valid_edss = update_data(valid_edss, is_eval_set=True)
+    test_edss = update_data(test_edss, is_eval_set=True)
 
 
 

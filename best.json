@@ -9,7 +9,7 @@
     "combined_split" : null,
     "conv_spatial_filter" : [
         4,
-        1
+        4
     ],
     "conv_temporal_filter" : [
         4,
@@ -57,7 +57,7 @@
     "num_temporal_filter" : 1,
     "optimizer_name" : "adam",
     "patience" : 20,
-    "patient_weight" : -1,
+    "patient_weight" : 0,
     "post_cooldown" : null,
     "pre_cooldown" : 4,
     "pre_layer_h" : 64,
@@ -91,6 +91,6 @@
     "valid_patient_model_after_train" : false,
     "valid_pkl" : "/n/scratch2/ms994/valid_multiple_labels_sessions_seizure_data_4.pkl",
     "validation_f1_score_type" : null,
-    "zero_center_over_time" : true,
-    "zero_center_over_channel" : true
+    "zero_center_over_time" : false,
+    "zero_center_over_channel" : false
 }
