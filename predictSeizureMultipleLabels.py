@@ -205,6 +205,7 @@ def config():
     max_pool_size = (2,2)
     max_pool_stride = (2,2)
     steps_per_epoch = None
+    separate_seizure_classification_weight =None
     session_instead_patient=False
 
     conv_spatial_filter=(3,3)
@@ -551,7 +552,9 @@ def get_model(
 global_model = None
 
 @ex.capture
-def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizure_weight, patient_weight,  loss_weights, include_seizure_type, lr, lr_decay, seizure_weight_decay, reduce_lr_on_plateau, include_montage_channels):
+def recompile_model(seizure_patient_model,  epoch_num, seizure_weight, min_seizure_weight, patient_weight,  loss_weights, include_seizure_type, lr, separate_seizure_classification_weight, lr_decay, seizure_weight_decay, reduce_lr_on_plateau, include_montage_channels):
+    if separate_seizure_classification_weight is  None:
+        separate_seizure_classification_weight = seizure_weight
     if seizure_weight_decay is not None:
         if seizure_weight_decay is None:
             seizure_weight_decay = 1
@@ -571,12 +574,12 @@ def recompile_model(seizure_patient_model, epoch_num, seizure_weight, min_seizur
         print("Epoch: {}, Seizure Weight: {}, Patient Weight: {}, lr: {}".format(epoch_num, new_weight, patient_weight, new_lr))
         K.set_value(seizure_patient_model.optimizer.lr, lr)
         if include_seizure_type and include_montage_channels:
-            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight, new_weight], metrics=["categorical_accuracy", f1])
+            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight, separate_seizure_classification_weight], metrics=["categorical_accuracy", f1])
 
         elif include_seizure_type and seizure_weight_decay is not None:
              # K.set_value(
              #Don't throw away old optimizer TODO: check and see if adam keeps any state in its optimizer object
-            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight], metrics=["categorical_accuracy", f1])
+            seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=[new_weight, patient_weight, separate_seizure_classification_weight], metrics=["categorical_accuracy", f1])
         elif seizure_weight_decay is not None:
             seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=[new_weight, patient_weight,], metrics=["categorical_accuracy", f1])
     # seizure_patient_model.metrics_tensors += seizure_patient_model.outputs #grab output!
