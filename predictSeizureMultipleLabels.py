@@ -605,10 +605,10 @@ def get_cb_list():
 def reorder_channels(data, randomly_reorder_channels, random_channel_ordering):
     if randomly_reorder_channels:
         newData = []
-        for datum_pair in data:
-            datum_pair_first = datum_pair[0][:,random_channel_ordering]
-            newData.append((datum_pair_first, datum_pair[1]))
-        return newData
+        for datum_tuple in data[0]:
+            datum_tuple_first = datum_tuple[0][:,random_channel_ordering]
+            newData.append((datum_tuple_first, *datum_tuple[1:]))
+        return (newData, *data[1:])
     else:
         return data
 
