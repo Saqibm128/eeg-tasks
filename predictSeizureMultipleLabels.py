@@ -42,6 +42,8 @@ import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping, LearningRateScheduler
 from keras.utils import multi_gpu_model
 from time import time
+from keras_models.homeoschedastic import HomeoschedasticMultiLossLayer
+from keras.losses import categorical_crossentropy, binary_crossentropy
 
 from addict import Dict
 ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v5")
@@ -305,6 +307,7 @@ def config():
 
     use_montage_channels_instead_of_montage_num = False # the montage signal aren't per channel, but are from a linear combination of 2 channels.
     separate_out_mlp = False
+    use_homeoschedastic = False # https://github.com/yaringal/multi-task-learning-example/blob/master/multi-task-learning-example.ipynb
 
 
 @ex.capture
@@ -407,7 +410,8 @@ def get_model(
     include_montage_channels,
     attach_patient_layer_to_cnn_output,
     use_montage_channels_instead_of_montage_num,
-    separate_out_mlp):
+    separate_out_mlp,
+    use_homeoschedastic):
     input_time_size = num_seconds * constants.COMMON_FREQ
     x = Input((input_time_size, 21, 1)) #time, ecg channel, cnn channel
     if add_gaussian_noise is not None:
@@ -547,23 +551,44 @@ def get_model(
         raise Exception("Not Implemented")
 
     patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["categorical_accuracy"])
+    if use_homeoschedastic:
+        if not include_seizure_type or not include_montage_channels or not use_montage_channels_instead_of_montage_num:
+            raise Exception("Not implemented yet")
+        y_seizure_true_input = Input((2,))
+        y_patient_true_input = Input((num_patients,))
+        y_subtype_true_input = Input((len(constants.SEIZURE_SUBTYPES), ))
+        y_montage_true_input = Input((len(util_funcs.get_common_channel_names()),))
+        y_total = HomeoschedasticMultiLossLayer(
+            nb_outputs=4,
+            loss_funcs=[categorical_crossentropy, categorical_crossentropy, categorical_crossentropy, binary_crossentropy],
+            multiplier=[1,-1,1,1])([ y_seizure_true_input, y_patient_true_input, y_subtype_true_input, y_montage_true_input, y_seizure, y_patient,  y_seizure_subtype, y_montage_channel,])
+        homeoschedastic_model = Model(inputs=[x, y_seizure_true_input, y_patient_true_input, y_subtype_true_input, y_montage_true_input], outputs=[y_total])
+        homeoschedastic_model.compile(get_optimizer()(lr=lr), loss=None, metrics=["categorical_accuracy", f1])
+        # homeoschedastic_model.
+        homeoschedastic_model.metrics_tensors += homeoschedastic_model.outputs
+        return seizure_model, seizure_patient_model, patient_model, val_train_model, x, y, loss_weights, homeoschedastic_model
     return seizure_model, seizure_patient_model, patient_model, val_train_model, x, y, loss_weights
 
 global_model = None
 
 @ex.capture
-def recompile_model(seizure_patient_model,  epoch_num, seizure_weight, min_seizure_weight, patient_weight,  loss_weights, include_seizure_type, lr, separate_seizure_classification_weight, lr_decay, seizure_weight_decay, reduce_lr_on_plateau, include_montage_channels):
+def recompile_model(seizure_patient_model,  epoch_num, seizure_weight, min_seizure_weight, patient_weight,  loss_weights, include_seizure_type, lr, separate_seizure_classification_weight, lr_decay, seizure_weight_decay, reduce_lr_on_plateau, include_montage_channels, use_homeoschedastic):
+    if lr_decay == 0 or lr_decay is None:
+        new_lr = lr
+    elif not reduce_lr_on_plateau:
+        new_lr = lr * (lr_decay) ** ((epoch_num))
+    else:
+        new_lr = lr
+    K.set_value(seizure_patient_model.optimizer.lr, lr)
+    if use_homeoschedastic:
+        seizure_patient_model.compile(seizure_patient_model.optimizer, loss=None)
+        return seizure_patient_model
     if separate_seizure_classification_weight is  None:
         separate_seizure_classification_weight = seizure_weight
     if seizure_weight_decay is not None:
         if seizure_weight_decay is None:
             seizure_weight_decay = 1
-        if lr_decay == 0 or lr_decay is None:
-            new_lr = lr
-        elif not reduce_lr_on_plateau:
-            new_lr = lr * (lr_decay) ** ((epoch_num))
-        else:
-            new_lr = lr
+
         # weight_decay = seizure_weight_decay ** ((epoch_num))
         # new_weight = seizure_weight * weight_decay
         if min_seizure_weight is None:
@@ -572,7 +597,6 @@ def recompile_model(seizure_patient_model,  epoch_num, seizure_weight, min_seizu
             new_weight = (seizure_weight - min_seizure_weight) * np.e ** (np.log(seizure_weight_decay) * epoch_num + 1) + min_seizure_weight * np.e
             new_weight /= np.e
         print("Epoch: {}, Seizure Weight: {}, Patient Weight: {}, lr: {}".format(epoch_num, new_weight, patient_weight, new_lr))
-        K.set_value(seizure_patient_model.optimizer.lr, lr)
         if include_seizure_type and include_montage_channels:
             seizure_patient_model.compile(seizure_patient_model.optimizer, loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=[new_weight, patient_weight, new_weight, separate_seizure_classification_weight], metrics=["categorical_accuracy", f1])
 
@@ -884,6 +908,37 @@ def test_patient_accuracy_after_training(x_input, cnn_y, trained_model, lr, lr_d
     test_patient_history = patient_model.fit_generator(test_edg, epochs=epochs, verbose=2, callbacks=[get_model_checkpoint(model_name[:-3] + "_patient.h5"), get_early_stopping(early_stopping_on="loss"), LearningRateScheduler(lambda x, old_lr: old_lr * lr_decay) ])
     return test_patient_history
 
+@ex.capture
+def interpret_homeo_output(output, actual, num_patients, use_homeoschedastic, include_montage_channels, use_montage_channels_instead_of_montage_num, include_seizure_type):
+    '''
+    Since the homeo code compresses multiple layers into a single concatenated layer to avoid any explicit losses from keras, we gotta calculate all of these ourselves
+    '''
+    assert use_homeoschedastic
+    assert include_montage_channels
+    assert use_montage_channels_instead_of_montage_num
+    assert include_seizure_type
+    assert len(output[0]) == num_patients+2+len(constants.SEIZURE_SUBTYPES)+len(util_funcs.get_common_channel_names())
+    assert len(actual) == 4
+    assert output != actual
+    y_seizure_pred = output[:,0:2]
+    y_patient_pred = output[:,2:num_patients+2]
+    y_subtype_pred = output[:,num_patients+2:num_patients+2+len(constants.SEIZURE_SUBTYPES)]
+    y_montage_pred = output[:,num_patients+2+len(constants.SEIZURE_SUBTYPES):]
+    f1_seizure = f1_score(actual[0].argmax(1), y_seizure_pred.argmax(1))
+    f1_subtype = f1_score(actual[2].argmax(1), y_subtype_pred.argmax(1), average='macro')
+    patient_f1 = f1_score(actual[1].argmax(1), y_patient_pred.argmax(1), average="weighted")
+    # f1_montage = f1_score(actual[3], y_montage, average="macro")
+    f1_montage = 0
+    patient_acc = accuracy_score(actual[1].argmax(1), y_patient_pred.argmax(1))
+    loss_seizure = log_loss(actual[0], y_seizure_pred)
+    loss_subtype = log_loss(actual[2], y_subtype_pred)
+    patient_loss = log_loss(actual[1], y_patient_pred)
+    montage_loss = log_loss(actual[3], y_montage_pred)
+    subtype_acc = accuracy_score(actual[2].argmax(1), y_subtype_pred.argmax(1))
+    montage_acc = accuracy_score(actual[3].astype(np.int)==0, np.round(y_montage_pred).astype(np.int)==0)
+    seizure_acc = accuracy_score(actual[0].argmax(1), y_seizure_pred.argmax(1))
+    return f1_seizure, f1_subtype, f1_montage, patient_f1, patient_acc, loss_seizure, loss_subtype, patient_loss, montage_loss, seizure_acc, subtype_acc, montage_acc
+
 
 @ex.main
 def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, epochs,
@@ -893,7 +948,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
          validation_f1_score_type, reduce_lr_on_plateau, lr, lr_decay, change_batch_size_over_time,
          test_patient_model_after_train, train_patient_model_after_train, valid_patient_model_after_train,
          random_rearrange_each_batch, random_rescale, rescale_factor,
-         include_montage_channels, use_montage_channels_instead_of_montage_num):
+         include_montage_channels, use_montage_channels_instead_of_montage_num,
+         use_homeoschedastic):
     seizure_class_weights = {0:1,1:1}
     edg, valid_edg, test_edg, len_all_patients = get_data_generators()
     # patient_class_weights = {}
@@ -901,19 +957,14 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     #     patient_class_weights[i] = 1
 
     print("Creating models")
-    seizure_model, seizure_patient_model, patient_model, val_train_model, x_input, cnn_y, loss_weights = get_model(num_patients=len_all_patients)
+    if use_homeoschedastic:
+        seizure_model, seizure_patient_model, patient_model, val_train_model, x_input, cnn_y, loss_weights, homeo_model = get_model(num_patients=len_all_patients)
+    else:
+        seizure_model, seizure_patient_model, patient_model, val_train_model, x_input, cnn_y, loss_weights = get_model(num_patients=len_all_patients)
 
     if regenerate_data:
         return
 
-    # if steps_per_epoch is None:
-    #     history = model.fit_generator(edg, validation_data=valid_edg, callbacks=get_cb_list(), verbose=fit_generator_verbosity, epochs=epochs)
-    # else:
-    #     history = model.fit_generator(edg, validation_data=valid_edg, callbacks=get_cb_list(), verbose=fit_generator_verbosity, epochs=epochs, steps_per_epoch=steps_per_epoch)
-
-
-    # train_ordered_enqueuer = OrderedEnqueuer(edg, True)
-    # valid_ordered_enqueuer = OrderedEnqueuer(valid_edg, True)
 
 
     num_epochs = epochs
@@ -955,8 +1006,9 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
             continue
 
 
-
-        if reduce_lr_on_plateau:
+        if use_homeoschedastic:
+            pass #just pass, don't want to deal with added complexity here, not sure if necessary even
+        elif reduce_lr_on_plateau:
             lrs.append(current_lr)
             # seizure_weights.append(current_seizure_weight)
             recompile_model(seizure_patient_model, i, loss_weights=loss_weights, lr=current_lr)
@@ -1017,13 +1069,22 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
                 rearrangement = np.random.choice(21, 21, replace=False)
                 data_x = data_x[:,:,rearrangement]
                 if include_montage_channels and use_montage_channels_instead_of_montage_num:
-
-                    raise Exception()
+                    #since montage consist of spatial info, don't lose it, instead generalize to multiple combinations of channels by using the channel-wise labels
+                    montage_channel_labels = labels[3][:,rearrangement]
+                    labels = [*labels[0:3], montage_channel_labels]
 
             if random_rescale:
                 data_x = data_x * (np.random.random() * (rescale_factor - 1/rescale_factor) + 1/rescale_factor)
 
-            if include_seizure_type and include_montage_channels:
+            if use_homeoschedastic:
+                loss, output = homeo_model.train_on_batch([data_x, *labels], None)
+                seizure_f1, subtype_f1, montage_f1, patient_f1, patient_acc, seizure_loss, subtype_loss, patient_loss, montage_loss,  seizure_acc, subtype_acc, montage_acc = interpret_homeo_output(output, labels, num_patients=len_all_patients)
+                # raise Exception()
+                subtype_epochs_accs.append(subtype_acc)
+                # raise Exception()
+                train_subtype_f1_epoch.append(subtype_f1)
+                train_montage_f1_epoch.append(montage_f1)
+            elif include_seizure_type and include_montage_channels:
                 loss, seizure_loss, patient_loss, subtype_loss, montage_loss, seizure_acc, seizure_f1, patient_acc, patient_f1,  subtype_acc, subtype_f1, montage_acc, montage_f1 = seizure_patient_model.train_on_batch(data_x, labels, )
                 subtype_epochs_accs.append(subtype_acc)
                 # raise Exception()
