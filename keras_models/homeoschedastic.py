@@ -23,8 +23,12 @@ class HomeoschedasticMultiLossLayer(Layer):
         # initialise log_vars
         self.log_vars = []
         for i in range(self.nb_outputs):
+            if self.multiplier[i] < 0:
+                initializer=Constant(-2) #patient loss weight needs to be smaller initially
+            else:
+                initializer=Constant(0)
             self.log_vars += [self.add_weight(name='log_var' + str(i), shape=(1,),
-                                              initializer=Constant(0.), trainable=True)]
+                                              initializer=initializer, trainable=True)]
         super(HomeoschedasticMultiLossLayer, self).build(input_shape)
 
     def multi_loss(self, ys_true, ys_pred):
