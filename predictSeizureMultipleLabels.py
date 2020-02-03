@@ -561,7 +561,7 @@ def get_model(
         y_total = HomeoschedasticMultiLossLayer(
             nb_outputs=4,
             loss_funcs=[categorical_crossentropy, categorical_crossentropy, categorical_crossentropy, binary_crossentropy],
-            multiplier=[1,-1,1,1])([ y_seizure_true_input, y_patient_true_input, y_subtype_true_input, y_montage_true_input, y_seizure, y_patient,  y_seizure_subtype, y_montage_channel,])
+            multiplier=[1,patient_weight,1,1])([ y_seizure_true_input, y_patient_true_input, y_subtype_true_input, y_montage_true_input, y_seizure, y_patient,  y_seizure_subtype, y_montage_channel,])
         homeoschedastic_model = Model(inputs=[x, y_seizure_true_input, y_patient_true_input, y_subtype_true_input, y_montage_true_input], outputs=[y_total])
         homeoschedastic_model.compile(get_optimizer()(lr=lr), loss=None, metrics=["categorical_accuracy", f1])
         # homeoschedastic_model.
@@ -1007,7 +1007,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 
         if use_homeoschedastic:
-            pass #just pass, don't want to deal with added complexity here, not sure if necessary even
+            recompile_model(homeo_model, i, loss_weights=loss_weights)
         elif reduce_lr_on_plateau:
             lrs.append(current_lr)
             # seizure_weights.append(current_seizure_weight)
