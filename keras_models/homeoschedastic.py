@@ -37,7 +37,8 @@ class HomeoschedasticMultiLossLayer(Layer):
         for i, zipped_args in enumerate(zip(ys_true, ys_pred, self.log_vars)):
             y_true, y_pred, log_var = zipped_args
             precision = K.exp(-log_var[0])
-            loss += K.sum(precision * self.multiplier[i] * self.loss_funcs[i](y_true, y_pred)**2. + self.multiplier[i] * log_var[0], -1)
+            negative = 1 if self.multiplier[i] > 0 else -1
+            loss += K.sum(precision * self.multiplier[i] * self.loss_funcs[i](y_true, y_pred)**2. + negative * log_var[0], -1)
         return K.mean(loss)
 
     def call(self, inputs):
