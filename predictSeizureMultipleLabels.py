@@ -46,7 +46,7 @@ from keras_models.homeoschedastic import HomeoschedasticMultiLossLayer
 from keras.losses import categorical_crossentropy, binary_crossentropy
 
 from addict import Dict
-ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v5")
+ex = sacred.Experiment(name="homeo_seizure_conv_exp_domain_adapt_v5")
 
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
@@ -565,7 +565,6 @@ def get_model(
         homeoschedastic_model = Model(inputs=[x, y_seizure_true_input, y_patient_true_input, y_subtype_true_input, y_montage_true_input], outputs=[y_total])
         homeoschedastic_model.compile(get_optimizer()(lr=lr), loss=None, metrics=["categorical_accuracy", f1])
         # homeoschedastic_model.
-        homeoschedastic_model.metrics_tensors += homeoschedastic_model.outputs
         return seizure_model, seizure_patient_model, patient_model, val_train_model, x, y, loss_weights, homeoschedastic_model
     return seizure_model, seizure_patient_model, patient_model, val_train_model, x, y, loss_weights
 
@@ -959,6 +958,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
     print("Creating models")
     if use_homeoschedastic:
         seizure_model, seizure_patient_model, patient_model, val_train_model, x_input, cnn_y, loss_weights, homeo_model = get_model(num_patients=len_all_patients)
+        homeo_model.metrics_tensors += homeo_model.outputs
+
     else:
         seizure_model, seizure_patient_model, patient_model, val_train_model, x_input, cnn_y, loss_weights = get_model(num_patients=len_all_patients)
 
@@ -1007,7 +1008,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
 
         if use_homeoschedastic:
-            recompile_model(homeo_model, i, loss_weights=loss_weights)
+            pass
+            # recompile_model(homeo_model, i, loss_weights=loss_weights)
         elif reduce_lr_on_plateau:
             lrs.append(current_lr)
             # seizure_weights.append(current_seizure_weight)
@@ -1127,6 +1129,8 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
                     printEpochUpdateString += ", seizure subtype acc: {}, subtype loss: {}".format(np.mean(subtype_epochs_accs), np.mean(train_subtype_loss_epoch))
                 if include_montage_channels:
                     printEpochUpdateString += ", seizure montage identification acc: {}, montage loss: {}".format(np.mean(train_montage_acc_epoch), np.mean(train_montage_loss_epoch))
+                if use_homeoschedastic:
+                    print("weights are now: " + str([weight[0] for weight in homeo_model.layers[-1].get_weights()]))
                 print(printEpochUpdateString)
     #     valid_edg.start_background()
 
@@ -1174,6 +1178,7 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
 
         valid_labels_epoch= np.nan_to_num(np.hstack(valid_labels_epoch).astype(np.float32))
         valid_predictions = np.nan_to_num(np.hstack(valid_predictions).astype(np.float32))
+
 
         print("debug: valid_labels_epoch shape {}, valid_predictions.shape {}".format(valid_labels_epoch.shape, valid_predictions.shape))
         print("We predicted {} seizures in the validation split, there were actually {}".format(valid_predictions.sum(), valid_labels_epoch.sum()))
