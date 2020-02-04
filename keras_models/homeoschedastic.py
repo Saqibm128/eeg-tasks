@@ -23,10 +23,7 @@ class HomeoschedasticMultiLossLayer(Layer):
         # initialise log_vars
         self.log_vars = []
         for i in range(self.nb_outputs):
-            if self.multiplier[i] < 0:
-                initializer=Constant(-2) #patient loss weight needs to be smaller initially
-            else:
-                initializer=Constant(0)
+            initializer=Constant(1)
             self.log_vars += [self.add_weight(name='log_var' + str(i), shape=(1,),
                                               initializer=initializer, trainable=True)]
         super(HomeoschedasticMultiLossLayer, self).build(input_shape)
@@ -36,9 +33,13 @@ class HomeoschedasticMultiLossLayer(Layer):
         loss = 0
         for i, zipped_args in enumerate(zip(ys_true, ys_pred, self.log_vars)):
             y_true, y_pred, log_var = zipped_args
-            precision = K.exp(-log_var[0])
-            negative = 1 if self.multiplier[i] > 0 else -1
-            loss += K.sum(precision * self.multiplier[i] * self.loss_funcs[i](y_true, y_pred)**2. + negative * log_var[0], -1)
+            normalized_log_var = log_var[0]/K.sum([other_log_var[0] for other_log_var in self.log_vars])
+
+            precision = K.exp(-normalized_log_var)
+            sign_cost = 1 if self.multiplier[i] > 0 else -1
+            if self.multiplier[i] == 0:
+                sign_cost = 0
+            loss += K.sum(precision * self.multiplier[i] * self.loss_funcs[i](y_true, y_pred)**2. + sign_cost * normalized_log_var, -1)
         return K.mean(loss)
 
     def call(self, inputs):
