@@ -9,7 +9,7 @@
     "combined_split" : null,
     "conv_spatial_filter" : [
         4,
-        4
+        1
     ],
     "conv_temporal_filter" : [
         4,
