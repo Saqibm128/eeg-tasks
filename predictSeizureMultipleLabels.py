@@ -46,8 +46,8 @@ from keras_models.homeoschedastic import HomeoschedasticMultiLossLayer
 from keras.losses import categorical_crossentropy, binary_crossentropy
 
 from addict import Dict
-ex = sacred.Experiment(name="homeo_seizure_conv_exp_domain_adapt_v5")
-#
+ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v5")
+
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # https://pynative.com/python-generate-random-string/
