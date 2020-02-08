@@ -33,13 +33,13 @@ class HomeoschedasticMultiLossLayer(Layer):
         loss = 0
         for i, zipped_args in enumerate(zip(ys_true, ys_pred, self.log_vars)):
             y_true, y_pred, log_var = zipped_args
-            normalized_log_var = log_var[0]/K.sum([other_log_var[0] for other_log_var in self.log_vars])
+            # normalized_log_var = log_var[0]/K.sum([other_log_var[0] for other_log_var in self.log_vars])
 
-            precision = K.exp(-normalized_log_var)
+            precision = K.exp(-log_var[0])
             sign_cost = 1 if self.multiplier[i] > 0 else -1
             if self.multiplier[i] == 0:
                 sign_cost = 0
-            loss += K.sum(precision * self.multiplier[i] * self.loss_funcs[i](y_true, y_pred)**2. + sign_cost * normalized_log_var, -1)
+            loss += K.sum(precision * self.multiplier[i] * self.loss_funcs[i](y_true, y_pred)**2. + sign_cost * log_var[0], -1)
         return K.mean(loss)
 
     def call(self, inputs):

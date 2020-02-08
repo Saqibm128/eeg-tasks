@@ -588,7 +588,7 @@ file_list = set()
 file_list_lock = mp.Lock()
 
 @functools.lru_cache(100)
-def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None):
+def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, filter=True, max_length=None):
     """ Transforms from EDF to pd.df, with channel labels as columns.
         This does not attempt to concatenate multiple time series but only takes
         a single edf filepath
@@ -662,6 +662,18 @@ def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, max_length=None
     data = pd.concat(all_channels, axis=1)
     data.index = data.index - data.index[0]
     data = data.astype(dtype)
+    if filter is not None:
+        segSize = data.index.to_tuples()[0][1]-data.index.to_tuples()[0][0]
+        data.apply(
+            lambda col: filters.butter_bandpass_filter(
+                col,
+                lowcut=1,
+                highcut=50,
+                fs=pd.Timedelta(
+                    seconds=1) /
+                segSize,
+                order=5),
+            axis=0)
     if resample is not None:
         data = data.resample(resample).mean()
 
