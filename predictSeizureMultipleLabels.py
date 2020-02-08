@@ -592,7 +592,7 @@ def recompile_model(seizure_patient_model,  epoch_num, seizure_weight, min_seizu
     K.set_value(seizure_patient_model.optimizer.lr, lr)
     if use_homeoschedastic:
         seizure_patient_model.compile(seizure_patient_model.optimizer, loss=None)
-        seizure_patient_model.metrics_tensors += model.outputs
+        seizure_patient_model.metrics_tensors += seizure_patient_model.outputs
         return seizure_patient_model
     if separate_seizure_classification_weight is  None:
         separate_seizure_classification_weight = seizure_weight
@@ -936,7 +936,7 @@ def interpret_homeo_output(output, actual, num_patients, use_homeoschedastic, in
         seizure_acc = accuracy_score(actual[0].argmax(1), y_seizure_pred.argmax(1))
         patient_acc = accuracy_score(actual[1].argmax(1), y_patient_pred.argmax(1))
         patient_loss = log_loss(actual[1], y_patient_pred)
-        patient_loss = log_loss(actual[1], y_patient_pred)
+        seizure_loss = log_loss(actual[0], y_seizure_pred)
         return seizure_f1,  patient_f1, patient_acc, seizure_loss, patient_loss, seizure_acc
     assert use_homeoschedastic
     assert include_montage_channels
@@ -1401,8 +1401,9 @@ def main(model_name, mode, num_seconds, imbalanced_resampler,  regenerate_data, 
         # results.montage.confusion_matrix = confusion_matrix(y_montage_pred, y_montage_label)
         # results.montage.classification_report = classification_report(y_montage_pred, y_montage_label, output_dict=True)
 
-    print("We predicted {} seizures in the test split, there were actually {}".format(y_seizure_pred.sum(), np.array([data[1][0] for data in test_edg.dataset]).astype(int).sum()))
-    print("We predicted {} seizure/total in the test split, there were actually {}".format(y_seizure_pred.sum()/len(y_seizure_pred), np.array([data[1][0] for data in test_edg.dataset]).astype(int).sum()/len(test_edg.dataset)))
+
+    print("We predicted {} seizures in the test split, there were actually {}".format(y_seizure_pred.sum(), y_seizure_label.astype(int).sum()))
+    print("We predicted {} seizure/total in the test split, there were actually {}".format(y_seizure_pred.sum()/len(y_seizure_pred), y_seizure_label.astype(int).sum()/len(test_edg.dataset)))
 
     if not seizure_classification_only:
         results.seizure.acc = accuracy_score(y_seizure_pred, y_seizure_label)
