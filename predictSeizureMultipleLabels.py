@@ -42,13 +42,13 @@ import string
 from keras.callbacks import ModelCheckpoint, EarlyStopping, LearningRateScheduler
 from keras.utils import multi_gpu_model
 from time import time
-from keras_models.homeoschedastic import HomeoschedasticMultiLossLayer
+from keras_models.homeoschedastic import HomeoschedasticMultiLossLayer, RelativeHomeoschedasticMultiLossLayer
 from keras.losses import categorical_crossentropy, binary_crossentropy
 
 from addict import Dict
 ex = sacred.Experiment(name="seizure_conv_exp_domain_adapt_v5")
 
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 # https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -231,6 +231,7 @@ def config():
     reduce_lr_on_plateau = False
     change_batch_size_over_time = None
     add_gaussian_noise = None
+    use_relative = False
 
     precache = True
     regenerate_data = False
@@ -366,6 +367,11 @@ def get_data(mode, max_samples, n_process, max_bckg_samps_per_file, num_seconds,
     pkl.dump((train_edss, valid_edss, test_edss), open("/n/scratch2/ms994/seizure_multi_labels_edss_info.pkl", "wb"))
     ex.add_artifact("/n/scratch2/ms994/seizure_multi_labels_edss_info.pkl")
     return train_edss, valid_edss, test_edss
+@ex.capture
+def get_homeo_layer(use_relative):
+    if use_relative:
+        return RelativeHomeoschedasticMultiLossLayer
+    return HomeoschedasticMultiLossLayer
 
 @ex.capture
 def get_optimizer(optimizer_name):
@@ -554,7 +560,7 @@ def get_model(
     if use_homeoschedastic and not include_seizure_type and not include_montage_channels:
         y_seizure_true_input = Input((2,))
         y_patient_true_input = Input((num_patients,))
-        y_total = HomeoschedasticMultiLossLayer(
+        y_total = get_homeo_layer()(
             nb_outputs=2,
             loss_funcs=[categorical_crossentropy, categorical_crossentropy],
             multiplier=[seizure_weight,patient_weight])([ y_seizure_true_input, y_patient_true_input, y_seizure, y_patient, ])
@@ -569,7 +575,7 @@ def get_model(
         y_patient_true_input = Input((num_patients,))
         y_subtype_true_input = Input((len(constants.SEIZURE_SUBTYPES), ))
         y_montage_true_input = Input((len(util_funcs.get_common_channel_names()),))
-        y_total = HomeoschedasticMultiLossLayer(
+        y_total = get_homeo_layer()(
             nb_outputs=4,
             loss_funcs=[categorical_crossentropy, categorical_crossentropy, categorical_crossentropy, binary_crossentropy],
             multiplier=[seizure_weight,patient_weight,1,1])([ y_seizure_true_input, y_patient_true_input, y_subtype_true_input, y_montage_true_input, y_seizure, y_patient,  y_seizure_subtype, y_montage_channel,])
@@ -957,7 +963,10 @@ def interpret_homeo_output(output, actual, num_patients, use_homeoschedastic, in
     patient_acc = accuracy_score(actual[1].argmax(1), y_patient_pred.argmax(1))
     seizure_loss = log_loss(actual[0], y_seizure_pred)
     subtype_loss = log_loss(actual[2], y_subtype_pred)
-    patient_loss = log_loss(actual[1], y_patient_pred)
+    try:
+        patient_loss = log_loss(actual[1], y_patient_pred)
+    except Exception:
+        patient_loss = 0
     montage_loss = log_loss(actual[3], y_montage_pred)
     subtype_acc = accuracy_score(actual[2].argmax(1), y_subtype_pred.argmax(1))
     montage_acc = accuracy_score(actual[3].astype(np.int)==0, np.round(y_montage_pred).astype(np.int)==0)

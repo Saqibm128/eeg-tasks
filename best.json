@@ -1,5 +1,5 @@
 {
-    "add_gaussian_noise" : 0.5,
+    "add_gaussian_noise" : 2,
     "attach_patient_layer_to_cnn_output" : true,
     "attach_seizure_type_to_seizure_detect" : false,
     "balance_valid_dataset" : false,
@@ -8,8 +8,8 @@
     "cnn_dropout" : 0,
     "combined_split" : null,
     "conv_spatial_filter" : [
-        4,
-        1
+        5,
+        5
     ],
     "conv_temporal_filter" : [
         4,
@@ -45,6 +45,7 @@
     "max_samples" : null,
     "min_seizure_weight" : 10,
     "mode" : "DETECT",
+    "model_type" : null,
     "n_process" : 20,
     "num_conv_temporal_layers" : 0,
     "num_filters" : 4,
@@ -62,19 +63,21 @@
     "pre_cooldown" : 4,
     "pre_layer_h" : 64,
     "precache" : true,
-    "random_rearrange_each_batch" : false,
-    "random_rescale" : false,
+    "random_rearrange_each_batch" : true,
+    "random_rescale" : true,
     "randomly_reorder_channels" : false,
     "reduce_lr_on_plateau" : false,
     "ref" : "01_tcp_ar",
     "regenerate_data" : false,
     "remove_outlier_by_std_thresh" : 100,
-    "rescale_factor" : 2,
+    "rescale_factor" : 1.5,
     "sample_time" : 4,
     "seizure_classes_to_use" : null,
     "seizure_classification_only" : false,
     "seizure_weight" : 50,
     "seizure_weight_decay" : 0.75,
+    "separate_out_mlp" : false,
+    "separate_seizure_classification_weight" : 0,
     "session_instead_patient" : true,
     "steps_per_epoch" : null,
     "test_patient_model_after_train" : false,
@@ -84,13 +87,15 @@
     "update_seizure_class_weights" : false,
     "use_batch_normalization" : true,
     "use_filtering" : true,
+    "use_homeoschedastic" : false,
     "use_inception" : false,
     "use_lstm" : true,
+    "use_montage_channels_instead_of_montage_num" : false,
     "use_standard_scaler" : false,
     "use_time_layers_first" : true,
     "valid_patient_model_after_train" : false,
     "valid_pkl" : "/n/scratch2/ms994/valid_multiple_labels_sessions_seizure_data_4.pkl",
     "validation_f1_score_type" : null,
-    "zero_center_over_time" : false,
-    "zero_center_over_channel" : false
+    "zero_center_over_channel" : false,
+    "zero_center_over_time" : true
 }
