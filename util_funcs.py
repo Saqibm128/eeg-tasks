@@ -156,7 +156,7 @@ def get_sacred_results(params):
     return restore(get_sacred_runs().find_one(params)['result'])
 
 
-def get_abs_files(root_dir_path):
+def get_abs_files(root_dir_path, return_dir_only=True):
     """helper func to return full path names. helps with nested structure of
         extracted files
 
@@ -172,6 +172,9 @@ def get_abs_files(root_dir_path):
         If root_dir_path is a file and not a directory, this will fail
 
     """
+    if type(root_dir_path) == list:
+        return list(itertools.chain.from_iterable(
+            [[] if not os.path.isdir(subdir) and return_dir_only else get_abs_files(subdir) for subdir in root_dir_path]))
     subdirs = os.listdir(root_dir_path)
     subdirs = [path.join(root_dir_path, subdir) for subdir in subdirs]
     return subdirs

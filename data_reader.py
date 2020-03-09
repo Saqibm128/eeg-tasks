@@ -16,7 +16,6 @@ import pywt
 from wf_analysis import filters
 from addict import Dict
 import time
-from random import random
 import functools
 from copy import deepcopy
 
@@ -751,6 +750,29 @@ def gen_seizure_channel_labels(fn, width=pd.Timedelta(seconds=0.5)):
     for i, row in data.iterrows():
         expanded_is_seizure.loc[pd.Timedelta(seconds=row.start):pd.Timedelta(seconds=row.end), row.channel] = 1 - row.bckg
     return expanded_is_seizure
+
+@functools.lru_cache()
+def getAllTrainPatients():
+    #used for adversarial multitask learning, captures interpatient variation
+    allTrainEdfTokens = get_all_token_file_names("train", "01_tcp_ar")
+    allTrainPatients = [parse_edf_token_path_structure(edfToken)[1] for edfToken in allTrainEdfTokens]
+    allTrainPatients = list(set(allTrainPatients))
+    return sorted(allTrainPatients)
+
+def getAllValidTestPatients():
+    return [0] #don't try to predict on something we plan to do adversarial on
+
+@functools.lru_cache()
+def getAllTrainSessions():
+    allTrainEdfTokens = get_all_token_file_names("train", "01_tcp_ar")
+    allTrainPatients = [parse_edf_token_path_structure(edfToken)[2] for edfToken in allTrainEdfTokens]
+    allTrainPatients = list(set(allTrainPatients))
+    return sorted(allTrainPatients)
+    #captures intersession variation, instead of only interpatient variation
+
+def getAllValidTestSessions():
+    return [0] #don't try to predict on something we plan to do adversarial on
+
 
 def time_distribute_x(data_x, width=pd.Timedelta(seconds=4), stride=pd.Timedelta(seconds=1)):
     time_steps = []

@@ -392,6 +392,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         resample=pd.Timedelta(seconds=constants.COMMON_DELTA),
         # num_splits_per_sample= None,
         gap = pd.Timedelta(seconds=1),
+        return_sequence_label=False,
         num_samples=None,
         max_bckg_samps_per_file=None,
         overlapping_augmentation=False,
@@ -411,6 +412,7 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         self.gap = gap
         self.include_seizure_type = include_seizure_type
         self.num_samples = num_samples
+        self.return_sequence_label = False
         self.random_under_sample = random_under_sample
         self.overlapping_augmentation = overlapping_augmentation
         self.include_montage_channels = include_montage_channels
