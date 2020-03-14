@@ -120,7 +120,10 @@ class EdfDataGenerator(DataGenerator):
         self.use_background_process=use_background_process
         if self.use_background_process:
             self.manager = mp.Manager()
-            self.queue = self.manager.Queue()
+            self.resultQueue = self.manager.Queue()
+            self.inQueue = self.manager.Queue()
+            self.resetInQ()
+
 
         if precache: #just populate self.labels too if we are precaching anyways
             self.dataset = dataset[:]
@@ -131,12 +134,23 @@ class EdfDataGenerator(DataGenerator):
             self.labels = np.array(self.labels)
 
     def background_population(self):
-        raise Exception("DEPRECATED. Use keras enqueuer")
-        for i in range(len(self)):
-            while self.queue.full():
-                time.sleep(0.1)
-            self.queue.put(self.__getitem__(i, accessed_by_background=True))
-            print(i)
+        # raise Exception("DEPRECATED. Use keras enqueuer")
+        for i in iter(self.inQueue.get, None):
+            self.resultQueue.put(self.__getitem__(i, accessed_by_background=True))
+            # print(i)
+
+    def start_background_workers(self, num_workers):
+        self.processes = [mp.Process(target=self.background_population) for i in range(num_workers)]
+        [p.start() for p in self.processes]
+
+    def stop_background_workers(self):
+        [p.kill() for p in self.processes]
+        [p.join() for p in self.processes]
+
+
+    def resetInQ(self):
+        [self.inQueue.put(i) for i in range(len(self))]
+
 
 
     def start_background(self):
@@ -192,9 +206,12 @@ class EdfDataGenerator(DataGenerator):
     def __getitem__(self, index, accessed_by_background=False):
         'Generate one batch of data'
         if not accessed_by_background and self.use_background_process:
-            while self.queue.empty():
+            while self.resultQueue.empty():
                 time.sleep(0.1)
-            return self.queue.get()
+            return self.resultQueue.get()
+
+        # if self.use_background_process:
+            # print(self.resultQueue.qsize())
 
         indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
 
@@ -280,9 +297,9 @@ class DataGenMultipleLabels(EdfDataGenerator):
     def __getitem__(self, index, accessed_by_background=False):
         'Generate one batch of data'
         if not accessed_by_background and self.use_background_process:
-            while self.queue.empty():
+            while self.resultQueue.empty():
                 time.sleep(0.1)
-            return self.queue.get()
+            return self.resultQueue.get()
         indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
 
         list_IDs_temp = [self.list_IDs[k] for k in indexes]

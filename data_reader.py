@@ -662,7 +662,7 @@ def edf_eeg_2_df(path, resample=None, dtype=np.float32, start=0, filter=True, ma
     data.index = data.index - data.index[0]
     data = data.astype(dtype)
     if filter is not None:
-        segSize = data.index.to_tuples()[0][1]-data.index.to_tuples()[0][0]
+        segSize = data.index[1]-data.index[0]
         data.apply(
             lambda col: filters.butter_bandpass_filter(
                 col,

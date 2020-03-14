@@ -1,0 +1,1000 @@
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 20 sensor positions
+Interpolating 1 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 20 sensor positions
+Interpolating 1 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Found 2 uniquely bad channels.
+
+0 by n/a: []
+
+0 by flat: []
+
+2 by deviation: ['Fp1', 'Fp2']
+
+0 by hf noise: []
+
+0 by correl: []
+
+0 by SNR []
+
+0 by dropout: []
+
+0 by ransac: []
+Computing interpolation matrix from 19 sensor positions
+Interpolating 2 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Writing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1324_end_1328.raw.fif
+Closing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1324_end_1328.raw.fif [done]
+DigMontage is a superset of info. 73 in DigMontage will be ignored. The ignored channels are: {'P5', 'F1', 'C2', 'TP10', 'FC3', 'PO1', 'PO4', 'T7', 'TP9', 'F6', 'P7', 'CPz', 'Oz', 'PO3', 'FC5', 'CP2', 'PO5', 'AF3', 'F9', 'AF4', 'M1', 'O9', 'M2', 'AF5', 'CP3', 'P6', 'C1', 'F2', 'TP7', 'P8', 'T8', 'POz', 'CP5', 'CP1', 'PO9', 'AF6', 'PO7', 'F5', 'AF7', 'PO2', 'FC4', 'C5', 'T10', 'O10', 'FC2', 'FT7', 'AF1', 'AF10', 'P2', 'AFz', 'PO8', 'CP4', 'TP8', 'P9', 'FT9', 'Fpz', 'CP6', 'AF8', 'F10', 'AF2', 'C6', 'FC1', 'AF9', 'P1', 'PO6', 'FT8', 'FCz', 'Iz', 'P10', 'FT10', 'FC6', 'T9', 'PO10'}
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Found 0 uniquely bad channels.
+
+0 by n/a: []
+
+0 by flat: []
+
+0 by deviation: []
+
+0 by hf noise: []
+
+0 by correl: []
+
+0 by SNR []
+
+0 by dropout: []
+
+0 by ransac: []
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Writing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1326_end_1330.raw.fif
+Closing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1326_end_1330.raw.fif [done]
+DigMontage is a superset of info. 73 in DigMontage will be ignored. The ignored channels are: {'P5', 'F1', 'C2', 'TP10', 'FC3', 'PO1', 'PO4', 'T7', 'TP9', 'F6', 'P7', 'CPz', 'Oz', 'PO3', 'FC5', 'CP2', 'PO5', 'AF3', 'F9', 'AF4', 'M1', 'O9', 'M2', 'AF5', 'CP3', 'P6', 'C1', 'F2', 'TP7', 'P8', 'T8', 'POz', 'CP5', 'CP1', 'PO9', 'AF6', 'PO7', 'F5', 'AF7', 'PO2', 'FC4', 'C5', 'T10', 'O10', 'FC2', 'FT7', 'AF1', 'AF10', 'P2', 'AFz', 'PO8', 'CP4', 'TP8', 'P9', 'FT9', 'Fpz', 'CP6', 'AF8', 'F10', 'AF2', 'C6', 'FC1', 'AF9', 'P1', 'PO6', 'FT8', 'FCz', 'Iz', 'P10', 'FT10', 'FC6', 'T9', 'PO10'}
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Found 1 uniquely bad channels.
+
+0 by n/a: []
+
+0 by flat: []
+
+1 by deviation: ['F7']
+
+0 by hf noise: []
+
+0 by correl: []
+
+0 by SNR []
+
+0 by dropout: []
+
+0 by ransac: []
+Computing interpolation matrix from 20 sensor positions
+Interpolating 1 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Writing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1328_end_1332.raw.fif
+Closing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1328_end_1332.raw.fif [done]
+DigMontage is a superset of info. 73 in DigMontage will be ignored. The ignored channels are: {'P5', 'F1', 'C2', 'TP10', 'FC3', 'PO1', 'PO4', 'T7', 'TP9', 'F6', 'P7', 'CPz', 'Oz', 'PO3', 'FC5', 'CP2', 'PO5', 'AF3', 'F9', 'AF4', 'M1', 'O9', 'M2', 'AF5', 'CP3', 'P6', 'C1', 'F2', 'TP7', 'P8', 'T8', 'POz', 'CP5', 'CP1', 'PO9', 'AF6', 'PO7', 'F5', 'AF7', 'PO2', 'FC4', 'C5', 'T10', 'O10', 'FC2', 'FT7', 'AF1', 'AF10', 'P2', 'AFz', 'PO8', 'CP4', 'TP8', 'P9', 'FT9', 'Fpz', 'CP6', 'AF8', 'F10', 'AF2', 'C6', 'FC1', 'AF9', 'P1', 'PO6', 'FT8', 'FCz', 'Iz', 'P10', 'FT10', 'FC6', 'T9', 'PO10'}
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 18 sensor positions
+Interpolating 3 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 18 sensor positions
+Interpolating 3 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 18 sensor positions
+Interpolating 3 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Found 1 uniquely bad channels.
+
+0 by n/a: []
+
+0 by flat: []
+
+1 by deviation: ['Fp1']
+
+0 by hf noise: []
+
+0 by correl: []
+
+0 by SNR []
+
+0 by dropout: []
+
+0 by ransac: []
+Computing interpolation matrix from 20 sensor positions
+Interpolating 1 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Writing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1330_end_1334.raw.fif
+Closing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1330_end_1334.raw.fif [done]
+DigMontage is a superset of info. 73 in DigMontage will be ignored. The ignored channels are: {'P5', 'F1', 'C2', 'TP10', 'FC3', 'PO1', 'PO4', 'T7', 'TP9', 'F6', 'P7', 'CPz', 'Oz', 'PO3', 'FC5', 'CP2', 'PO5', 'AF3', 'F9', 'AF4', 'M1', 'O9', 'M2', 'AF5', 'CP3', 'P6', 'C1', 'F2', 'TP7', 'P8', 'T8', 'POz', 'CP5', 'CP1', 'PO9', 'AF6', 'PO7', 'F5', 'AF7', 'PO2', 'FC4', 'C5', 'T10', 'O10', 'FC2', 'FT7', 'AF1', 'AF10', 'P2', 'AFz', 'PO8', 'CP4', 'TP8', 'P9', 'FT9', 'Fpz', 'CP6', 'AF8', 'F10', 'AF2', 'C6', 'FC1', 'AF9', 'P1', 'PO6', 'FT8', 'FCz', 'Iz', 'P10', 'FT10', 'FC6', 'T9', 'PO10'}
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 18 sensor positions
+Interpolating 3 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 18 sensor positions
+Interpolating 3 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 18 sensor positions
+Interpolating 3 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Found 2 uniquely bad channels.
+
+0 by n/a: []
+
+0 by flat: []
+
+2 by deviation: ['Fp1', 'Fp2']
+
+0 by hf noise: []
+
+0 by correl: []
+
+0 by SNR []
+
+0 by dropout: []
+
+0 by ransac: []
+Computing interpolation matrix from 19 sensor positions
+Interpolating 2 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Writing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1332_end_1336.raw.fif
+Closing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1332_end_1336.raw.fif [done]
+DigMontage is a superset of info. 73 in DigMontage will be ignored. The ignored channels are: {'P5', 'F1', 'C2', 'TP10', 'FC3', 'PO1', 'PO4', 'T7', 'TP9', 'F6', 'P7', 'CPz', 'Oz', 'PO3', 'FC5', 'CP2', 'PO5', 'AF3', 'F9', 'AF4', 'M1', 'O9', 'M2', 'AF5', 'CP3', 'P6', 'C1', 'F2', 'TP7', 'P8', 'T8', 'POz', 'CP5', 'CP1', 'PO9', 'AF6', 'PO7', 'F5', 'AF7', 'PO2', 'FC4', 'C5', 'T10', 'O10', 'FC2', 'FT7', 'AF1', 'AF10', 'P2', 'AFz', 'PO8', 'CP4', 'TP8', 'P9', 'FT9', 'Fpz', 'CP6', 'AF8', 'F10', 'AF2', 'C6', 'FC1', 'AF9', 'P1', 'PO6', 'FT8', 'FCz', 'Iz', 'P10', 'FT10', 'FC6', 'T9', 'PO10'}
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 20 sensor positions
+Interpolating 1 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 19 sensor positions
+Interpolating 2 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 19 sensor positions
+Interpolating 2 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Found 3 uniquely bad channels.
+
+0 by n/a: []
+
+0 by flat: []
+
+2 by deviation: ['Fp1', 'Fp2']
+
+1 by hf noise: ['T4']
+
+0 by correl: []
+
+1 by SNR ['T4']
+
+0 by dropout: []
+
+0 by ransac: []
+Computing interpolation matrix from 18 sensor positions
+Interpolating 3 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Writing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1334_end_1338.raw.fif
+Closing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1334_end_1338.raw.fif [done]
+DigMontage is a superset of info. 73 in DigMontage will be ignored. The ignored channels are: {'P5', 'F1', 'C2', 'TP10', 'FC3', 'PO1', 'PO4', 'T7', 'TP9', 'F6', 'P7', 'CPz', 'Oz', 'PO3', 'FC5', 'CP2', 'PO5', 'AF3', 'F9', 'AF4', 'M1', 'O9', 'M2', 'AF5', 'CP3', 'P6', 'C1', 'F2', 'TP7', 'P8', 'T8', 'POz', 'CP5', 'CP1', 'PO9', 'AF6', 'PO7', 'F5', 'AF7', 'PO2', 'FC4', 'C5', 'T10', 'O10', 'FC2', 'FT7', 'AF1', 'AF10', 'P2', 'AFz', 'PO8', 'CP4', 'TP8', 'P9', 'FT9', 'Fpz', 'CP6', 'AF8', 'F10', 'AF2', 'C6', 'FC1', 'AF9', 'P1', 'PO6', 'FT8', 'FCz', 'Iz', 'P10', 'FT10', 'FC6', 'T9', 'PO10'}
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 20 sensor positions
+Interpolating 1 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 19 sensor positions
+Interpolating 2 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 18 sensor positions
+Interpolating 3 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Computing interpolation matrix from 18 sensor positions
+Interpolating 3 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+   X = 6.513496E-04   4.447462E-03   4.469793E-02   9.325733E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  127   F = 5.823540E-04    MAXCV = 0.000000E+00
+   X =-8.073659E-04   4.592405E-03   4.819007E-02   9.167634E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  127   F = 5.823540E-04    MAXCV = 0.000000E+00
+   X =-8.073659E-04   4.592405E-03   4.819007E-02   9.167634E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  118   F = 7.488125E-04    MAXCV = 0.000000E+00
+   X = 6.513496E-04   4.447462E-03   4.469793E-02   9.325733E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  109   F = 8.208216E-04    MAXCV = 0.000000E+00
+   X = 3.869320E-04   5.724661E-03   4.392982E-02   9.389732E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  109   F = 8.555943E-04    MAXCV = 0.000000E+00
+   X = 2.267280E-04   6.768718E-03   4.404014E-02   9.447463E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  109   F = 8.555943E-04    MAXCV = 0.000000E+00
+   X = 2.267280E-04   6.768718E-03   4.404014E-02   9.447463E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  118   F = 7.488125E-04    MAXCV = 0.000000E+00
+   X = 6.513496E-04   4.447462E-03   4.469793E-02   9.325733E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  105   F = 8.395264E-04    MAXCV = 0.000000E+00
+   X = 2.909916E-05   7.163661E-03   4.278714E-02   9.480685E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  116   F = 7.783327E-04    MAXCV = 0.000000E+00
+   X = 9.446027E-04   4.867384E-03   4.182112E-02   9.378428E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  116   F = 7.783327E-04    MAXCV = 0.000000E+00
+   X = 9.446027E-04   4.867384E-03   4.182112E-02   9.378428E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  116   F = 7.783327E-04    MAXCV = 0.000000E+00
+   X = 9.446027E-04   4.867384E-03   4.182112E-02   9.378428E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  129   F = 8.310649E-04    MAXCV = 0.000000E+00
+   X = 9.176414E-04   5.816975E-03   4.387809E-02   9.394226E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  123   F = 7.244322E-04    MAXCV = 0.000000E+00
+   X = 6.500698E-04   4.250070E-03   4.355084E-02   9.323212E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  123   F = 7.244322E-04    MAXCV = 0.000000E+00
+   X = 6.500698E-04   4.250070E-03   4.355084E-02   9.323212E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  123   F = 7.244322E-04    MAXCV = 0.000000E+00
+   X = 6.500698E-04   4.250070E-03   4.355084E-02   9.323212E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  118   F = 7.488125E-04    MAXCV = 0.000000E+00
+   X = 6.513496E-04   4.447462E-03   4.469793E-02   9.325733E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  105   F = 6.759711E-04    MAXCV = 0.000000E+00
+   X =-1.246001E-03   6.502095E-03   4.211408E-02   9.541350E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  114   F = 6.494736E-04    MAXCV = 0.000000E+00
+   X =-9.657775E-04   5.857282E-03   4.255936E-02   9.503278E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  114   F = 6.494736E-04    MAXCV = 0.000000E+00
+   X =-9.657775E-04   5.857282E-03   4.255936E-02   9.503278E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  108   F = 5.704476E-04    MAXCV = 0.000000E+00
+   X = 2.499945E-03   4.648533E-03   4.331803E-02   9.440122E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  105   F = 6.759711E-04    MAXCV = 0.000000E+00
+   X =-1.246001E-03   6.502095E-03   4.211408E-02   9.541350E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =   97   F = 6.646863E-04    MAXCV = 0.000000E+00
+   X =-1.244498E-03   6.113852E-03   4.166864E-02   9.535122E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  120   F = 6.330222E-04    MAXCV = 0.000000E+00
+   X =-9.355272E-04   5.319710E-03   4.206411E-02   9.491849E-02
+
+   Normal return from subroutine COBYLA
+
+   NFVALS =  120   F = 6.330222E-04    MAXCV = 0.000000E+00
+   X =-9.355272E-04   5.319710E-03   4.206411E-02   9.491849E-02
+
+   Normal return from subroutine COBYLA
+Found 1 uniquely bad channels.
+
+0 by n/a: []
+
+0 by flat: []
+
+1 by deviation: ['Fp1']
+
+0 by hf noise: []
+
+0 by correl: []
+
+0 by SNR []
+
+0 by dropout: []
+
+0 by ransac: []
+Computing interpolation matrix from 20 sensor positions
+Interpolating 1 sensors
+Setting up high-pass filter at 1 Hz
+
+FIR filter parameters
+---------------------
+Designing a one-pass, zero-phase, non-causal highpass filter:
+- Windowed time-domain design (firwin) method
+- Hamming window with 0.0194 passband ripple and 53 dB stopband attenuation
+- Lower passband edge: 1.00
+- Lower transition bandwidth: 1.00 Hz (-6 dB cutoff frequency: 0.50 Hz)
+- Filter length: 1691 samples (3.303 sec)
+
+Writing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1336_end_1340.raw.fif
+Closing /n/scratch2/ms994/prep/train/00010364/s001_2013_05_30/00010364_s001_t000.edf/start_1336_end_1340.raw.fif [done]
+
+   NFVALS =  129   F = 8.310649E-04    MAXCV = 0.000000E+00
+   X = 9.176414E-04   5.816975E-03   4.387809E-02   9.394226E-02
