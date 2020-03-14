@@ -27,7 +27,7 @@ from functools import lru_cache
 
 
 ex = sacred.Experiment(name="generate_tfrecords_from_cached_clean")
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 @ex.config
 def config():
     train_pkl_20s_index="/n/scratch2/ms994/medium_size/train/20sIndex.pkl"
@@ -38,6 +38,9 @@ def config():
     unit_size=4
     max_size=20
     super_seg_overlap=10
+    run_all = True
+    split_to_run = None
+    file_pair_ind = None
 
 
 
@@ -114,7 +117,7 @@ def get_data_from_index_datum(dataset, i, index_datum, is_train = True, split="t
     split, patient, session, token = read.parse_edf_token_path_structure(index_datum.edf_file)
     montage_data = read.gen_seizure_channel_labels(index_datum.edf_file[:-4] + ".lbl", width=pd.Timedelta(seconds=2)).loc[pd.Timedelta(seconds=index_datum.start):pd.Timedelta(seconds=index_datum.start+20)]
     feature = { \
-               'original_index': _int64_feature(index_datum.original_ind),
+               'original_index': _int64_feature(i),
                'data': _float_feature_list(xData[0].reshape(-1)), \
                'label': _int64_feature_list(yData.to_numpy().reshape(-1)), \
                'subtypeLabel': _int64_feature_list(ySubtypeData.to_numpy().reshape(-1)), \
@@ -149,9 +152,10 @@ def write(data, fn):
 def writeAll(dataset_file_pairs):
     p = []
     for dataset, fileName in dataset_file_pairs:
-        p.append(Process(target=write, args=(dataset, fileName)))
-    [process.start() for process in p]
-    [process.join() for process in p]
+        write(dataset,fileName)
+    #     p.append(Process(target=write, args=(dataset, fileName)))
+    # [process.start() for process in p]
+    # [process.join() for process in p]
 
 # Helperfunctions to make your feature definition more readable
 def _float_feature_list(value):
@@ -162,19 +166,24 @@ def _bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 @ex.main
-def main():
+def main(run_all, split_to_run, file_pair_ind):
     trainDataset, validDataset, testDataset = getCachedData()
     trainIndexDict = get_train_index()
     train_dataset_file_pairs = grab_datasets_files(trainDataset, trainIndexDict, train_generator, "train")
-    writeAll(train_dataset_file_pairs)
-
     validIndexDict = get_valid_index()
     valid_dataset_file_pairs = grab_datasets_files(validDataset, validIndexDict, valid_generator, "valid")
-    writeAll(valid_dataset_file_pairs)
-
     testIndexDict = get_test_index()
     test_dataset_file_pairs = grab_datasets_files(testDataset, testIndexDict, train_generator, "test")
-    writeAll(test_dataset_file_pairs)
+    if split_to_run == "train":
+        write(train_dataset_file_pairs[file_pair_ind][0], train_dataset_file_pairs[file_pair_ind][1])
+    if split_to_run == "valid":
+        write(valid_dataset_file_pairs[file_pair_ind][0], valid_dataset_file_pairs[file_pair_ind][1])
+    if split_to_run == "test":
+        write(test_dataset_file_pairs[file_pair_ind][0], test_dataset_file_pairs[file_pair_ind][1])
+    if run_all:
+        writeAll(train_dataset_file_pairs)
+        writeAll(valid_dataset_file_pairs)
+        writeAll(test_dataset_file_pairs)
 
 
 if __name__ == "__main__":
