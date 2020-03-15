@@ -186,7 +186,7 @@ def config():
     steps_per_epoch=None
     total_valid_len=15594
     total_test_len=24097
-    randomly_reorder_channels
+    randomly_reorder_channels = False
     filter_size=(3,3)
     train_dataset_mode = "full"
     max_pool_size = (1,2)
@@ -219,11 +219,13 @@ def get_model(num_filters, filter_size, gaussian_noise, num_layers, max_pool_siz
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(num_filters, filter_size, activation="relu"))(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(max_pool_size))(x)
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
+    x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.LSTM(lstm_h, activation="relu", return_sequences=True)(x)
     for i in range(num_lin_layers):
+        x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(post_lin_h, activation="relu"))(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dropout(dropout))(x)
-
+    x = tf.keras.layers.BatchNormalization()(x)
     y = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(2, activation="relu"))(x)
     model = tf.keras.Model(inputs=[input], outputs=[y])
     model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss="categorical_crossentropy", metrics=["binary_accuracy", f1])
