@@ -36,13 +36,13 @@ def read_tfrecord(example):
 #     return example
     data = tf.reshape(example['data'], [9,21,1000,1])
     # data = (example['data'])
-    class_label = tf.cast(example['label'], tf.int32)
+    class_label = tf.cast(example['label'], tf.int32)[:9] #made mistake when making tfrecords and extended labels by one
 
 
-    return data, tf.one_hot(class_label[:9], 2)
+    return data, (tf.one_hot(class_label, 2), tf.one_hot(tf.cast(tf.reduce_any(tf.cast(class_label, tf.bool)), tf.int32), 2))
 
 @ex.capture
-def get_batched_dataset(filenames, batch_size, max_queue_size, n_process, is_train=True):
+def get_batched_dataset(filenames, batch_size, max_queue_size, max_std, n_process, is_train=True):
     option_no_order = tf.data.Options()
     option_no_order.experimental_deterministic = False
 
@@ -50,6 +50,8 @@ def get_batched_dataset(filenames, batch_size, max_queue_size, n_process, is_tra
     dataset = dataset.with_options(option_no_order)
     dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=16, num_parallel_calls=n_process)
     dataset = dataset.map(read_tfrecord, num_parallel_calls=n_process)
+    if is_train and max_std != None:
+        dataset = dataset.filter(lambda x, y: tf.reduce_all(tf.math.reduce_std(x, axis=0) < max_std))
 
 #     dataset = dataset.cache() # This dataset fits in RAM
     dataset = dataset.repeat()
@@ -151,6 +153,13 @@ def get_train_dataset(train_dataset_mode):
 def undersample():
     total_train_len = 4526*2 #there are 4526 positives
     train_dataset_mode = "under"
+
+@ex.named_config
+def oversample():
+    train_dataset_mode = "under"
+    total_train_len=67551 #these are the total number of instances in train set
+
+
 @ex.capture
 def get_validation_steps_per_epoch(total_valid_len, batch_size):
     return int(np.ceil(total_valid_len/batch_size))
@@ -170,6 +179,13 @@ def randomString(stringLength=16):
     """Generate a random string of fixed length """
     letters = string.ascii_uppercase
     return ''.join(random.choice(letters) for i in range(stringLength))
+
+@ex.named_config
+def remove_outlier_by_std_thresh():
+    max_std = 50.0/10**6 #mne transformed to 1*10^-6 V from µV
+@ex.capture
+def get_gaussian_noise(gaussian_noise):
+    return gaussian_noise * 10**(-6)
 @ex.config
 def config():
     model_name = "/n/scratch2/ms994/out/" + randomString() + ".h5"
@@ -190,18 +206,22 @@ def config():
     filter_size=(3,3)
     train_dataset_mode = "full"
     max_pool_size = (1,2)
-    num_filters=6
+    max_std = None
+    num_filters=16
     num_layers=6
-    lstm_h=32*4
-    post_lin_h =32
+    lstm_h=256
+    post_lin_h =256
     num_lin_layers=2
     gaussian_noise=2
     dropout = 0.5
     n_process = 8
     num_epochs=1000
     max_queue_size = 30
-    lr = 0.0001
+    lr = 0.00001
+    lr_decay = 0.5
     patience=20
+    verbose=2
+    use_bidirection = False
 
 @ex.capture
 def getCachedData():
@@ -211,36 +231,43 @@ def getCachedData():
     return trainDR, validDR, testDR
 
 @ex.capture
-def get_model(num_filters, filter_size, gaussian_noise, num_layers, max_pool_size, lstm_h, num_lin_layers, post_lin_h, dropout):
+def get_model(num_filters, filter_size, use_bidirection, gaussian_noise, num_layers, max_pool_size, lstm_h, num_lin_layers, post_lin_h, dropout):
     input = tf.keras.layers.Input((9,21,1000,1), name="input")
-    x = tf.keras.layers.GaussianNoise(gaussian_noise)(input)
+    x = tf.keras.layers.GaussianNoise(get_gaussian_noise())(input)
     for i in range(num_layers):
         x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(num_filters, filter_size, activation="relu"))(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(max_pool_size))(x)
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.LSTM(lstm_h, activation="relu", return_sequences=True)(x)
+    lstm = tf.keras.layers.LSTM(lstm_h, activation="relu", return_sequences=True)
+    if use_bidirection:
+        x = tf.keras.layers.Bidirectional(lstm)(x)
+    else:
+        x = lstm(x)
+
     for i in range(num_lin_layers):
         x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(post_lin_h, activation="relu"))(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dropout(dropout))(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    y = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(2, activation="relu"))(x)
-    model = tf.keras.Model(inputs=[input], outputs=[y])
-    model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss="categorical_crossentropy", metrics=["binary_accuracy", f1])
+    y_time = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(2, activation="relu"), name="over_time")(x)
+    x = tf.keras.layers.Flatten()(x)
+    y_overall = tf.keras.layers.Dense(2, name="overall")(x)
+    model = tf.keras.Model(inputs=[input], outputs=[y_time, y_overall])
+    model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss="categorical_crossentropy", metrics=["binary_accuracy", f1], loss_weights=[1,5])
     return model
 
 @ex.capture
-def get_callbacks(lr, patience, model_name):
+def get_callbacks(lr, lr_decay, patience, model_name):
     return [ \
-               tf.keras.callbacks.LearningRateScheduler(lambda epoch, lr: lr*0.9, verbose=1), \
+               tf.keras.callbacks.LearningRateScheduler(lambda x, lr: lr*lr_decay, verbose=1), \
                tf.keras.callbacks.EarlyStopping(patience=patience), \
                tf.keras.callbacks.ModelCheckpoint(model_name, save_best_only=True), \
                ]
 
 @ex.main
-def main(n_process, max_queue_size, num_epochs, model_name):
+def main(n_process, max_queue_size, num_epochs, model_name, verbose):
     tf.keras.backend.clear_session()
     model = get_model()
     model.summary()
@@ -251,7 +278,8 @@ def main(n_process, max_queue_size, num_epochs, model_name):
         validation_steps=get_validation_steps_per_epoch(), \
         steps_per_epoch=get_steps_per_epoch(), \
         epochs=num_epochs, \
-        callbacks=get_callbacks())
+        callbacks=get_callbacks(), \
+        verbose=verbose)
     ex.add_artifact(model_name)
     bestModel = tf.keras.models.load_model(model_name, custom_objects={"f1":f1}, compile=True)
     full_predictions = bestModel.predict(get_test_dataset(), steps=get_test_steps_per_epoch())
@@ -264,7 +292,7 @@ def main(n_process, max_queue_size, num_epochs, model_name):
 
 
 
-    return {
+    toReturn = {
         "history": history.history,
         "predictions": full_predictions,
         "seizure": {
@@ -274,6 +302,7 @@ def main(n_process, max_queue_size, num_epochs, model_name):
             }
         }
     raise Exception()
+    return toReturn
 
 
 if __name__ == "__main__":
