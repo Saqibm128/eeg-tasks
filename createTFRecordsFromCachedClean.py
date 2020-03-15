@@ -62,6 +62,19 @@ def get_train_index(train_pkl_20s_index):
         data[i].original_ind = i
     train_index = data
     return data
+
+
+def split_index_into_pos_neg_class(index):
+    newPositiveIndex = []
+    newNegativeIndex = []
+    for key in index.keys():
+        index[key].original_ind = key
+        if index[key].time_seizure_label.any():
+            newPositiveIndex.append(index[key])
+        else:
+            newNegativeIndex.append(index[key])
+    return newPositiveIndex, newNegativeIndex
+
 @ex.capture
 def get_valid_index(valid_pkl_20s_index):
     global valid_index
@@ -99,8 +112,11 @@ def test_generator(givenRange, testDataset, testIndexDict):
     def give_gen():
         for i in givenRange:
             print("{}/{}".format(i, len(givenRange)))
-            yield get_data_from_index_datum(testDataset, i, estIndexDict[i], is_train=False, split="test").SerializeToString()
+            yield get_data_from_index_datum(testDataset, i, testIndexDict[i], is_train=False, split="test").SerializeToString()
     return give_gen
+
+def create_train_class_dataset(index):
+    return ppv2.FileDataReader(split="train", directory="/n/scratch2/ms994/medium_size/train", cachedIndex=index)
 
 def getCachedData():
     testDR = ppv2.FileDataReader(split="test", directory="/n/scratch2/ms994/medium_size/test", cachedIndex=get_test_index())
@@ -108,7 +124,6 @@ def getCachedData():
     validDR = ppv2.FileDataReader(split="valid", directory="/n/scratch2/ms994/medium_size/valid", cachedIndex=get_valid_index())
     return trainDR, validDR, testDR
 
-# def get_data_file_reader():
 
 def get_data_from_index_datum(dataset, i, index_datum, is_train = True, split="train"):
     xData = dataset[i]
@@ -117,7 +132,7 @@ def get_data_from_index_datum(dataset, i, index_datum, is_train = True, split="t
     split, patient, session, token = read.parse_edf_token_path_structure(index_datum.edf_file)
     montage_data = read.gen_seizure_channel_labels(index_datum.edf_file[:-4] + ".lbl", width=pd.Timedelta(seconds=2)).loc[pd.Timedelta(seconds=index_datum.start):pd.Timedelta(seconds=index_datum.start+20)]
     feature = { \
-               'original_index': _int64_feature(i),
+               'original_index': _int64_feature(index_datum.original_ind) if "original_ind" in index_datum.keys() else  _int64_feature(i) ,
                'data': _float_feature_list(xData[0].reshape(-1)), \
                'label': _int64_feature_list(yData.to_numpy().reshape(-1)), \
                'subtypeLabel': _int64_feature_list(ySubtypeData.to_numpy().reshape(-1)), \
@@ -173,17 +188,29 @@ def main(run_all, split_to_run, file_pair_ind):
     validIndexDict = get_valid_index()
     valid_dataset_file_pairs = grab_datasets_files(validDataset, validIndexDict, valid_generator, "valid")
     testIndexDict = get_test_index()
-    test_dataset_file_pairs = grab_datasets_files(testDataset, testIndexDict, train_generator, "test")
+    test_dataset_file_pairs = grab_datasets_files(testDataset, testIndexDict, test_generator, "test")
+    if run_all:
+        writeAll(train_dataset_file_pairs)
+        writeAll(valid_dataset_file_pairs)
+        writeAll(test_dataset_file_pairs)
+    if split_to_run == "train_positive_negative":
+        positiveInd, negativeInd = split_index_into_pos_neg_class(trainIndexDict)
+        positiveTrainData = create_train_class_dataset(positiveInd)
+        negativeTrainData = create_train_class_dataset(negativeInd)
+        positive_train_dataset_file_pairs = grab_datasets_files(positiveTrainData, positiveInd, train_generator, "train_pos")
+        negative_train_dataset_file_pairs = grab_datasets_files(negativeTrainData, negativeInd, train_generator, "train_neg")
+        write(positive_train_dataset_file_pairs[file_pair_ind][0], positive_train_dataset_file_pairs[file_pair_ind][1])
+        write(negative_train_dataset_file_pairs[file_pair_ind][0], negative_train_dataset_file_pairs[file_pair_ind][1])
+
+    if split_to_run == "train_negative":
+        write(train_dataset_file_pairs[file_pair_ind][0], train_dataset_file_pairs[file_pair_ind][1])
     if split_to_run == "train":
         write(train_dataset_file_pairs[file_pair_ind][0], train_dataset_file_pairs[file_pair_ind][1])
     if split_to_run == "valid":
         write(valid_dataset_file_pairs[file_pair_ind][0], valid_dataset_file_pairs[file_pair_ind][1])
     if split_to_run == "test":
         write(test_dataset_file_pairs[file_pair_ind][0], test_dataset_file_pairs[file_pair_ind][1])
-    if run_all:
-        writeAll(train_dataset_file_pairs)
-        writeAll(valid_dataset_file_pairs)
-        writeAll(test_dataset_file_pairs)
+
 
 
 if __name__ == "__main__":
