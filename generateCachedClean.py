@@ -34,7 +34,7 @@ ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 
 def run_prep(file_name, annotation, split="train"):
         data = mne.io.read_raw_edf(file_name, preload=True)
-        data = data.pick_channels(util_funcs.get_common_channel_names())
+        data = data.pick_channels(util_funcs.get_common_channel_names()) # use the 21 channels guaranteed in each sample
         data = data.reorder_channels(util_funcs.get_common_channel_names())
         data.rename_channels(constants.MNE_CHANNEL_EDF_MAPPING)
         data.resample(512) #upsample to highest frequency, as per best practice
