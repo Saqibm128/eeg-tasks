@@ -1,5 +1,6 @@
 from keras import backend as K
 import keras.metrics
+import tensorflow as tf
 def recall(y_true, y_pred):
     """Recall metric.
 
@@ -14,8 +15,8 @@ def recall(y_true, y_pred):
     return recall
 
 def specificity(y_true, y_pred):
-    true_negatives = K.shape(y_true)[0] - K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
-    possible_negatives = K.shape(y_true)[0] - K.sum(K.round(K.clip(y_true, 0, 1)))
+    true_negatives =  K.sum(K.round(K.clip((1-y_true) * (1-y_pred), 0, 1)))
+    possible_negatives = K.sum(K.round(K.clip((1-y_true), 0, 1)))
     specificity = true_negatives / (possible_negatives + K.epsilon())
     return specificity
     # return keras.metrics.SpecificityAtSensitivity(sensitivity(y_true, y_pred))

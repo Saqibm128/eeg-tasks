@@ -18,19 +18,19 @@ import string
 from addict import Dict
 import sacred
 ex = sacred.Experiment(name="seizure_long_term")
-# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 import preprocessingV2.preprocessingV2 as ppv2
-from keras_models.metrics import f1
+from keras_models.metrics import f1, sensitivity, specificity
 from sklearn.metrics import f1_score, roc_auc_score, classification_report
 
-@ex.capture
-def read_tfrecord(example, multilabel):
+# @ex.capture
+def read_tfrecord(example, multilabel=False):
     features = {'original_index': tf.io.FixedLenFeature([1], tf.int64, ),\
-               'data':  tf.FixedLenFeature([9*21*1000], tf.float32,),\
-               'label':  tf.FixedLenFeature([10], tf.int64, [0 for i in range(10)]),\
-               'subtypeLabel':  tf.FixedLenFeature([10], tf.int64, [0 for i in range(10)]),\
-               'patient':  tf.FixedLenFeature([1], tf.int64,), \
-               'session':  tf.FixedLenFeature([1], tf.int64,),
+               'data':  tf.io.FixedLenFeature([9*21*1000], tf.float32,),\
+               'label':  tf.io.FixedLenFeature([10], tf.int64, [0 for i in range(10)]),\
+               'subtypeLabel':  tf.io.FixedLenFeature([10], tf.int64, [0 for i in range(10)]),\
+               'patient':  tf.io.FixedLenFeature([1], tf.int64,), \
+               'session':  tf.io.FixedLenFeature([1], tf.int64,),
                        }
     # decode the TFRecord
     example = tf.io.parse_single_example(example, features)
@@ -169,12 +169,18 @@ def oversample():
 
 
 @ex.capture
-def get_validation_steps_per_epoch(total_valid_len, batch_size):
-    return int(np.ceil(total_valid_len/batch_size))
+def get_validation_steps_per_epoch(total_valid_len, batch_size, steps_per_epoch):
+    if steps_per_epoch is not None:
+        return steps_per_epoch
+    else:
+        return int(np.ceil(total_valid_len/batch_size))
 
 @ex.capture
-def get_test_steps_per_epoch(total_test_len, batch_size):
-    return int(np.ceil(total_test_len/batch_size))
+def get_test_steps_per_epoch(total_test_len, batch_size, steps_per_epoch):
+    if steps_per_epoch is not None:
+        return steps_per_epoch
+    else:
+        return int(np.ceil(total_test_len/batch_size))
 
 @ex.capture
 def get_steps_per_epoch(total_train_len, batch_size, steps_per_epoch):
@@ -215,7 +221,7 @@ def config():
     train_dataset_mode = "full"
     max_pool_size = (1,2)
     max_std = None
-    num_filters=16
+    num_filters=4
     num_layers=6
     lstm_h=256
     post_lin_h =256
@@ -273,7 +279,7 @@ def get_model(num_filters, filter_size, use_bidirection, gaussian_noise, multila
         model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss=["categorical_crossentropy", "categorical_crossentropy"], loss_weights=[1,1], metrics=["binary_accuracy", f1])
     else:
         model = tf.keras.Model(inputs=[input], outputs=[y_time]) #todo figure out the loss_weights
-        model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss=["categorical_crossentropy"],  metrics=["binary_accuracy", f1])
+        model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss="categorical_crossentropy",  metrics=["binary_accuracy", f1, sensitivity, specificity])
     return model
 
 @ex.capture
@@ -299,40 +305,53 @@ def main(n_process, max_queue_size, num_epochs, model_name, verbose):
         callbacks=get_callbacks(), \
         verbose=verbose)
     ex.add_artifact(model_name)
-    bestModel = tf.keras.models.load_model(model_name, custom_objects={"f1":f1}, compile=True)
+    bestModel = tf.keras.models.load_model(model_name, custom_objects={"f1":f1,"sensitivity":sensitivity,"specificity":specificity}, compile=True)
     test = get_test_dataset()
-    testIterator = test.take(get_test_steps_per_epoch()).make_one_shot_iterator()
-    all_ys_over_time = []
-    predicted_ys_over_time = []
-    all_ys_overall = []
-    predicted_ys_overall = []
-    for x, y in testIterator:
-            over_time_y = y
-            all_ys_over_time.append(over_time_y.numpy())
-            predicted_y_over_time = bestModel.predict(x.numpy())
-            predicted_ys_over_time.append(predicted_y_over_time)
-            # all_ys_overall.append(overall_y)
-            # predicted_ys_overall.append(predicted_y_overall)
+    pred = bestModel.evaluate(get_test_dataset(), steps=get_test_steps_per_epoch())
+    # raise Exception()
 
-
-
-    all_ys_over_time = np.vstack(all_ys_over_time)
-    predicted_ys_over_time = np.vstack(predicted_ys_over_time)
+    # # testIterator = test.take(get_test_steps_per_epoch()).make_one_shot_iterator()
+    # all_ys_over_time = []
+    # predicted_ys_over_time = []
+    # all_ys_overall = []
+    # predicted_ys_overall = []
+    # i = 0
+    #
+    # # tf.enable_eager_execution()
+    #
+    # # for x, y in testIterator:
+    # #         over_time_y = y
+    # #         print(i)
+    # #         i+=1
+    # #         all_ys_over_time.append(over_time_y.numpy())
+    # #         predicted_y_over_time = bestModel.predict(x.numpy())
+    # #         predicted_ys_over_time.append(predicted_y_over_time)
+    #         # all_ys_overall.append(overall_y)
+    #         # predicted_ys_overall.append(predicted_y_overall)
+    #
+    #
+    #
+    # all_ys_over_time = np.vstack(all_ys_over_time)
+    # predicted_ys_over_time = np.vstack(predicted_ys_over_time)
     # all_ys_overall = np.vstack(all_ys_overall)
     # predicted_ys_overall = np.vstack(predicted_ys_overall)
 
     toReturn = {
         "history": history.history,
-        "raw": {
-            "predictions_over_time": predicted_ys_over_time,
-            "labels_over_time": all_ys_overall,
-            "predictions_overall": predicted_ys_overall,
-            "labels_overall": all_ys_overall
-        },
+        # "raw": {
+        #     "predictions_over_time": predicted_ys_over_time,
+        #     "labels_over_time": all_ys_overall,
+        #     "predictions_overall": predicted_ys_overall,
+        #     "labels_overall": all_ys_overall
+        # },
         "seizure_over_time": {
-            "f1": f1_score(predictions_flattened, labels_flattened),
-            "classification_report": classification_report(all_ys_over_time.reshape(-1,2).argmax(1), predicted_ys_over_time.reshape(-1,2).argmax(1), output_dict=True),
-            "auc": roc_auc_score(all_ys_over_time.reshape(-1,2).argmax(1), predicted_ys_over_time.reshape(-1,2).argmax(1)),
+            "sensitivity": pred[3],
+            "specificity": pred[4],
+            "f1": pred[2],
+            # "classification_report": classification_report(all_ys_over_time.reshape(-1,2).argmax(1), predicted_ys_over_time.reshape(-1,2).argmax(1), output_dict=True),
+            # "auc": roc_auc_score(all_ys_over_time.reshape(-1,2).argmax(1), predicted_ys_over_time.reshape(-1,2).argmax(1)),
+            "acc": pred[1],
+            "loss": pred[0]
             },
         # "seizure_overall": {
         #     "classification_report": classification_report(all_ys_overall.argmax(1), predicted_ys_overall.overall(1))
