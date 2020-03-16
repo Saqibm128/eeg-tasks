@@ -18,12 +18,13 @@ import string
 from addict import Dict
 import sacred
 ex = sacred.Experiment(name="seizure_long_term")
-ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
+# ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 import preprocessingV2.preprocessingV2 as ppv2
 from keras_models.metrics import f1
 from sklearn.metrics import f1_score, roc_auc_score, classification_report
 
-def read_tfrecord(example):
+@ex.capture
+def read_tfrecord(example, multilabel):
     features = {'original_index': tf.io.FixedLenFeature([1], tf.int64, ),\
                'data':  tf.FixedLenFeature([9*21*1000], tf.float32,),\
                'label':  tf.FixedLenFeature([10], tf.int64, [0 for i in range(10)]),\
@@ -34,15 +35,19 @@ def read_tfrecord(example):
     # decode the TFRecord
     example = tf.io.parse_single_example(example, features)
 #     return example
+
     data = tf.reshape(example['data'], [9,21,1000,1])
     # data = (example['data'])
-    class_label = tf.cast(example['label'], tf.int32)[:9] #made mistake when making tfrecords and extended labels by one
 
+    class_label = tf.cast(example['label'], tf.int32)
 
-    return data, (tf.one_hot(class_label, 2), tf.one_hot(tf.cast(tf.reduce_any(tf.cast(class_label, tf.bool)), tf.int32), 2))
+    if multilabel:
+        return data, (tf.one_hot(class_label[:9], 2), tf.one_hot(tf.cast(tf.reduce_any(tf.cast(class_label[:9], tf.bool), tf.int32), 2)))
+    else:
+        return data, tf.one_hot(class_label[:9], 2)
 
 @ex.capture
-def get_batched_dataset(filenames, batch_size, max_queue_size, max_std, n_process, is_train=True):
+def get_batched_dataset(filenames, batch_size, use_fft, max_queue_size, max_std, n_process, is_train=True):
     option_no_order = tf.data.Options()
     option_no_order.experimental_deterministic = False
 
@@ -52,8 +57,11 @@ def get_batched_dataset(filenames, batch_size, max_queue_size, max_std, n_proces
     dataset = dataset.map(read_tfrecord, num_parallel_calls=n_process)
     if is_train and max_std != None:
         dataset = dataset.filter(lambda x, y: tf.reduce_all(tf.math.reduce_std(x, axis=0) < max_std))
-
-#     dataset = dataset.cache() # This dataset fits in RAM
+    if use_fft:
+        dataset = dataset.map(lambda x, y: ( \
+                                            tf.cast(tf.signal.fft( tf.cast(x, tf.complex64)), tf.float64), \
+                                            y), num_parallel_calls=n_process)
+#     dataset = dataset.cache() # IF this dataset fits in RAM
     dataset = dataset.repeat()
     if is_train:
         dataset = dataset.shuffle(2048)
@@ -221,7 +229,9 @@ def config():
     lr_decay = 0.5
     patience=20
     verbose=2
+    use_fft = False
     use_bidirection = False
+    multilabel = False
 
 @ex.capture
 def getCachedData():
@@ -231,21 +241,25 @@ def getCachedData():
     return trainDR, validDR, testDR
 
 @ex.capture
-def get_model(num_filters, filter_size, use_bidirection, gaussian_noise, num_layers, max_pool_size, lstm_h, num_lin_layers, post_lin_h, dropout):
+def get_model(num_filters, filter_size, use_bidirection, gaussian_noise, multilabel, num_layers, max_pool_size, lstm_h, num_lin_layers, post_lin_h, use_fft, dropout):
     input = tf.keras.layers.Input((9,21,1000,1), name="input")
-    x = tf.keras.layers.GaussianNoise(get_gaussian_noise())(input)
-    for i in range(num_layers):
+    if not use_fft:
+        x = tf.keras.layers.GaussianNoise(get_gaussian_noise())(input)
+        for i in range(num_layers):
+            x = tf.keras.layers.BatchNormalization()(x)
+            x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(num_filters, filter_size, activation="relu"))(x)
+            x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(max_pool_size))(x)
+        x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
         x = tf.keras.layers.BatchNormalization()(x)
-        x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(num_filters, filter_size, activation="relu"))(x)
-        x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(max_pool_size))(x)
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
-    x = tf.keras.layers.BatchNormalization()(x)
+    else: #dont do cnn on fft data
+        x = input
+        x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
+
     lstm = tf.keras.layers.LSTM(lstm_h, activation="relu", return_sequences=True)
     if use_bidirection:
         x = tf.keras.layers.Bidirectional(lstm)(x)
     else:
         x = lstm(x)
-
     for i in range(num_lin_layers):
         x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(post_lin_h, activation="relu"))(x)
@@ -253,9 +267,13 @@ def get_model(num_filters, filter_size, use_bidirection, gaussian_noise, num_lay
     x = tf.keras.layers.BatchNormalization()(x)
     y_time = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(2, activation="relu"), name="over_time")(x)
     x = tf.keras.layers.Flatten()(x)
-    y_overall = tf.keras.layers.Dense(2, name="overall")(x)
-    model = tf.keras.Model(inputs=[input], outputs=[y_time, y_overall])
-    model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss="categorical_crossentropy", metrics=["binary_accuracy", f1], loss_weights=[1,5])
+    y_overall = tf.keras.layers.Dense(2, activation="relu")(x)
+    if multilabel:
+        model = tf.keras.Model(inputs=[input], outputs=[y_time, y_overall]) #todo figure out the loss_weights
+        model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss=["categorical_crossentropy", "categorical_crossentropy"], loss_weights=[1,1], metrics=["binary_accuracy", f1])
+    else:
+        model = tf.keras.Model(inputs=[input], outputs=[y_time]) #todo figure out the loss_weights
+        model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss=["categorical_crossentropy"],  metrics=["binary_accuracy", f1])
     return model
 
 @ex.capture
@@ -282,26 +300,45 @@ def main(n_process, max_queue_size, num_epochs, model_name, verbose):
         verbose=verbose)
     ex.add_artifact(model_name)
     bestModel = tf.keras.models.load_model(model_name, custom_objects={"f1":f1}, compile=True)
-    full_predictions = bestModel.predict(get_test_dataset(), steps=get_test_steps_per_epoch())
-    labels = get_test_labels()
-    labels_flattened = labels.reshape(-1)
-    #cuz of weird batch math in dataset, we overshoot a little
-    full_predictions = full_predictions[:labels.shape[0]]
-    predictions = full_predictions.argmax(2)
-    predictions_flattened = predictions.reshape(-1)
+    test = get_test_dataset()
+    testIterator = test.take(get_test_steps_per_epoch()).make_one_shot_iterator()
+    all_ys_over_time = []
+    predicted_ys_over_time = []
+    all_ys_overall = []
+    predicted_ys_overall = []
+    for x, y in testIterator:
+            over_time_y = y
+            all_ys_over_time.append(over_time_y.numpy())
+            predicted_y_over_time = bestModel.predict(x.numpy())
+            predicted_ys_over_time.append(predicted_y_over_time)
+            # all_ys_overall.append(overall_y)
+            # predicted_ys_overall.append(predicted_y_overall)
 
 
+
+    all_ys_over_time = np.vstack(all_ys_over_time)
+    predicted_ys_over_time = np.vstack(predicted_ys_over_time)
+    # all_ys_overall = np.vstack(all_ys_overall)
+    # predicted_ys_overall = np.vstack(predicted_ys_overall)
 
     toReturn = {
         "history": history.history,
-        "predictions": full_predictions,
-        "seizure": {
+        "raw": {
+            "predictions_over_time": predicted_ys_over_time,
+            "labels_over_time": all_ys_overall,
+            "predictions_overall": predicted_ys_overall,
+            "labels_overall": all_ys_overall
+        },
+        "seizure_over_time": {
             "f1": f1_score(predictions_flattened, labels_flattened),
-            "classification_report": classification_report(labels_flattened, predictions_flattened, output_dict=True),
-            "auc": roc_auc_score(predictions_flattened, labels_flattened),
-            }
+            "classification_report": classification_report(all_ys_over_time.reshape(-1,2).argmax(1), predicted_ys_over_time.reshape(-1,2).argmax(1), output_dict=True),
+            "auc": roc_auc_score(all_ys_over_time.reshape(-1,2).argmax(1), predicted_ys_over_time.reshape(-1,2).argmax(1)),
+            },
+        # "seizure_overall": {
+        #     "classification_report": classification_report(all_ys_overall.argmax(1), predicted_ys_overall.overall(1))
+        # }
         }
-    raise Exception()
+    # raise Exception()
     return toReturn
 
 
