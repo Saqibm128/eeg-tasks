@@ -543,13 +543,13 @@ def get_model(
         seizure_patient_model = multi_gpu_model(seizure_patient_model, num_gpus)
         patient_model = multi_gpu_model(patient_model, num_gpus)
 
-    seizure_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["binary_accuracy"])
+    seizure_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy"], metrics=["accuracy"])
     if include_seizure_type and include_montage_channels:
         loss_weights = [K.variable(seizure_weight),K.variable(patient_weight), K.variable(seizure_weight), K.variable(seizure_weight)]
-        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy", tf.keras.metrics.AUC(), f1])
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy"], loss_weights=loss_weights, metrics=["accuracy", tf.keras.metrics.AUC(), f1])
     elif include_seizure_type:
         loss_weights = [K.variable(seizure_weight),K.variable(patient_weight), K.variable(seizure_weight)]
-        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy", f1])
+        seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy", "categorical_crossentropy", "categorical_crossentropy"], loss_weights=loss_weights, metrics=["accuracy", f1])
     elif not include_seizure_type and not include_montage_channels:
         loss_weights = [K.variable(seizure_weight),K.variable(patient_weight)]
         seizure_patient_model.compile(get_optimizer()(lr=lr), loss=["categorical_crossentropy",  "categorical_crossentropy"], loss_weights=loss_weights, metrics=["categorical_accuracy", f1])

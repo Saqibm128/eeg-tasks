@@ -23,40 +23,64 @@ import preprocessingV2.preprocessingV2 as ppv2
 from keras_models.metrics import f1, sensitivity, specificity
 from sklearn.metrics import f1_score, roc_auc_score, classification_report
 
+# @ex.capture
+# def get_read_tfrecord(multilabel=False):
+def read_tfrecord(example):
+    features = {'original_index': tf.io.FixedLenFeature([1], tf.int64, ),\
+               'data':  tf.io.FixedLenFeature([9*21*1000], tf.float32,),\
+               'label':  tf.io.FixedLenFeature([10], tf.int64, [0 for i in range(10)]),\
+               'subtypeLabel':  tf.io.FixedLenFeature([10], tf.int64, [0 for i in range(10)]),\
+               'patient':  tf.io.FixedLenFeature([1], tf.int64,), \
+               'session':  tf.io.FixedLenFeature([1], tf.int64,),
+                       }
+    # decode the TFRecord
+    example = tf.io.parse_single_example(example, features)
+#     return example
+
+    data = tf.reshape(example['data'], [9,21,1000,1])
+    # data = (example['data'])
+
+    class_label = tf.cast(example['label'], tf.int32)
+
+    del example
+
+
+    return data, tf.one_hot(class_label[:9], 2)
+    # return read_tfrecord
+
+def read_multilabel_tfrecord(example):
+    features = {'original_index': tf.io.FixedLenFeature([1], tf.int64, ),\
+               'data':  tf.io.FixedLenFeature([9*21*1000], tf.float32,),\
+               'label':  tf.io.FixedLenFeature([10], tf.int64, [0 for i in range(10)]),\
+               'subtypeLabel':  tf.io.FixedLenFeature([10], tf.int64, [0 for i in range(10)]),\
+               'patient':  tf.io.FixedLenFeature([1], tf.int64,), \
+               'session':  tf.io.FixedLenFeature([1], tf.int64,),
+                       }
+    # decode the TFRecord
+    example = tf.io.parse_single_example(example, features)
+#     return example
+
+    data = tf.reshape(example['data'], [9,21,1000,1])
+    # data = (example['data'])
+
+    class_label = tf.cast(example['label'], tf.int32)
+
+    # del example
+    return data, (tf.one_hot(class_label[:9], 2), tf.one_hot(tf.cast(tf.reduce_any(tf.cast(class_label[:9], tf.bool)), tf.int32), 2))
+
+
 @ex.capture
-def get_read_tfrecord(multilabel=False):
-    def read_tfrecord(example):
-        features = {'original_index': tf.io.FixedLenFeature([1], tf.int64, ),\
-                   'data':  tf.io.FixedLenFeature([9*21*1000], tf.float32,),\
-                   'label':  tf.io.FixedLenFeature([10], tf.int64, [0 for i in range(10)]),\
-                   'subtypeLabel':  tf.io.FixedLenFeature([10], tf.int64, [0 for i in range(10)]),\
-                   'patient':  tf.io.FixedLenFeature([1], tf.int64,), \
-                   'session':  tf.io.FixedLenFeature([1], tf.int64,),
-                           }
-        # decode the TFRecord
-        example = tf.io.parse_single_example(example, features)
-    #     return example
-
-        data = tf.reshape(example['data'], [9,21,1000,1])
-        # data = (example['data'])
-
-        class_label = tf.cast(example['label'], tf.int32)
-
-        if multilabel:
-            return data, (tf.one_hot(class_label[:9], 2), tf.one_hot(tf.cast(tf.reduce_any(tf.cast(class_label[:9], tf.bool)), tf.int32), 2))
-        else:
-            return data, tf.one_hot(class_label[:9], 2)
-    return read_tfrecord
-
-@ex.capture
-def get_batched_dataset(filenames, batch_size, use_fft, max_queue_size, max_std, n_process, is_train=True):
+def get_batched_dataset(filenames, batch_size, use_fft, max_queue_size, max_std, n_process, multilabel, is_train=True, ):
     option_no_order = tf.data.Options()
     option_no_order.experimental_deterministic = False
 
     dataset = tf.data.Dataset.list_files(filenames)
     dataset = dataset.with_options(option_no_order)
     dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=16, num_parallel_calls=n_process)
-    dataset = dataset.map(get_read_tfrecord(), num_parallel_calls=n_process)
+    if multilabel:
+        dataset = dataset.map(read_multilabel_tfrecord, num_parallel_calls=n_process)
+    else:
+        dataset = dataset.map(read_tfrecord, num_parallel_calls=n_process)
     if is_train and max_std != None:
         dataset = dataset.filter(lambda x, y: tf.reduce_all(tf.math.reduce_std(x, axis=0) < max_std))
     if use_fft:
@@ -66,9 +90,13 @@ def get_batched_dataset(filenames, batch_size, use_fft, max_queue_size, max_std,
 #     dataset = dataset.cache() # IF this dataset fits in RAM
     dataset = dataset.repeat()
     if is_train:
-        dataset = dataset.shuffle(2048)
+        dataset = dataset.shuffle(256)
     dataset = dataset.batch(batch_size, drop_remainder=True)
-    dataset = dataset.prefetch(max_queue_size)
+    if is_train:
+        dataset = dataset.prefetch(max_queue_size)
+    else:
+        dataset = dataset.prefetch(int(max_queue_size/4)) #store a lot less for the other sets to avoid wasting memory
+
     return dataset
 
 @ex.capture
@@ -233,8 +261,8 @@ def config():
     dropout = 0.5
     n_process = 8
     num_epochs=1000
-    max_queue_size = 30
-    lr = 0.00001
+    max_queue_size = 256
+    lr = 0.0005
     lr_decay = 0.5
     patience=20
     verbose=2
@@ -242,6 +270,7 @@ def config():
     use_bidirection = False
     multilabel = False
     seizure_class_weight = 1 # equal weighting to nonseizure
+    use_batch_normalization = True
 
 @ex.capture
 def getCachedData():
@@ -251,16 +280,32 @@ def getCachedData():
     return trainDR, validDR, testDR
 
 @ex.capture
-def get_model(num_filters, num_lstm_layers, filter_size, use_bidirection, gaussian_noise, multilabel, num_layers, max_pool_size, lstm_h, num_lin_layers, post_lin_h, use_fft, dropout):
+def get_model(num_filters,
+              num_lstm_layers,
+              filter_size,
+              use_bidirection,
+              gaussian_noise,
+              multilabel,
+              num_layers,
+              max_pool_size,
+              lstm_h,
+              num_lin_layers,
+              post_lin_h,
+              use_fft,
+              dropout,
+              model_name,
+              use_batch_normalization):
     input = tf.keras.layers.Input((9,21,1000,1), name="input")
     if not use_fft:
         x = tf.keras.layers.GaussianNoise(get_gaussian_noise())(input)
         for i in range(num_layers):
-            x = tf.keras.layers.BatchNormalization()(x)
+            if use_batch_normalization:
+                x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
             x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(num_filters, filter_size, activation="relu"))(x)
             x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D(max_pool_size))(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
-        x = tf.keras.layers.BatchNormalization()(x)
+        if use_batch_normalization:
+            x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
     else: #dont do cnn on fft data
         x = input
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
@@ -271,20 +316,23 @@ def get_model(num_filters, num_lstm_layers, filter_size, use_bidirection, gaussi
         else:
             x = lstm(x)
     for i in range(num_lin_layers):
-        x = tf.keras.layers.BatchNormalization()(x)
+        if use_batch_normalization:
+            x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(post_lin_h, activation="relu"))(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dropout(dropout))(x)
-    x = tf.keras.layers.BatchNormalization()(x)
+    if use_batch_normalization:
+        x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
     y_time = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(2, activation="softmax"), name="over_time")(x)
 
     if multilabel:
         x = tf.keras.layers.Flatten()(x)
-        y_overall = tf.keras.layers.Dense(2, activation="softmax")(x)
+        y_overall = tf.keras.layers.Dense(2, activation="softmax", name="overall")(x)
         model = tf.keras.Model(inputs=[input], outputs=[y_time, y_overall]) #todo figure out the loss_weights
         model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss=["categorical_crossentropy", "categorical_crossentropy"], loss_weights=[1,1], metrics=["binary_accuracy", f1, sensitivity, specificity])
     else:
         model = tf.keras.Model(inputs=[input], outputs=[y_time]) #todo figure out the loss_weights
-        model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss="categorical_crossentropy",  metrics=["binary_accuracy", f1, sensitivity, specificity])
+        model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss="categorical_crossentropy",  metrics=["categorical_accuracy", f1, sensitivity, specificity])
+    model.save(model_name)
     return model
 
 @ex.capture
@@ -308,15 +356,19 @@ def main(n_process, max_queue_size, num_epochs, model_name, verbose, multilabel)
     model = get_model()
     model.summary()
     # model.fit(get_train_dataset(), steps_per_epoch=100, epochs=1)
-
+    train = get_train_dataset()
+    valid = get_validation_dataset()
+    test = get_test_dataset()
+    callbacks = get_callbacks()
+    # tf.keras.backend.get_session().graph.finalize()
 
     history = model.fit( \
-        get_train_dataset(), \
-        validation_data=get_validation_dataset(), \
+        train, \
+        validation_data=valid, \
         validation_steps=get_validation_steps_per_epoch(), \
         steps_per_epoch=get_steps_per_epoch(), \
         epochs=num_epochs, \
-        callbacks=get_callbacks(), \
+        callbacks=callbacks, \
         class_weight=get_classweight(), \
         verbose=verbose)
     ex.add_artifact(model_name)
@@ -372,7 +424,6 @@ def main(n_process, max_queue_size, num_epochs, model_name, verbose, multilabel)
         #     "classification_report": classification_report(all_ys_overall.argmax(1), predicted_ys_overall.overall(1))
         # }
         }
-    raise Exception()
     if multilabel:
         toReturn["seizure_over_time"] = {
             "sensitivity": pred[3+1],
