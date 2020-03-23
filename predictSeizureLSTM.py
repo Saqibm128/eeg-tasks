@@ -20,7 +20,7 @@ import sacred
 ex = sacred.Experiment(name="seizure_long_term")
 ex.observers.append(MongoObserver.create(client=util_funcs.get_mongo_client()))
 import preprocessingV2.preprocessingV2 as ppv2
-from keras_models.metrics import f1, sensitivity, specificity
+from keras_models.metrics import f1, sensitivity, specificity, auroc
 from sklearn.metrics import f1_score, roc_auc_score, classification_report
 
 # @ex.capture
@@ -331,7 +331,7 @@ def get_model(num_filters,
         model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss=["categorical_crossentropy", "categorical_crossentropy"], loss_weights=[1,1], metrics=["binary_accuracy", f1, sensitivity, specificity])
     else:
         model = tf.keras.Model(inputs=[input], outputs=[y_time]) #todo figure out the loss_weights
-        model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss="categorical_crossentropy",  metrics=["categorical_accuracy", f1, sensitivity, specificity])
+        model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss="categorical_crossentropy",  metrics=[f1, sensitivity, specificity])
     model.save(model_name)
     return model
 

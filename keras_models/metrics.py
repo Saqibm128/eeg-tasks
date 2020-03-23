@@ -2,6 +2,17 @@ from keras import backend as K
 import keras.metrics
 import tensorflow as tf
 
+from sklearn.metrics import roc_auc_score
+
+def non_error_roc_auc_score(y_true, y_pred):
+    try:
+        return roc_auc_score(y_true, y_pred)
+    except:
+        return 0.0
+
+def auroc(y_true, y_pred):
+    return tf.py_func(non_error_roc_auc_score, (y_true, y_pred), tf.double)
+
 def recall(y_true, y_pred):
     """Recall metric.
 

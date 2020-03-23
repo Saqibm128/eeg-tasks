@@ -14,9 +14,16 @@ import constants
 from functools import lru_cache
 from imblearn.over_sampling import SMOTE, ADASYN
 from imblearn.under_sampling import RandomUnderSampler
+import string, random
 
 
 root_path = "/home/ms994/" if "EEG_ROOT" not in os.environ.keys() else os.environ["EEG_ROOT"]
+
+# https://pynative.com/python-generate-random-string/
+def randomString(stringLength=16):
+    """Generate a random string of fixed length """
+    letters = string.ascii_uppercase
+    return ''.join(random.choice(letters) for i in range(stringLength))
 
 
 
