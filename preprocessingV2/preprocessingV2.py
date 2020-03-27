@@ -14,10 +14,8 @@ import clinical_text_analysis as cta
 import tsfresh
 from sklearn.metrics import roc_auc_score, accuracy_score, confusion_matrix, roc_curve
 from os import path
-import predictSeizureConvExp as psce
 import keras_models.dataGen as dg
 from addict import Dict
-reload(psce)
 from keras.utils import multi_gpu_model
 import keras.optimizers
 import ensembleReader as er
@@ -102,13 +100,11 @@ class DataColator(util_funcs.MultiProcessingDataset):
         return self.data[new_i]
 
 class FileDataReader(util_funcs.MultiProcessingDataset):
-    def __init__(self, cachedIndex=None, split="train", directory=train_split_preprocessed, train_label_files_segs=None, overlap=2, unit_size=4, max_size=20, super_seg_overlap=10, eagerLoad=False):
+    def __init__(self, cachedIndex=None, split="train", filename=None, directory=train_split_preprocessed, train_label_files_segs=None, overlap=2, unit_size=4, max_size=20):
         self.directory = directory
         self.all_files = util_funcs.get_abs_files(util_funcs.get_abs_files(util_funcs.get_abs_files("/n/scratch2/ms994/medium_size/test/")), False)
         self.overlap = overlap
-        self.super_seg_overlap = super_seg_overlap
         self.unit_size = unit_size
-        self.eagerLoad = eagerLoad
         if train_label_files_segs is not None:
             self.train_label_files_segs = train_label_files_segs
         elif cachedIndex is None:
@@ -128,7 +124,7 @@ class FileDataReader(util_funcs.MultiProcessingDataset):
             currentInd = 0
             for i in range(len(train_label_files_segs)):
                 max_segment_index = train_label_files_segs[i][1].index.max()/pd.Timedelta(seconds=self.overlap)
-                for j in range(int(np.floor((max_segment_index - max_size)/super_seg_overlap))):
+                for j in range(int(np.floor((max_segment_index - max_size)))):
                     startTime = j * self.max_size
                     self.indexDict[currentInd].start = startTime
                     self.indexDict[currentInd].edf_file = train_label_files_segs[i][0]
@@ -141,7 +137,9 @@ class FileDataReader(util_funcs.MultiProcessingDataset):
                     self.indexDict[currentInd].time_seizure_label =  (labelSlice != "bckg")
                     self.indexDict[currentInd].time_seizure_subtypes = labelSlice.apply(lambda x: constants.SEIZURE_SUBTYPES.index(x))
                     currentInd+=1
-            # pkl.dump(self.indexDict, open("/n/scratch2/ms994/medium_size/"+split + "/20sindex.pkl", "wb"))
+            if filename is not None:
+                filename = "/n/scratch2/ms994/medium_size/" + split + "/20sindex.pkl"
+            pkl.dump(self.indexDict, open(filename, "wb"))
         else:
             self.indexDict = cachedIndex
     def __len__(self):

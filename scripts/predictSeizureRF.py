@@ -1,3 +1,5 @@
+import sys, os
+sys.path.append(os.path.realpath(".."))
 import tsfresh.feature_extraction.feature_calculators as tsf
 from sacred.observers import MongoObserver
 from sacred import SETTINGS

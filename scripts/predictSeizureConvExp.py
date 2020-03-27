@@ -1,3 +1,5 @@
+import sys, os
+sys.path.append(os.path.realpath(".."))
 from sacred.observers import MongoObserver
 try: import cPickle as pkl
 except: import pickle as pkl

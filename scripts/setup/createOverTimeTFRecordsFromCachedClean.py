@@ -1,4 +1,5 @@
 import sys, os
+sys.path.append(os.path.realpath("."))
 import tensorflow as tf
 os.environ["TF_XLA_FLAGS"]="--tf_xla_cpu_global_jit"
 from sacred.observers import MongoObserver

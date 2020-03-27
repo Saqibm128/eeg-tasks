@@ -1,3 +1,5 @@
+import sys, os
+sys.path.append(os.path.realpath(".."))
 from hyperopt import base
 base.have_bson = False
 from sacred.initialize import Scaffold

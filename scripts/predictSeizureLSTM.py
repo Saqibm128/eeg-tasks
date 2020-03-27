@@ -1,5 +1,7 @@
 import sys, os
 sys.path.append(os.path.realpath(".."))
+import sys, os
+sys.path.append(os.path.realpath(".."))
 os.environ["TF_XLA_FLAGS"]="--tf_xla_cpu_global_jit"
 from sacred.observers import MongoObserver
 import pickle as pkl
@@ -261,7 +263,7 @@ def config():
     dropout = 0.5
     n_process = 8
     num_epochs=1000
-    max_queue_size = 256
+    max_queue_size = 32
     lr = 0.0005
     lr_decay = 0.5
     patience=20
@@ -331,7 +333,7 @@ def get_model(num_filters,
         model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss=["categorical_crossentropy", "categorical_crossentropy"], loss_weights=[1,1], metrics=["binary_accuracy", f1, sensitivity, specificity])
     else:
         model = tf.keras.Model(inputs=[input], outputs=[y_time]) #todo figure out the loss_weights
-        model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss="categorical_crossentropy",  metrics=[f1, sensitivity, specificity])
+        model.compile(tf.keras.optimizers.Adam(lr=0.0001), loss="categorical_crossentropy",  metrics=["accuracy", f1, sensitivity, specificity])
     model.save(model_name)
     return model
 

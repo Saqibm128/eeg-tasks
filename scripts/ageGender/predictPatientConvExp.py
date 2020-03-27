@@ -1,3 +1,5 @@
+import sys, os
+sys.path.append(os.path.realpath(".."))
 import itertools
 from sacred.observers import MongoObserver
 import pickle as pkl

@@ -1,5 +1,7 @@
 import sys, os
 sys.path.append(os.path.realpath(".."))
+import sys, os
+sys.path.append(os.path.realpath(".."))
 os.environ["TF_XLA_FLAGS"]="--tf_xla_cpu_global_jit"
 from sacred.observers import MongoObserver
 import pickle as pkl
@@ -34,11 +36,14 @@ def config():
     lr_decay = 0.9
     steps_per_epoch =700 #approximate num epochs in balanced train set
     valid_steps_per_epoch = 200
+    lstm_h = 128
+    filter_1 = 8
+    filter_2 = 4
     test_steps_per_epoch = 500
     verbose = 2
 
 @ex.capture
-def get_model(lr):
+def get_model(lr, lstm_h):
     inputX = tf.keras.layers.Input((9,21,1000,1))
     x = inputX
     # inputX = tf.keras.Input((21*1000*1,))
@@ -48,19 +53,19 @@ def get_model(lr):
     for i in range(6):
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
         if i > 3:
-            num_filters=4
+            num_filters=filter_2
         else:
-            num_filters=8
+            num_filters=filter_1
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2D(num_filters, (3,3), activation="relu"))(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.MaxPool2D((1,2)))(x)
     decoder_reshape_shape =  tf.keras.backend.int_shape(x)
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(x)
     decoder_lstm_out_shape = tf.keras.backend.int_shape(x)
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
-    x = tf.keras.layers.CuDNNLSTM(128, return_sequences=True)(x)
+    x = tf.keras.layers.CuDNNLSTM(lstm_h, return_sequences=True)(x)
     x = tf.keras.layers.Activation("relu")(x)
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
-    x = tf.keras.layers.CuDNNLSTM(64, return_sequences=True)(x)
+    x = tf.keras.layers.CuDNNLSTM(int(lstm_h/2), return_sequences=True)(x)
     x = tf.keras.layers.Activation("relu")(x)
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(128, activation="relu"))(x)
@@ -76,9 +81,9 @@ def get_model(lr):
     for i in range(6):
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
         if i > 3:
-            num_filters=8
+            num_filters=filter_1
         else:
-            num_filters=4
+            num_filters=filter_2
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv2DTranspose(num_filters, (3,3), activation="relu"))(x)
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.UpSampling2D((1,2)))(x)
 
