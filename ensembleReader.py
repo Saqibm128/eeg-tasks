@@ -392,12 +392,15 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         resample=pd.Timedelta(seconds=constants.COMMON_DELTA),
         # num_splits_per_sample= None,
         gap = pd.Timedelta(seconds=1),
+        # overlap = None,
         return_sequence_label=False,
         num_samples=None,
         max_bckg_samps_per_file=None,
         overlapping_augmentation=False,
         n_process=4,
         include_montage_channels=False, # which montage channels have seizure
+        include_segment=False,
+        shuffle = True,
     ):
         self.mode = mode
         self.n_process = n_process
@@ -410,16 +413,22 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
         self.order_filt = order_filt
         self.sampleInfo = Dict()
         self.gap = gap
+        # if overlap = None:
+        #     self.overlap = gap
+        # else:
+        #     self.overlap = overlap
         self.include_seizure_type = include_seizure_type
         self.num_samples = num_samples
         self.return_sequence_label = False
         self.random_under_sample = random_under_sample
         self.overlapping_augmentation = overlapping_augmentation
         self.include_montage_channels = include_montage_channels
+        self.include_segment = include_segment
         # self.num_splits_per_sample = num_splits_per_sample
         currentIndex = 0
         for token_file_path, segment in self.segment_file_tuples:
-            segment = segment.reindex(np.random.permutation(segment.index)) #randomly sample from each eeg file
+            if shuffle:
+                segment = segment.reindex(np.random.permutation(segment.index)) #randomly sample from each eeg file
             num_bckg_samps_per_file = 0
             for time_period, label in segment.iteritems():
                 # segment = segment.resample(gap).mode() #if gap isn't correct size, just resample
@@ -447,7 +456,10 @@ class EdfDatasetSegmentedSampler(util_funcs.MultiProcessingDataset):
 
                 if self.include_seizure_type:
                     self.sampleInfo[currentIndex].label = (self.sampleInfo[currentIndex].label, label) #attach the specific label on the EDSS
+
                 self.sampleInfo[currentIndex].token_file_path = token_file_path
+                if self.include_segment:
+                    self.sampleInfo[currentIndex].label = (*self.sampleInfo[currentIndex].label, self.sampleInfo[currentIndex].token_file_path)
                 self.sampleInfo[currentIndex].sample_num = (time_period) / self.gap
                 self.sampleInfo[currentIndex].sample_width = self.gap
                 currentIndex += 1

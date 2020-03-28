@@ -45,6 +45,7 @@ def get_pickle_data(edf, start_seconds, split="train"):
     return _get_pickle_data_lru_cache(basePath)
 def get_data_from_start(edf, start_seconds, split="train"):
     data = get_pickle_data(edf, start_seconds, split)
+    data = data.to_dict()
     return data[start_seconds/2]["data"][:][0]
 
 train_split_preprocessed = "/n/scratch2/ms994/medium_size/train"
@@ -137,7 +138,7 @@ class FileDataReader(util_funcs.MultiProcessingDataset):
                     self.indexDict[currentInd].time_seizure_label =  (labelSlice != "bckg")
                     self.indexDict[currentInd].time_seizure_subtypes = labelSlice.apply(lambda x: constants.SEIZURE_SUBTYPES.index(x))
                     currentInd+=1
-            if filename is not None:
+            if filename is None:
                 filename = "/n/scratch2/ms994/medium_size/" + split + "/20sindex.pkl"
             pkl.dump(self.indexDict, open(filename, "wb"))
         else:
