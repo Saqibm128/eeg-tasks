@@ -227,21 +227,22 @@ def config():
     test_steps=int(129670/batch_size)
     seizure_class_weight=12 #seizure is 1/12 of train dataset, balance out with this
     model_name = util_funcs.randomString() +".h5"
-    early_stopping_on = "val_auc"
+    early_stopping_on = "val_loss"
+    mode="auto"
     num_epochs=100
     random_rearrange_each_batch=False
     verbose=2
+    reduce_lr_patience=5
 
-
 @ex.capture
-def get_model_checkpoint(model_name, early_stopping_on):
-    return tf.keras.callbacks.ModelCheckpoint(model_name, monitor=early_stopping_on, save_best_only=True, verbose=1, mode="max")
+def get_model_checkpoint(model_name, early_stopping_on, mode):
+    return tf.keras.callbacks.ModelCheckpoint(model_name, monitor=early_stopping_on, save_best_only=True, verbose=1, mode=mode)
 @ex.capture
-def get_early_stopping(patience, early_stopping_on):
-    return tf.keras.callbacks.EarlyStopping(patience=patience, verbose=1, monitor=early_stopping_on, mode="max")
+def get_early_stopping(patience, early_stopping_on, mode):
+    return tf.keras.callbacks.EarlyStopping(patience=patience, verbose=1, min_delta=0.001, monitor=early_stopping_on, mode=mode)
 @ex.capture
-def get_reduce_lr(early_stopping_on):
-    return tf.keras.callbacks.ReduceLROnPlateau(monitor=early_stopping_on, mode="max")
+def get_reduce_lr(early_stopping_on, reduce_lr_patience, mode):
+    return tf.keras.callbacks.ReduceLROnPlateau(monitor=early_stopping_on, patience=reduce_lr_patience, mode=mode)
 @ex.capture
 def get_cb_list():
     return [get_model_checkpoint(), get_early_stopping(), get_reduce_lr()]
