@@ -1,5 +1,5 @@
 import sys, os
-sys.path.append(os.path.realpath(".."))
+sys.path.append(os.path.realpath("."))
 os.environ["TF_XLA_FLAGS"]="--tf_xla_cpu_global_jit"
 from sacred.observers import MongoObserver
 import pickle as pkl
@@ -47,8 +47,28 @@ def read_tfrecord(example):
     # del example
     return data, tf.one_hot(class_label[0], 2)
 
+def read_random_tfrecord(example):
+    features = { \
+               'data':  tf.io.FixedLenFeature([21*1000], tf.float32,),\
+               'label':  tf.io.FixedLenFeature([1], tf.int64,),\
+               'subtypeLabel':  tf.io.FixedLenFeature([1], tf.int64,),\
+               'session':  tf.io.FixedLenFeature([1], tf.int64,), \
+               'montage':  tf.io.FixedLenFeature([22], tf.int64,)}
+
+    # decode the TFRecord
+    example = tf.io.parse_single_example(example, features)
+#     return example
+
+    data = tf.reshape(example['data'], [1000,21,1])
+    # data = (example['data'])
+
+    class_label = tf.cast(example['label'], tf.int32)
+
+    # del example
+    return data, tf.one_hot(class_label[0], 2)
+
 @ex.capture
-def get_batched_dataset(filenames, batch_size, max_queue_size=10,  n_process=4, is_train=False):
+def get_batched_dataset(filenames, batch_size, random_rearrange_each_batch, max_queue_size=10,  n_process=4, is_train=False):
     option_no_order = tf.data.Options()
     option_no_order.experimental_deterministic = False
 
@@ -56,8 +76,10 @@ def get_batched_dataset(filenames, batch_size, max_queue_size=10,  n_process=4, 
     dataset = dataset.with_options(option_no_order)
     dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=16, num_parallel_calls=n_process)
 #
-    dataset = dataset.map(read_tfrecord, num_parallel_calls=n_process)
-
+    if is_train and random_rearrange_each_batch:
+        dataset = dataset.map(read_random_tfrecord, num_parallel_calls=n_process)
+    else:
+        dataset = dataset.map(read_tfrecord, num_parallel_calls=n_process)
 #     dataset = dataset.cache() # IF this dataset fits in RAM
     dataset = dataset.repeat()
 #     if is_train:
@@ -74,15 +96,17 @@ def get_batched_dataset(filenames, batch_size, max_queue_size=10,  n_process=4, 
     return dataset
 
 @ex.capture
-def get_positive_train_dataset(filenames,  max_queue_size=5, n_process=4, is_train=True):
+def get_positive_train_dataset(filenames, random_rearrange_each_batch, max_queue_size=5, n_process=4, is_train=True):
     option_no_order = tf.data.Options()
     option_no_order.experimental_deterministic = False
 
     dataset = tf.data.Dataset.list_files(filenames)
     dataset = dataset.with_options(option_no_order)
     dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=16, num_parallel_calls=n_process)
-#
-    dataset = dataset.map(read_tfrecord, num_parallel_calls=n_process)
+    if is_train and random_rearrange_each_batch:
+        dataset = dataset.map(read_random_tfrecord, num_parallel_calls=n_process)
+    else:
+        dataset = dataset.map(read_tfrecord, num_parallel_calls=n_process)
 
     dataset = dataset.filter(lambda x, y: tf.equal(tf.argmax(tf.cast(y, tf.int32), 0), 1))
 
@@ -103,15 +127,17 @@ def get_positive_train_dataset(filenames,  max_queue_size=5, n_process=4, is_tra
     return dataset
 
 @ex.capture
-def get_negative_train_dataset(filenames, max_queue_size=10, n_process=4, is_train=True):
+def get_negative_train_dataset(filenames, random_rearrange_each_batch, max_queue_size=10, n_process=4, is_train=True):
     option_no_order = tf.data.Options()
     option_no_order.experimental_deterministic = False
 
     dataset = tf.data.Dataset.list_files(filenames)
     dataset = dataset.with_options(option_no_order)
     dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=16, num_parallel_calls=n_process)
-#
-    dataset = dataset.map(read_tfrecord, num_parallel_calls=n_process)
+    if is_train and random_rearrange_each_batch:
+        dataset = dataset.map(read_random_tfrecord, num_parallel_calls=n_process)
+    else:
+        dataset = dataset.map(read_tfrecord, num_parallel_calls=n_process)
 
 
     dataset = dataset.filter(lambda x, y: tf.equal(tf.argmax(tf.cast(y, tf.int32), 0), 0))
@@ -178,6 +204,8 @@ def get_model(g_noise, num_cnn_layers, num_lstm_layers, num_lin_layers, lstm_h, 
     x = tf.keras.layers.Dense(2, name="seizure", activation="softmax")(x)
     model = tf.keras.Model(inputs=inputLayer, outputs=x)
     model.compile(tf.keras.optimizers.Adam(lr=lr), loss="categorical_crossentropy", metrics=["accuracy", f1, auc, sensitivity, specificity])
+    model.summary()
+    return model
 @ex.config
 def config():
     train_tfr = "/n/scratch2/ms994/train_4s.tfr"
@@ -199,33 +227,50 @@ def config():
     test_steps=int(129670/batch_size)
     seizure_class_weight=12 #seizure is 1/12 of train dataset, balance out with this
     model_name = util_funcs.randomString() +".h5"
-    early_stopping_on = "val_f1"
+    early_stopping_on = "val_auc"
     num_epochs=100
+    random_rearrange_each_batch=False
+    verbose=2
 
 
 @ex.capture
 def get_model_checkpoint(model_name, early_stopping_on):
-    return tf.keras.callbacks.ModelCheckpoint(model_name, monitor=early_stopping_on, save_best_only=True, verbose=1)
+    return tf.keras.callbacks.ModelCheckpoint(model_name, monitor=early_stopping_on, save_best_only=True, verbose=1, mode="max")
 @ex.capture
 def get_early_stopping(patience, early_stopping_on):
-    return tf.keras.callbacks.EarlyStopping(patience=patience, verbose=1, monitor=early_stopping_on)
+    return tf.keras.callbacks.EarlyStopping(patience=patience, verbose=1, monitor=early_stopping_on, mode="max")
 @ex.capture
 def get_reduce_lr(early_stopping_on):
-    return tf.keras.callbacks.ReduceLROnPlateau(monitor=early_stopping_on)
+    return tf.keras.callbacks.ReduceLROnPlateau(monitor=early_stopping_on, mode="max")
 @ex.capture
 def get_cb_list():
-    return [get_model_checkpoint(), get_early_stopping(), get_reduce_lr]
+    return [get_model_checkpoint(), get_early_stopping(), get_reduce_lr()]
 
 @ex.main
-def main(train_steps, valid_steps, test_steps, model_name, num_epochs):
+def main(train_steps, valid_steps, test_steps, model_name, num_epochs, verbose):
     train_unbalanced = get_batched_dataset(["/n/scratch2/ms994/train_4s.tfr"],  is_train=True)
     valid_data = get_batched_dataset(["/n/scratch2/ms994/valid_4s.tfr"], is_train=False)
     test_data = get_batched_dataset(["/n/scratch2/ms994/test_4s.tfr"],  is_train=False)
     model = get_model()
-    history = model.fit(train_unbalanced, steps_per_epoch=(train_steps), validation_data=valid_data, validation_steps=(valid_steps), epochs=100, callbacks=get_cb_list())
+    history = model.fit(
+        train_unbalanced,
+        steps_per_epoch=(train_steps),
+        validation_data=valid_data,
+        validation_steps=(valid_steps),
+        epochs=num_epochs,
+        callbacks=get_cb_list(),
+        verbose=verbose)
     model = tf.keras.models.load_model(model_name, custom_objects={"f1":f1, "auc":auc, "sensitivity":sensitivity, "specificity":specificity})
-    results = model.eval(test_data)
+    loss, accuracy, f1_test, auc_test, sensitivity_test, specificity_test = model.evaluate(test_data, steps=test_steps)
     return {
         "history": history.history,
-        "results": results
+        "loss": loss,
+        "acc": accuracy,
+        "f1": f1_test,
+        "auc": auc_test,
+        "sens": sensitivity_test,
+        "spec": specificity_test
     }
+
+if __name__ == "__main__":
+    ex.run_commandline()
