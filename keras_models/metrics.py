@@ -10,6 +10,11 @@ def non_error_roc_auc_score(y_true, y_pred):
     except:
         return 0.0
 
+def auc(y_true, y_pred):
+    auc = tf.metrics.auc(y_true, y_pred)[1]
+    tf.keras.backend.get_session().run(tf.local_variables_initializer())
+    return auc
+
 def auroc(y_true, y_pred):
     return tf.py_func(non_error_roc_auc_score, (y_true, y_pred), tf.double)
 
