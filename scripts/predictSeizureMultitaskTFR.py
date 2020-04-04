@@ -265,6 +265,7 @@ def config():
     random_rearrange_each_batch=False
     verbose=2
     reduce_lr_patience=5
+    use_balanced = False
 
 @ex.capture
 def get_model_checkpoint(model_name, early_stopping_on, mode):
@@ -280,13 +281,16 @@ def get_cb_list():
     return [get_model_checkpoint(), get_early_stopping(), get_reduce_lr()]
 
 @ex.main
-def main(train_steps, valid_steps, test_steps, model_name, num_epochs, verbose):
-    train_unbalanced = get_batched_dataset(["/n/scratch2/ms994/train_4s.tfr"],  is_train=True)
+def main(train_steps, valid_steps, test_steps, model_name, num_epochs, verbose, use_balanced):
+    if use_balanced:
+        train_data = get_balanced_dataset(["/n/scratch2/ms994/train_4s.tfr"],  is_train=True)
+    else:
+        train_data = get_batched_dataset(["/n/scratch2/ms994/train_4s.tfr"],  is_train=True)
     valid_data = get_batched_dataset(["/n/scratch2/ms994/valid_4s.tfr"], is_train=False)
     test_data = get_batched_dataset(["/n/scratch2/ms994/test_4s.tfr"],  is_train=False)
     model = get_model()
     history = model.fit(
-        train_unbalanced,
+        train_data,
         steps_per_epoch=(train_steps),
         validation_data=valid_data,
         validation_steps=(valid_steps),
