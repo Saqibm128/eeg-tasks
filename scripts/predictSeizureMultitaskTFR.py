@@ -110,7 +110,7 @@ def get_positive_train_dataset(filenames, random_rearrange_each_batch, max_queue
     else:
         dataset = dataset.map(read_tfrecord, num_parallel_calls=n_process)
 
-    dataset = dataset.filter(lambda x, y: tf.equal(tf.argmax(tf.cast(y, tf.int32), 0), 1))
+    dataset = dataset.filter(lambda x, y: tf.equal(tf.argmax(tf.cast(y[0], tf.int32), 0), 1))
 
 
 #     dataset = dataset.cache() # IF this dataset fits in RAM
@@ -142,7 +142,7 @@ def get_negative_train_dataset(filenames, random_rearrange_each_batch, max_queue
         dataset = dataset.map(read_tfrecord, num_parallel_calls=n_process)
 
 
-    dataset = dataset.filter(lambda x, y: tf.equal(tf.argmax(tf.cast(y, tf.int32), 0), 0))
+    dataset = dataset.filter(lambda x, y: tf.equal(tf.argmax(tf.cast(y[0], tf.int32), 0), 0))
 
 
 #     dataset = dataset.cache() # IF this dataset fits in RAM
