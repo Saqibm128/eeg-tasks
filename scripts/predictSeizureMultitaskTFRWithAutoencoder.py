@@ -45,7 +45,7 @@ def read_tfrecord(example):
     class_label = tf.cast(example['label'], tf.int32)
 
     # del example
-    return data, (tf.one_hot(class_label[0], 2), tf.one_hot(example["subtypeLabel"][0], 4),  example["montage"])
+    return data, (tf.one_hot(class_label[0], 2), tf.one_hot(example["subtypeLabel"][0], 4),  example["montage"], tf.one_hot(example["session"][0], 575), data)
 
 
 def read_random_tfrecord(example):
@@ -66,7 +66,7 @@ def read_random_tfrecord(example):
     class_label = tf.cast(example['label'], tf.int32)
 
     # del example
-    return data, (tf.one_hot(class_label[0], 2), tf.one_hot(example["subtypeLabel"][0], 4),  example["montage"],)
+    return data, (tf.one_hot(class_label[0], 2), tf.one_hot(example["subtypeLabel"][0], 4),  example["montage"], tf.one_hot(example["session"][0], 575), data)
 
 
 @ex.capture
@@ -231,9 +231,33 @@ def get_model(g_noise, num_cnn_layers, loss_weights, num_lstm_layers, num_lin_la
         x = tf.keras.layers.Dropout(0.5)(x)
     x_montage = tf.keras.layers.Dense(22, name="montage", activation="sigmoid")(x)
 
-    model = tf.keras.Model(inputs=inputLayer, outputs=[x_detect, x_classify, x_montage, ])
+    #patient measurement
+    x = x_shared_flattened
+    for k in range(num_lin_layers):
+        x = tf.keras.layers.BatchNormalization()(x)
+        x = tf.keras.layers.Dense(lin_h)(x)
+        x = tf.keras.layers.LeakyReLU()(x)
+        x = tf.keras.layers.Dropout(0.5)(x)
+    x_pre_patient = x
+    x_patient = tf.keras.layers.Dense(575, name="patient", activation="softmax")(x)
+
+    #decoder
+    x = x_shared
+    x = tf.keras.layers.CuDNNLSTM(old_x_shape[2]*old_x_shape[3], return_sequences=True, name="lstm_decode")(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Reshape(old_x_shape[1:], name="reshape_decode")(x)
+    for i in range(num_cnn_layers):
+        x = tf.keras.layers.BatchNormalization()(x)
+        x = tf.keras.layers.Conv2D(cnn2d_n_k, (3,3), padding="same")(x)
+        x = tf.keras.layers.UpSampling2D((2,1))(x)
+        x = tf.keras.layers.LeakyReLU()(x)
+    x = tf.keras.layers.Conv2D(1, (3,3), padding="same")(x)
+
+    x_decode = tf.keras.layers.Reshape((int(x.shape[1]), int(x.shape[2]), int(x.shape[3])), name="decode")(x)
+
+    model = tf.keras.Model(inputs=inputLayer, outputs=[x_detect, x_classify, x_montage, x_patient, x_decode])
     from keras_models.metrics import f1, sensitivity, specificity
-    model.compile(tf.keras.optimizers.Adam(lr=lr), loss_weights=loss_weights, loss=["categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy", ], metrics={"detect":["accuracy", f1, sensitivity, specificity], "classify":["accuracy"], "montage":["binary_accuracy"], })
+    model.compile(tf.keras.optimizers.Adam(lr=lr), loss_weights=loss_weights, loss=["categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy", "categorical_crossentropy", "logcosh"], metrics={"detect":["accuracy", f1, sensitivity, specificity], "classify":["accuracy"], "montage":["binary_accuracy"], "patient": ["accuracy"]})
     batch_size=128
     model.summary()
     return model
@@ -247,7 +271,7 @@ def config():
     g_noise=1
     num_cnn_layers=3
     num_lstm_layers=1
-    loss_weights=[1,1,1,1]
+    loss_weights=[1,1,1,1,1]
     num_lin_layers=3
     lstm_h = 32
     cnn2d_n_k = 4
@@ -295,33 +319,9 @@ def main(train_steps, valid_steps, test_steps, model_name, num_epochs, verbose):
         verbose=verbose)
     model = tf.keras.models.load_model(model_name, custom_objects={"f1":f1, "auc":auc, "sensitivity":sensitivity, "specificity":specificity})
     results = model.evaluate(test_data, steps=test_steps)
-    total_loss, \
-        detect_loss, \
-        classify_loss, \
-        montage_loss, \
-        detect_acc, \
-        detect_f1, \
-        detect_sensitivity, \
-        detect_specificity, \
-        classify_acc, \
-        montage_acc = results
     return {
         "history": history.history,
-        "detect": {
-            "acc": detect_acc,
-            "loss": detect_loss,
-            "sens": detect_sensitivity,
-            "spec": detect_specificity,
-            "f1": detect_f1
-        },
-        "classify": {
-            "loss": classify_loss,
-            "acc": classify_acc
-        },
-        "montage": {
-            "acc": montage_acc,
-            "loss": montage_loss
-        }
+        "results": results
     }
 
 if __name__ == "__main__":
