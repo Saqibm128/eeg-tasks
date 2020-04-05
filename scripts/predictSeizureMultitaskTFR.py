@@ -189,16 +189,18 @@ def get_model(g_noise, num_cnn_layers, loss_weights, num_lstm_layers, num_lin_la
 
     x = tf.keras.layers.GaussianNoise(g_noise)(x)
     for i in range(num_cnn_layers):
-    #     x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.Conv2D(cnn2d_n_k, (3,3), padding="same")(x)
         x = tf.keras.layers.LeakyReLU()(x)
         x = tf.keras.layers.MaxPool2D((2,1))(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+
     old_x_shape = (x).get_shape().as_list()
     x = tf.keras.layers.Reshape((int(x.shape[1]), int(x.shape[2]) * int(x.shape[3])), name="LSTM_Reshape")(x)
     for j in range(num_lstm_layers):
         x = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(x)
         x = tf.keras.layers.CuDNNLSTM(lstm_h, return_sequences=True, kernel_regularizer=tf.keras.regularizers.L1L2(l1=0.1, l2=0.1))(x)
         x = tf.keras.layers.LeakyReLU()(x)
+        x = tf.keras.layers.BatchNormalization()(x)
     x_shared = x
     x = tf.keras.layers.Flatten(name="flatten_encoder_lstm")(x)
     x_shared_flattened = x
@@ -206,29 +208,29 @@ def get_model(g_noise, num_cnn_layers, loss_weights, num_lstm_layers, num_lin_la
     #seizure detect
     x = x_shared_flattened
     for k in range(num_lin_layers):
-        x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.Dense(lin_h)(x)
         x = tf.keras.layers.LeakyReLU()(x)
         x = tf.keras.layers.Dropout(0.5)(x)
+        x = tf.keras.layers.BatchNormalization()(x)
     x_detect = tf.keras.layers.Dense(2, name="detect", activation="softmax")(x)
 
 
     #seizure classify
     x = x_shared_flattened
     for k in range(num_lin_layers):
-        x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.Dense(lin_h)(x)
         x = tf.keras.layers.LeakyReLU()(x)
         x = tf.keras.layers.Dropout(0.5)(x)
+        x = tf.keras.layers.BatchNormalization()(x)
     x_classify = tf.keras.layers.Dense(4, name="classify", activation="softmax")(x)
 
     #montage classify
     x = x_shared_flattened
     for k in range(num_lin_layers):
-        x = tf.keras.layers.BatchNormalization()(x)
         x = tf.keras.layers.Dense(lin_h)(x)
         x = tf.keras.layers.LeakyReLU()(x)
         x = tf.keras.layers.Dropout(0.5)(x)
+        x = tf.keras.layers.BatchNormalization()(x)
     x_montage = tf.keras.layers.Dense(22, name="montage", activation="sigmoid")(x)
 
     model = tf.keras.Model(inputs=inputLayer, outputs=[x_detect, x_classify, x_montage, ])
