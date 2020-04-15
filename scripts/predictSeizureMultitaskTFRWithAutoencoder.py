@@ -258,7 +258,6 @@ def get_model(g_noise, num_cnn_layers, loss_weights, num_lstm_layers, num_lin_la
     model = tf.keras.Model(inputs=inputLayer, outputs=[x_detect, x_classify, x_montage, x_patient, x_decode])
     from keras_models.metrics import f1, sensitivity, specificity
     model.compile(tf.keras.optimizers.Adam(lr=lr), loss_weights=loss_weights, loss=["categorical_crossentropy", "categorical_crossentropy", "binary_crossentropy", "categorical_crossentropy", "logcosh"], metrics={"detect":["accuracy", f1, sensitivity, specificity], "classify":["accuracy"], "montage":["binary_accuracy"], "patient": ["accuracy"]})
-    batch_size=128
     model.summary()
     return model
 @ex.config
