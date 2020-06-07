@@ -14,6 +14,14 @@ def read_tfrecord_autoencoder(example):
     example = read_tfrecord(example)
     return tf.reshape(example["data"], (1000,21,1)), tf.reshape(example["data"], (1000,21,1))
 
+def read_tfrecord_autoencoder_992_output(example):
+    example = read_tfrecord(example)
+    return tf.reshape(example["data"], (1000,21,1)), tf.reshape(example["data"], (1000,21,1))[3:995]
+
+def read_tfrecord_return_outputs(example):
+    example = read_tfrecord(example)
+    return example["label"][0], example["subtypeLabel"][0], example["session"][0], example["montage"]
+
 def get_batched_dataset(filenames, map_function=None, batch_size=64, max_queue_size=10,  n_process=4, is_train=False):
     option_no_order = tf.data.Options()
     option_no_order.experimental_deterministic = False
