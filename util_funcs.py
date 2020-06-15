@@ -17,7 +17,7 @@ from imblearn.under_sampling import RandomUnderSampler
 import string, random
 
 
-root_path = "/home/ms994/" if "EEG_ROOT" not in os.environ.keys() else os.environ["EEG_ROOT"]
+root_path = "/home/ms994/dbmi_eeg_clustering" if "EEG_ROOT" not in os.environ.keys() else os.environ["EEG_ROOT"]
 
 # https://pynative.com/python-generate-random-string/
 def randomString(stringLength=16):
@@ -190,9 +190,10 @@ def get_abs_files(root_dir_path, return_dir_only=True):
 
 @lru_cache(10)
 def get_common_channel_names(): #21 channels in all edf datafiles
+    global root_path
     cached_channel_names = list(
         pd.read_csv(
-            path.join(root_path,"dbmi_eeg_clustering/assets/channel_names.csv"),
+            path.join(root_path,"assets/channel_names.csv"),
             header=None)[1])
     return cached_channel_names
 
@@ -200,14 +201,14 @@ def get_common_channel_names(): #21 channels in all edf datafiles
 def get_file_sizes(split, ref):
     assert split in get_data_split()
     assert ref in get_reference_node_types()
-    return pd.read_csv(path.join(root_path, "dbmi_eeg_clustering/assets/{}_{}_file_lengths.csv".format(split, ref)), header=None, index_col=[0])
+    return pd.read_csv(path.join(root_path, "assets/{}_{}_file_lengths.csv".format(split, ref)), header=None, index_col=[0])
 
 
 @lru_cache(10)
 def get_annotation_csv():
     cached_annotation_csv = pd.read_csv(
         path.join(
-        root_path,"dbmi_eeg_clustering/assets/data_labels.csv"),
+        root_path,"assets/data_labels.csv"),
         header=0,
         dtype=str,
         keep_default_na=False,
@@ -218,7 +219,7 @@ def get_annotation_csv():
 @lru_cache(10)
 def get_seizure_info():
     return pd.read_csv(path.join(
-        root_path, "dbmi_eeg_clustering/assets/seizures.csv"), header=0)
+        root_path, "assets/seizures.csv"), header=0)
 
 
 def get_annotation_types():
@@ -261,7 +262,7 @@ def get_reference_node_types():
     return ["01_tcp_ar", "02_tcp_le", "03_tcp_ar_a"]
 
 
-def get_mongo_client(path=path.join(root_path,"dbmi_eeg_clustering/config.json")):
+def get_mongo_client(path=path.join(root_path,"config.json")):
     '''
     Used for Sacred to record results
     '''
@@ -285,12 +286,11 @@ def switch_to_general_superset():
     config.update(config["tuh_eeg_all"])
     return config
 
-def read_config(path=path.join(root_path,"dbmi_eeg_clustering/config.json" if "CONFIG_PATH" not in os.environ.keys() else os.environ["CONFIG_PATH"])):
+def read_config(path=path.join(root_path,"config.json" if "CONFIG_PATH" not in os.environ.keys() else os.environ["CONFIG_PATH"])):
     global config
     if config is None:
         config = json.load(open(path, "rb"))
     return config
-root_path = "/home/ms994/" if "EEG_ROOT" not in read_config() else read_config()["EEG_ROOT"]
 
 if __name__ == "__main__":
     print(read_config())

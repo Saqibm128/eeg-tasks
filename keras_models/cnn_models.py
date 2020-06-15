@@ -1,5 +1,8 @@
 #https://www.nature.com/articles/s41598-018-21495-7
-import keras
+try:
+    import keras
+except:
+    from tensorflow import keras
 import numpy as np
 from keras.models import Model, Sequential
 from keras.layers import Input, LSTM, Dense, Activation, Conv2D, Dropout, MaxPool2D, Conv3D, Flatten, LeakyReLU, BatchNormalization, Concatenate

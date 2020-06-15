@@ -1,7 +1,10 @@
 # https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
 import numpy as np
 import numpy.random
-import keras
+try:
+    import keras
+except:
+    from tensorflow import keras
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from addict import Dict
